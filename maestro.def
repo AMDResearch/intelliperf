@@ -1,0 +1,65 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%post
+
+    # Install dependencies
+    apt-get -y update
+    apt-get install -y software-properties-common 
+    apt-get upgrade -y 
+    apt-get install -y build-essential python3 python3-pip git wget clang lld libzstd-dev libomp-dev
+    python3 -m pip install --upgrade pip 
+    python3 -m pip install 'cmake==3.22'
+
+    # Add GitHub trusted host
+    mkdir -p ~/.ssh
+    touch ~/.ssh/known_hosts 
+    ssh-keyscan github.com >> ~/.ssh/known_hosts 
+    chmod 700 ~/.ssh  
+    chmod 644 ~/.ssh/known_hosts 
+
+    # Install ROCm
+    mkdir --parents --mode=0755 /etc/apt/keyrings
+    wget --no-check-certificate https://repo.radeon.com/rocm/rocm.gpg.key -O - | \
+        gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null
+    
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/6.3.2 jammy main" \
+        | tee --append /etc/apt/sources.list.d/rocm.list
+    
+    printf "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600\n" | tee /etc/apt/preferences.d/rocm-pin-600  
+    
+    apt-get -y update
+    ROCM_VERSION=$(apt-cache search rocm-dev[0-9] | awk '{print $1}' | sed 's/rocm-dev//g')
+    apt-get install -y rocm-dev6.3.2 rocm-llvm-dev6.3.2 rocm-hip-runtime-dev6.3.2 rocm-smi-lib6.3.2 rocminfo6.3.2
+    export PATH=/opt/rocm/bin:$PATH
+    export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
+    export ROCM_PATH=/opt/rocm
+
+    # Install logduration
+    export SSH_AUTH_SOCK={{ SSH_AUTH_SOCK }}
+    cd /root
+    git clone -v git@github.com:AARInternal/logduration.git
+    cd logduration
+    git submodule update --init --recursive
+    mkdir -p build 
+    cmake -DCMAKE_INSTALL_PREFIX=/opt/logduration -DCMAKE_PREFIX_PATH=${ROCM_PATH} -DLLVM_INSTALL_DIR=/opt/rocm/llvm -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=ON -S . -B build 
+    cmake --build build --target install
+
+    # Install rocprof-compute
+    cd /root
+    git clone -v git@github.com:ROCm/rocprofiler-compute.git
+    cd rocprofiler-compute
+    export INSTALL_DIR=/opt/rocprofiler-compute
+    python3 -m pip install -t ${INSTALL_DIR}/python-libs -r requirements.txt
+    mkdir build
+    cd build
+    cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/3.0.0 \
+        -DPYTHON_DEPS=${INSTALL_DIR}/python-libs \
+        -DMOD_INSTALL_PATH=${INSTALL_DIR}/modulefiles/rocprofiler-compute ..
+    make install
+    export PATH=${INSTALL_DIR}/3.0.0/bin:$PATH
+
+    # Install guided-tuning (JBs tool)
+    cd /root
+    git clone -v git@github.com:AARInternal/guided-tuning.git
+    python3 -m pip install pandas duckdb
