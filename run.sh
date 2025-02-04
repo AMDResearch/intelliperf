@@ -2,6 +2,15 @@
 
 timestamp=$(date +"%Y%m%d_%H%M%S")
 
+# Auto config SSH agent
+if [ ! -S ~/.ssh/ssh_auth_sock ]; then
+    eval `ssh-agent` > /dev/null
+    ln -sf "$SSH_AUTH_SOCK" ~/.ssh/ssh_auth_sock
+fi
+export SSH_AUTH_SOCK=~/.ssh/ssh_auth_sock
+[ -f ~/.ssh/id_rsa ] && ssh-add ~/.ssh/id_rsa
+[ -f ~/.ssh/id_ed25519 ] && ssh-add ~/.ssh/id_ed25519
+
 ssh_auth_sock_path=$(readlink -f "$SSH_AUTH_SOCK")
 # Build the Singularity container
 #   --build-arg SSH_AUTH_SOCK=$SSH_AUTH_SOCK is used to pass the SSH agent socket to the container
