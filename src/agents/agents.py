@@ -26,8 +26,6 @@ def compiler_agent(code: str) -> tuple[bool, str]:
         )
     except subprocess.CalledProcessError as e:
         return False, e.stdout + e.stderr
-    # finally:
-    #     os.remove(temp_file_path)
 
 
 # Executes two binaries and validate updated one using the reference
