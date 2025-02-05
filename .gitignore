@@ -1,2 +1,3 @@
 *.sif
 __pycache__/
+.vscode/
