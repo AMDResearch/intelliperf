@@ -30,7 +30,7 @@ From: ubuntu:22.04
     
     apt-get -y update
     ROCM_VERSION=$(apt-cache search rocm-dev[0-9] | awk '{print $1}' | sed 's/rocm-dev//g')
-    apt-get install -y rocm-dev6.3.2 rocm-llvm-dev6.3.2 rocm-hip-runtime-dev6.3.2 rocm-smi-lib6.3.2 rocminfo6.3.2
+    apt-get install -y rocm-dev6.3.2 rocm-llvm-dev6.3.2 rocm-hip-runtime-dev6.3.2 rocm-smi-lib6.3.2 rocminfo6.3.2 rocthrust-dev6.3.2 
     export PATH=/opt/rocm/bin:$PATH
     export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
     export ROCM_PATH=/opt/rocm
@@ -63,3 +63,7 @@ From: ubuntu:22.04
     cd /root
     git clone -v git@github.com:AARInternal/guided-tuning.git
     python3 -m pip install pandas duckdb
+
+    # Install agents dependencies
+    python3 -m pip install openai
+
