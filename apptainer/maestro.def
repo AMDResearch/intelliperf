@@ -62,7 +62,9 @@ From: ubuntu:22.04
     # Install guided-tuning (JBs tool)
     cd /root
     git clone -v git@github.com:AARInternal/guided-tuning.git
-    python3 -m pip install pandas duckdb
+    cd guided-tuning
+    git checkout colramos/bnk_conflicts
+    python3 -m pip install -r requirements.txt
 
     # Install agents dependencies
     python3 -m pip install openai
