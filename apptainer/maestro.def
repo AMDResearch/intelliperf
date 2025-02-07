@@ -65,6 +65,7 @@ From: ubuntu:22.04
     cd guided-tuning
     git checkout colramos/bnk_conflicts
     python3 -m pip install -r requirements.txt
+    export GT_TUNING=$PWD
 
     # Install agents dependencies
     python3 -m pip install openai
