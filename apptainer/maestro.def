@@ -54,7 +54,6 @@ From: ubuntu:22.04
     cd /root
     git clone -v git@github.com:AARInternal/guided-tuning.git
     cd guided-tuning
-    git checkout colramos/bnk_conflicts
     python3 -m pip install -r requirements.txt
     export GT_TUNING=$PWD
     # [Patch] Remove the line starting with "gpu_series" in guided-tuning/prep/db.py. Won't be upstreamed until ROCm 6.4
