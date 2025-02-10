@@ -58,10 +58,12 @@ class bank_conflict(Formula_Base):
             perf_report_card (pd.DataFrame): DataFrame containing kernel report card with bank conflict data
         """
         super().instrument_pass()
+        #TODO: Finish instrumentation implementation
         pass
 
     def optimize_pass(self):
         super().optimize_pass()
+        #TODO: Connect optimization agent to this pass
         pass
 
 def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
