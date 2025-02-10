@@ -2,15 +2,16 @@ Bootstrap: docker
 From: ubuntu:22.04
 
 %post
-
     # Install dependencies
     apt-get -y update
     apt-get install -y software-properties-common 
     apt-get upgrade -y 
-    apt-get install -y build-essential python3 python3-pip git wget clang lld libzstd-dev libomp-dev
+    apt-get install -y build-essential python3 python3-pip git wget clang lld libzstd-dev libomp-dev vim
+    apt-get install -y locales
+    locale-gen en_US.UTF-8
     python3 -m pip install --upgrade pip 
     python3 -m pip install 'cmake==3.22'
-
+    
     # Add GitHub trusted host
     mkdir -p ~/.ssh
     touch ~/.ssh/known_hosts 
