@@ -6,7 +6,7 @@ class Formula_Base:
     def __init__(self, name: str, app_cmd: list):
         # Private
         self.__name = name # name of the run
-        self.__app_cmd = app_cmd # command to execute application
+        self.__app_cmd:list = app_cmd # command to execute application
 
         # Public
         self.profiler:str = None
@@ -26,7 +26,6 @@ class Formula_Base:
         # Validate app command
         if self.__app_cmd:
             self.__app_cmd = self.__app_cmd[1:]
-            self.__app_cmd = " ".join(self.__app_cmd)
         else:
             logging.error("Profiling command required. Pass application executable after -- at the end of options.")
 
