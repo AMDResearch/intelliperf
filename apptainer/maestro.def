@@ -1,7 +1,25 @@
 Bootstrap: docker
 From: ubuntu:22.04
 
+%environment
+    # Locale
+    export LANG=en_US.UTF-8
+
+    # ROCm globals
+    export PATH=/opt/rocm/bin:$PATH
+    export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
+    export ROCM_PATH=/opt/rocm
+
+    # Misc globals
+    export GT_TUNING=/root/guided-tuning
+    export PYTHONPATH=$PYTHONPATH:/root/guided-tuning
+
 %post
+    apt-get -y update
+    apt-get install -y locales
+    locale-gen en_US.UTF-8
+    export LANG=en_US.UTF-8
+
     # Install dependencies
     apt-get -y update
     apt-get install -y software-properties-common 
