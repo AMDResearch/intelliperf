@@ -1,2 +1,4 @@
 *.sif
 __pycache__/
+.vscode/
+build/

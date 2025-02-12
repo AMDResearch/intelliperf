@@ -1,0 +1,17 @@
+Challenges:
+
+1. concurrency
+How do we know the order of operations?
+
+For now, I am assuming free happens in the same order/sequence
+and I will export IPC handle for python to do validation
+then notify the interceptor to do the actual free once I got the data
+or done the validation (i.e., run two apps concurrently)
+
+Same challenge for when using pages..
+are pages guaranteed to be modified in same order?
+how to correlate memory pages?
+
+2. applications have custom allocators
+likely, they have a pool they manage for allocation.
+Tracing alloc/free is a temp solution.

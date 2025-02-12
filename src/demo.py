@@ -53,7 +53,11 @@ done = False
 
 while not done:
     prompt = f"Optimize the code: \n {initial_code}"
-
+    # Identify bottleneck
+    # success, message = bottleneck_agent(prompt) - omniperf
+    # success, message = bottleneck_agent(prompt) - guided tuning
+    
+    
     # LLM Request
     success, message = optimizer_agent(prompt)
     if not success:

@@ -103,3 +103,32 @@ def optimizer_agent(prompt, temperature=0.0, max_tokens=3000) -> tuple[bool, str
         return False, f"Error: OpenAI API error - {str(e)}"
     except Exception as e:
         return False, f"Error: An unexpected error occurred - {str(e)}"
+
+
+class OptimizerAgent:
+    def __init__(
+        self,
+        model="gpt-4o",
+        system_prompt="You are a skilled GPU HIP programmer. Given a kernel, you will optimize it and provide a correct performant implementation. Do not modify the kernel signature. Do not include any markdown code blocks or text other than the code.",
+        temperature=0.7,
+    ):
+        self.api_key = os.getenv("OPENAI_API_KEY")
+        self.model = model
+        self.temperature = temperature
+        self.messages = [{"role": "system", "content": system_prompt}]
+
+    def chat(self, user_input):
+        self.messages.append({"role": "user", "content": user_input})
+
+        response = openai.ChatCompletion.create(
+            model=self.model, messages=self.messages, temperature=self.temperature
+        )
+
+        assistant_reply = response["choices"][0]["message"]["content"]
+        self.messages.append({"role": "assistant", "content": assistant_reply})
+
+        return assistant_reply
+
+    def reset_conversation(self):
+        """Clear the message history while retaining the system prompt."""
+        self.messages = [self.messages[0]]
