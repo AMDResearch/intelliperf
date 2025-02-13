@@ -93,28 +93,6 @@ def get_device_buffer(ptr_value, size):
     np_array = np.ctypeslib.as_array(buffer_ptr.contents)
     return np_array
 
-
-# def generate_header(*args: str) -> str:
-#     header_path = "/tmp/KernelArguments.hpp"
-#     member_names = [arg.split()[-1] for arg in args]
-#     members = ";\n    ".join(args) + ";"
-#     as_tuple_members = ", ".join(member_names)
-
-#     header_content = f"""#pragma once
-# #include <tuple>
-# struct KernelArguments {{
-#     {members}
-
-#     auto as_tuple() const {{
-#         return std::tie({as_tuple_members});
-#     }}
-# }};
-# """
-#     with open(header_path, "w") as header_file:
-#         header_file.write(header_content)
-#     return header_path
-
-
 def generate_header(args: list[str]) -> str:
     header_path = "/tmp/KernelArguments.hpp"
     member_names = [arg.split()[-1] for arg in args]
@@ -229,18 +207,18 @@ generate_header(args)
 
 
 tracer_src_directory = os.path.join(project_directory, "tracer")
+run_subprocess(["hipcc", f"-o ${app}", f"hip/{app}.hip"], "/tmp")
 run_subprocess(["cmake", "-B", "build"], tracer_src_directory)
 run_subprocess(["cmake", "--build", "build"], tracer_src_directory)
 
 lib = os.path.join(project_directory, "tracer", "build", "lib", "libtracer.so")
 
-binary = os.path.join(tracer_directory, app)
+binary = os.path.join(tracer_directory, "tmp", app)
 
 env = os.environ.copy()
 env["HSA_TOOLS_LIB"] = lib
 env["KERNEL_TO_TRACE"] = kernel
 env["TRACER_LOG_LEVEL"] = "detail"
-# env["LD_PRELOAD"] = lib
 
 # Remove IPC handles
 prepare_ipc_file()
@@ -299,17 +277,6 @@ for arg, handle, array_size in zip(args, ipc_handles, ptr_sizes):
         print(f"Received data from IPC ({arg_type}/{num_elements}): {host_array}")
         print(f"Opened IPC Ptr: {ptr}")
 
-# for handle in ipc_handles:
-#     # print(f"Opening: {handle}")
-#     ptr = open_ipc_handle(handle)
-#     data = get_device_buffer(ptr, 8)
-#     print(f"Received data from IPC: {data}")
-#     print(f"Opened IPC Ptr: {ptr}")
-
-
-# print(f"Received: {hex(args_ptr)}")
-# kernel_args = ctypes.cast(args_ptr, ctypes.POINTER(KernelArgs)).contents
-# print(f"Received struct: value={kernel_args.value}")
 
 send_response()
 

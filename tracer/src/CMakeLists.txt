@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
-### Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved. ###
+### Copyright (c) 2025 Advanced Micro Devices, Inc. All rights reserved. ###
 
-include(${PROJECT_SOURCE_DIR}/cmake/RyzenCompilerOptions.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/MaestroCompilerOptions.cmake)
 message("PROJECT_SOURCE_DIR: ${PROJECT_SOURCE_DIR}")
 include(FetchContent)
 
@@ -26,7 +26,6 @@ find_package(HSA REQUIRED)
 #
 
 
-
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -ggdb")
 set(CMAKE_HIP_FLAGS_DEBUG "-O0 -ggdb")
 
@@ -41,18 +40,14 @@ target_include_directories(tracer
 target_sources(tracer
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/log.hpp>
-        # $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/status.hpp>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/tracer.hpp>
-        # $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/npu_matmul_func.h>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/log.cpp
-        # ${CMAKE_CURRENT_SOURCE_DIR}/status.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/tracer.cpp
-        # ${CMAKE_CURRENT_SOURCE_DIR}/npu_matmul_func.cpp
 )
 
-ryzen_compiler_warnings(tracer)
-ryzen_compiler_options(tracer)
+maestro_compiler_warnings(tracer)
+maestro_compiler_options(tracer)
 
 target_link_libraries(tracer
     PUBLIC

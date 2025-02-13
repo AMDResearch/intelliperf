@@ -23,7 +23,6 @@
 #include <optional>
 #include <sstream>
 
-//
 #include "KernelArguments.hpp"
 
 #define PIPE_NAME "/tmp/kernel_pipe"
@@ -32,14 +31,14 @@
 
 namespace maestro {
 
-std::mutex tracer_rt::mutex_{};
-std::shared_mutex tracer_rt::stop_mutex_{};
-tracer_rt* tracer_rt::singleton_{nullptr};
+std::mutex tracer::mutex_{};
+std::shared_mutex tracer::stop_mutex_{};
+tracer* tracer::singleton_{nullptr};
 
-tracer_rt::tracer_rt(HsaApiTable* table,
-                     uint64_t runtime_version,
-                     uint64_t failed_tool_count,
-                     const char* const* failed_tool_names)
+tracer::tracer(HsaApiTable* table,
+               uint64_t runtime_version,
+               uint64_t failed_tool_count,
+               const char* const* failed_tool_names)
     : api_table_{table} {
   LOG_INFO("Saving current APIs.");
   save_hsa_api();
@@ -138,7 +137,7 @@ void writeIpcHandleToFile(const hipIpcMemHandle_t& handle, size_t ptr_size) {
   std::cerr << "[C++] Appended IPC handle and size (" << ptr_size
             << " bytes) to file: " << FILE_NAME << "\n";
 }
-void tracer_rt::send_message_and_wait(void* args) {
+void tracer::send_message_and_wait(void* args) {
   const auto args_struct = reinterpret_cast<KernelArguments*>(args);
 
   for_each_field(args_struct, [](const auto& field) {
@@ -223,7 +222,7 @@ void tracer_rt::send_message_and_wait(void* args) {
   printf("Python response received. Continuing execution...\n");
 }
 
-void tracer_rt::discover_agents() {
+void tracer::discover_agents() {
   auto agent_callback = [](hsa_agent_t agent, void* data) -> hsa_status_t {
     auto* agents_map =
         static_cast<std::map<hsa_agent_t, std::string, hsa_agent_compare>*>(
@@ -248,7 +247,7 @@ std::string demangle_name(const char* mangled_name) {
   return (status == 0) ? result.get() : mangled_name;
 }
 
-std::string tracer_rt::get_kernel_name(const std::uint64_t kernel_object) {
+std::string tracer::get_kernel_name(const std::uint64_t kernel_object) {
   auto handle_find_result = handles_symbols_.find(kernel_object);
   if (handle_find_result == handles_symbols_.end()) {
     return "Object not found.";
@@ -260,8 +259,7 @@ std::string tracer_rt::get_kernel_name(const std::uint64_t kernel_object) {
   return demangle_name(symbol_find_result->second.c_str());
 }
 
-std::string tracer_rt::packet_to_text(
-    const hsa_ext_amd_aql_pm4_packet_t* packet) {
+std::string tracer::packet_to_text(const hsa_ext_amd_aql_pm4_packet_t* packet) {
   std::ostringstream buff;
   uint32_t type = get_header_type(packet);
 
@@ -349,7 +347,7 @@ std::string tracer_rt::packet_to_text(
   return buff.str();
 }
 
-std::optional<void*> tracer_rt::is_traceable_packet(
+std::optional<void*> tracer::is_traceable_packet(
     const hsa_ext_amd_aql_pm4_packet_t* packet) {
   uint32_t type = get_header_type(packet);
   switch (type) {
@@ -368,16 +366,15 @@ std::optional<void*> tracer_rt::is_traceable_packet(
   return {};
 }
 
-tracer_rt* tracer_rt::get_instance(HsaApiTable* table,
-                                   uint64_t runtime_version,
-                                   uint64_t failed_tool_count,
-                                   const char* const* failed_tool_names) {
+tracer* tracer::get_instance(HsaApiTable* table,
+                             uint64_t runtime_version,
+                             uint64_t failed_tool_count,
+                             const char* const* failed_tool_names) {
   const std::lock_guard<std::mutex> lock(mutex_);
   if (!singleton_) {
     if (table != NULL) {
-      singleton_ =
-          new tracer_rt(table,  
-                        runtime_version, failed_tool_count, failed_tool_names);
+      singleton_ = new tracer(table, runtime_version, failed_tool_count,
+                              failed_tool_names);
 
     } else {
     }
@@ -385,14 +382,14 @@ tracer_rt* tracer_rt::get_instance(HsaApiTable* table,
   return singleton_;
 }
 
-tracer_rt::~tracer_rt() {
+tracer::~tracer() {
   delete rocr_api_table_.core_;
   delete rocr_api_table_.amd_ext_;
   delete rocr_api_table_.finalizer_ext_;
   delete rocr_api_table_.image_ext_;
 }
 
-hsa_status_t tracer_rt::hsa_executable_get_symbol_by_name(
+hsa_status_t tracer::hsa_executable_get_symbol_by_name(
     hsa_executable_t executable,
     const char* symbol_name,
     const hsa_agent_t* agent,
@@ -414,7 +411,7 @@ hsa_status_t tracer_rt::hsa_executable_get_symbol_by_name(
   return result;
 }
 
-hsa_status_t tracer_rt::hsa_executable_symbol_get_info(
+hsa_status_t tracer::hsa_executable_symbol_get_info(
     hsa_executable_symbol_t executable_symbol,
     hsa_executable_symbol_info_t attribute,
     void* value) {
@@ -433,7 +430,7 @@ hsa_status_t tracer_rt::hsa_executable_symbol_get_info(
   return result;
 }
 
-void tracer_rt::save_hsa_api() {
+void tracer::save_hsa_api() {
   rocr_api_table_.core_ = new CoreApiTable();
   rocr_api_table_.amd_ext_ = new AmdExtTable();
   rocr_api_table_.finalizer_ext_ = new FinalizerExtTable();
@@ -447,25 +444,25 @@ void tracer_rt::save_hsa_api() {
   std::memcpy(rocr_api_table_.image_ext_, api_table_->image_ext_,
               sizeof(ImageExtTable));
 }
-void tracer_rt::restore_hsa_api() {
+void tracer::restore_hsa_api() {
   copyTables(&rocr_api_table_, api_table_);
 }
-void tracer_rt::hook_api() {
-  api_table_->core_->hsa_queue_create_fn = tracer_rt::hsa_queue_create;
-  api_table_->core_->hsa_queue_destroy_fn = tracer_rt::hsa_queue_destroy;
+void tracer::hook_api() {
+  api_table_->core_->hsa_queue_create_fn = tracer::hsa_queue_create;
+  api_table_->core_->hsa_queue_destroy_fn = tracer::hsa_queue_destroy;
 
   api_table_->amd_ext_->hsa_amd_memory_pool_allocate_fn =
-      tracer_rt::hsa_amd_memory_pool_allocate;
-  api_table_->core_->hsa_memory_allocate_fn = tracer_rt::hsa_memory_allocate;
+      tracer::hsa_amd_memory_pool_allocate;
+  api_table_->core_->hsa_memory_allocate_fn = tracer::hsa_memory_allocate;
 
   api_table_->core_->hsa_executable_get_symbol_by_name_fn =
-      tracer_rt::hsa_executable_get_symbol_by_name;
+      tracer::hsa_executable_get_symbol_by_name;
 
   api_table_->core_->hsa_executable_symbol_get_info_fn =
-      tracer_rt::hsa_executable_symbol_get_info;
+      tracer::hsa_executable_symbol_get_info;
 }
 
-hsa_status_t tracer_rt::add_queue(hsa_queue_t* queue, hsa_agent_t agent) {
+hsa_status_t tracer::add_queue(hsa_queue_t* queue, hsa_agent_t agent) {
   std::lock_guard<std::mutex> lock(mm_mutex_);
   auto instance = get_instance();
   auto result = hsa_ext_call(instance, hsa_amd_profiling_set_profiler_enabled,
@@ -473,11 +470,11 @@ hsa_status_t tracer_rt::add_queue(hsa_queue_t* queue, hsa_agent_t agent) {
   return result;
 }
 
-void tracer_rt::on_submit_packet(const void* in_packets,
-                                 uint64_t count,
-                                 uint64_t user_que_idx,
-                                 void* data,
-                                 hsa_amd_queue_intercept_packet_writer writer) {
+void tracer::on_submit_packet(const void* in_packets,
+                              uint64_t count,
+                              uint64_t user_que_idx,
+                              void* data,
+                              hsa_amd_queue_intercept_packet_writer writer) {
   auto instance = get_instance();
   if (instance) {
     hsa_queue_t* queue = reinterpret_cast<hsa_queue_t*>(data);
@@ -489,10 +486,10 @@ void tracer_rt::on_submit_packet(const void* in_packets,
   }
 }
 
-void tracer_rt::write_packets(hsa_queue_t* queue,
-                              const hsa_ext_amd_aql_pm4_packet_t* packet,
-                              uint64_t count,
-                              hsa_amd_queue_intercept_packet_writer writer) {
+void tracer::write_packets(hsa_queue_t* queue,
+                           const hsa_ext_amd_aql_pm4_packet_t* packet,
+                           uint64_t count,
+                           hsa_amd_queue_intercept_packet_writer writer) {
   try {
     // LOG_DETAIL("Executing packet: {}", packet_to_text(packet));
     auto instance = get_instance();
@@ -534,10 +531,10 @@ void tracer_rt::write_packets(hsa_queue_t* queue,
   }
 }
 
-hsa_status_t tracer_rt::hsa_amd_memory_pool_allocate(hsa_amd_memory_pool_t pool,
-                                                     size_t size,
-                                                     uint32_t flags,
-                                                     void** ptr) {
+hsa_status_t tracer::hsa_amd_memory_pool_allocate(hsa_amd_memory_pool_t pool,
+                                                  size_t size,
+                                                  uint32_t flags,
+                                                  void** ptr) {
   auto instance = get_instance();
   const auto result = hsa_ext_call(instance, hsa_amd_memory_pool_allocate, pool,
                                    size, flags, ptr);
@@ -549,9 +546,9 @@ hsa_status_t tracer_rt::hsa_amd_memory_pool_allocate(hsa_amd_memory_pool_t pool,
   }
   return result;
 }
-hsa_status_t tracer_rt::hsa_memory_allocate(hsa_region_t region,
-                                            size_t size,
-                                            void** ptr) {
+hsa_status_t tracer::hsa_memory_allocate(hsa_region_t region,
+                                         size_t size,
+                                         void** ptr) {
   auto instance = get_instance();
   const auto result =
       hsa_core_call(instance, hsa_memory_allocate, region, size, ptr);
@@ -564,16 +561,16 @@ hsa_status_t tracer_rt::hsa_memory_allocate(hsa_region_t region,
   return result;
 }
 
-hsa_status_t tracer_rt::hsa_queue_create(hsa_agent_t agent,
-                                         uint32_t size,
-                                         hsa_queue_type32_t type,
-                                         void (*callback)(hsa_status_t status,
-                                                          hsa_queue_t* source,
-                                                          void* data),
-                                         void* data,
-                                         uint32_t private_segment_size,
-                                         uint32_t group_segment_size,
-                                         hsa_queue_t** queue) {
+hsa_status_t tracer::hsa_queue_create(hsa_agent_t agent,
+                                      uint32_t size,
+                                      hsa_queue_type32_t type,
+                                      void (*callback)(hsa_status_t status,
+                                                       hsa_queue_t* source,
+                                                       void* data),
+                                      void* data,
+                                      uint32_t private_segment_size,
+                                      uint32_t group_segment_size,
+                                      hsa_queue_t** queue) {
   LOG_INFO("Creating maestro-rt queue");
 
   hsa_status_t result = HSA_STATUS_SUCCESS;
@@ -589,7 +586,7 @@ hsa_status_t tracer_rt::hsa_queue_create(hsa_agent_t agent,
         LOG_ERROR("Failed to add queue {} ", static_cast<int>(result));
       }
       result = hsa_ext_call(instance, hsa_amd_queue_intercept_register, *queue,
-                            tracer_rt::on_submit_packet,
+                            tracer::on_submit_packet,
                             reinterpret_cast<void*>(*queue));
       if (result != HSA_STATUS_SUCCESS) {
         LOG_ERROR("Failed to register intercept callback with result of ",
@@ -601,7 +598,7 @@ hsa_status_t tracer_rt::hsa_queue_create(hsa_agent_t agent,
   }
   return result;
 }
-hsa_status_t tracer_rt::hsa_queue_destroy(hsa_queue_t* queue) {
+hsa_status_t tracer::hsa_queue_destroy(hsa_queue_t* queue) {
   LOG_INFO("Destroying maestro-rt queue");
   return hsa_core_call(singleton_, hsa_queue_destroy, queue);
 }
@@ -617,7 +614,7 @@ PUBLIC_API bool OnLoad(HsaApiTable* table,
 
   // maestro::detail::print_env_variables();
 
-  maestro::tracer_rt* hook = maestro::tracer_rt::get_instance(
+  maestro::tracer* hook = maestro::tracer::get_instance(
       table, runtime_version, failed_tool_count, failed_tool_names);
 
   LOG_INFO("Creating maestro-rt singleton completed");

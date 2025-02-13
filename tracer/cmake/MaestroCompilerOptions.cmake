@@ -6,7 +6,7 @@ include_guard()
 option(TRACER_WERROR "Make all warnings into errors." OFF)
 
 
-function(ryzen_compiler_options TARGET)
+function(maestro_compiler_options TARGET)
     set_target_properties(${TARGET}
         PROPERTIES
             CXX_STANDARD                23
@@ -19,17 +19,12 @@ function(ryzen_compiler_options TARGET)
             VISIBILITY_INLINES_HIDDEN   ON
             POSITION_INDEPENDENT_CODE   ON
     )
-    # target_compile_features(${TARGET}
-    #     PUBLIC
-    #         cxx_std_23)
 endfunction()
 
-function(ryzen_compiler_warnings TARGET)
+function(maestro_compiler_warnings TARGET)
     message("Adding ${TARGET}")
     target_compile_options(${TARGET} INTERFACE
         $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX>
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic $<$<BOOL:${TRACER_WERROR}>:-Werror>>
     )
-    # target_compile_options(${TARGET} PRIVATE -fno-stack-protector)
-
 endfunction()

@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: MIT
-### Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved. ###
+### Copyright (c) 2025 Advanced Micro Devices, Inc. All rights reserved. ###
 
 cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 
 project(
     tracer
     VERSION       0.1.0
-    DESCRIPTION   "Ryzen Runtime System"
+    DESCRIPTION   "Maestro Tracing"
     HOMEPAGE_URL  "https://github.com"
     LANGUAGES     CXX C
 )
@@ -16,7 +16,7 @@ list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_CURRENT_LIST_DIR}/cmake/Modules)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # helper functions
-include(cmake/RyzenCompilerOptions.cmake)
+include(cmake/MaestroCompilerOptions.cmake)
 
 # disable in-source builds to avoid source tree corruption
 if ("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
@@ -49,7 +49,6 @@ target_include_directories(tracer
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include/ryzen-rt>"
         "$<BUILD_INTERFACE:/tmp>"
         "$<INSTALL_INTERFACE:include>"
     PRIVATE

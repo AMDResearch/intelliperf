@@ -1,9 +1,12 @@
 # FindHSA.cmake - Locate the HSA runtime library and set up the target
 
 # Search for the HSA include directory with priority given to /opt/rocm
+
+file(GLOB ROCM_PATHS "/opt/rocm*/include")
+
 find_path(HSA_INCLUDE_DIR
     NAMES hsa/hsa.h
-    PATHS /opt/rocm/include
+    PATHS ${ROCM_PATHS}
     /usr/local/include
     /usr/include
     DOC "Path to HSA include directory"
@@ -20,13 +23,8 @@ find_library(HSA_LIBRARY
     DOC "Path to HSA runtime library"
 )
 
-# Hardcode the HSA include directory and library path for debugging
-set(HSA_INCLUDE_DIR "/opt/rocm-6.3.1/include")
-set(HSA_LIBRARY "/opt/rocm-6.3.1/lib/libhsa-runtime64.so")
-
-# set(HSA_INCLUDE_DIR "/opt/rocm/include")
-# set(HSA_LIBRARY "/opt/rocm/lib/libhsa-runtime64.so")
-
+message("HSA_INCLUDE_DIR: ${HSA_INCLUDE_DIR}")
+message("HSA_LIBRARY: ${HSA_LIBRARY}")
 
 # Check if both the include directory and library were found
 if(HSA_INCLUDE_DIR AND HSA_LIBRARY)

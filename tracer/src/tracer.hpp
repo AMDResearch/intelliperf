@@ -46,20 +46,19 @@ struct hsa_agent_compare {
   }
 };
 
-class tracer_rt {
+class tracer {
  public:
-  static tracer_rt* get_instance(
-      HsaApiTable* table = nullptr,
-      uint64_t runtime_version = 0,
-      uint64_t failed_tool_count = 0,
-      const char* const* failed_tool_names = nullptr);
+  static tracer* get_instance(HsaApiTable* table = nullptr,
+                              uint64_t runtime_version = 0,
+                              uint64_t failed_tool_count = 0,
+                              const char* const* failed_tool_names = nullptr);
 
  private:
-  tracer_rt(HsaApiTable* table,
-            std::uint64_t runtime_version,
-            std::uint64_t failed_tool_count,
-            const char* const* failed_tool_names);
-  ~tracer_rt();
+  tracer(HsaApiTable* table,
+         std::uint64_t runtime_version,
+         std::uint64_t failed_tool_count,
+         const char* const* failed_tool_names);
+  ~tracer();
   void save_hsa_api();
   void restore_hsa_api();
   void hook_api();
@@ -143,7 +142,7 @@ class tracer_rt {
  private:
   static std::mutex mutex_;
   static std::shared_mutex stop_mutex_;
-  static tracer_rt* singleton_;
+  static tracer* singleton_;
 
   HsaApiTable* api_table_;
   HsaApiTable rocr_api_table_;
