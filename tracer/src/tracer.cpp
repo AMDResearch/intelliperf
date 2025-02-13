@@ -491,7 +491,7 @@ void tracer::write_packets(hsa_queue_t* queue,
                            uint64_t count,
                            hsa_amd_queue_intercept_packet_writer writer) {
   try {
-    // LOG_DETAIL("Executing packet: {}", packet_to_text(packet));
+    LOG_DETAIL("Executing packet: {}", packet_to_text(packet));
     auto instance = get_instance();
 
     hsa_signal_t new_signal;
@@ -508,15 +508,10 @@ void tracer::write_packets(hsa_queue_t* queue,
     hsa_signal_t old_signal = modified_packet.completion_signal;
     modified_packet.completion_signal = new_signal;
 
-    // TODO: I see stale data in output
-    modified_packet.header |= (1 << HSA_PACKET_HEADER_SCRELEASE_FENCE_SCOPE);
-
     writer(&modified_packet, count);
 
     hsa_signal_wait_scacquire(new_signal, HSA_SIGNAL_CONDITION_EQ, 0,
                               UINT64_MAX, HSA_WAIT_STATE_ACTIVE);
-    // while (hsa_signal_load_relaxed(new_signal) != 0) {
-    // }
     if (old_signal.handle != 0) {
       hsa_core_call(instance, hsa_signal_subtract_relaxed, old_signal, 1);
     }
@@ -611,8 +606,6 @@ PUBLIC_API bool OnLoad(HsaApiTable* table,
                        uint64_t failed_tool_count,
                        const char* const* failed_tool_names) {
   LOG_INFO("Creating maestro-rt singleton");
-
-  // maestro::detail::print_env_variables();
 
   maestro::tracer* hook = maestro::tracer::get_instance(
       table, runtime_version, failed_tool_count, failed_tool_names);

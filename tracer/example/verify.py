@@ -5,11 +5,15 @@ import subprocess
 import struct
 import numpy as np
 import stat
+import logging
 
 PIPE_NAME = "/tmp/kernel_pipe"
 HANDSHAKE_PIPE = "/tmp/handshake_pipe"
 FILE_NAME = "/tmp/ipc_handle.bin"
 
+
+logging.basicConfig(level=logging.DEBUG,
+                    format="[Python] [%(asctime)s]: %(message)s")
 
 rt_path = "libamdhip64.so"
 hip_runtime = ctypes.cdll.LoadLibrary(rt_path)
@@ -19,7 +23,7 @@ def prepare_ipc_file():
     for file in [FILE_NAME, HANDSHAKE_PIPE, FILE_NAME]:
         if os.path.exists(file):
             os.remove(file)
-    print("[Python] IPC file cleared before execution.")
+    logging.debug("IPC file cleared before execution.")
 
 
 
@@ -28,8 +32,8 @@ def run_subprocess(args, path):
         args, cwd=path, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     )
     if result.returncode != 0:
-        print(f"Subprocess failed with return code {result.returncode}")
-        print(result.stderr)
+        logging.error(f"Subprocess failed with return code {result.returncode}")
+        logging.error(result.stderr)
         exit(result.returncode)
 
 
@@ -54,7 +58,7 @@ def open_ipc_handle(ipc_handle_data):
     ]
     if isinstance(ipc_handle_data, np.ndarray):
         if ipc_handle_data.dtype != np.uint8 or ipc_handle_data.size != 64:
-            print(f"ipc_handle_data.size: {ipc_handle_data.size}")
+            logging.debug(f"ipc_handle_data.size: {ipc_handle_data.size}")
             raise ValueError("ipc_handle_data must be a 64-element uint8 numpy array")
         ipc_handle_bytes = ipc_handle_data.tobytes()
         ipc_handle_data = (ctypes.c_char * 64).from_buffer_copy(ipc_handle_bytes)
@@ -69,10 +73,10 @@ def open_ipc_handle(ipc_handle_data):
     ipc_handle_data_bytes = bytes(ipc_handle_data)
     ctypes.memmove(raw_memory, ipc_handle_data_bytes, 64)
 
-    print(f"[ipc_handle_struct]:")
+    logging.debug(f"[ipc_handle_struct]:")
     for i in range(0, len(ipc_handle_data_bytes), 16):
         chunk = ipc_handle_data_bytes[i : i + 16]
-        print(" ".join(f"{b:02x}" for b in chunk))
+        logging.debug(" ".join(f"{b:02x}" for b in chunk))
 
     hip_try(
         hip_runtime.hipIpcOpenMemHandle(
@@ -127,25 +131,22 @@ def read_ipc_handle(fifo):
         if not chunk:
             break
         data.extend(chunk)
-        print(f"Received {len(chunk)} bytes: {' '.join(f'{b:02x}' for b in chunk)}")
+        logging.debug(f"Received {len(chunk)} bytes: {' '.join(f'{b:02x}' for b in chunk)}")
 
-    print(f"Final IPC Handle (hex): {' '.join(f'{b:02x}' for b in data)}")
+    logging.debug(f"Final IPC Handle (hex): {' '.join(f'{b:02x}' for b in data)}")
     handle = np.frombuffer(data, dtype=np.uint8)
     return handle
 
 
 def read_ipc_handles(args):
     count = sum(1 for arg in args if "*" in arg)
-    print(f"Trying to read {args}")
-    print(f"Trying to read {count}")
-
     handles = []
     sizes = []
     handles_set = set()
 
     while len(handles) < count:
         if not os.path.exists(FILE_NAME):
-            print("[Python] Waiting for IPC file...")
+            logging.debug("Waiting for IPC file...")
             time.sleep(0.1)
             continue
 
@@ -172,18 +173,18 @@ def read_ipc_handles(args):
                         size_value = int.from_bytes(size_data, byteorder="little")
                         sizes.append(size_value)
 
-                        print("[Python] Final IPC Handle (hex):")
+                        logging.debug("Final IPC Handle (hex):")
                         for i in range(0, len(handle_np), 16):
                             chunk = handle_np[i : i + 16]
                             print(" ".join(f"{b:02x}" for b in chunk))
 
-                        print(f"[Python] Corresponding Pointer Size: {size_value} bytes")
+                        logging.debug(f"Corresponding Pointer Size: {size_value} bytes")
 
         if len(handles) < count:
-            print(f"[Python] Waiting for {count - len(handles)} more IPC handles...")
+            logging.debug(f"Waiting for {count - len(handles)} more IPC handles...")
             time.sleep(0.1)
 
-    print(f"[Python] Successfully read {len(handles)} IPC handles and sizes.")
+    logging.debug(f"Successfully read {len(handles)} IPC handles and sizes.")
     return handles, sizes
 
 def send_response():
@@ -194,6 +195,8 @@ def send_response():
 tracer_directory = os.path.dirname(os.path.abspath(__file__))
 project_directory = os.path.dirname(tracer_directory)
 
+print(f"{tracer_directory=}")
+print(f"{project_directory=}")
 
 # app = "dummy"
 # kernel = "emptyKernel"'
@@ -206,14 +209,15 @@ args = ["double* arg0", "double* arg1", "std::size_t arg2"]
 generate_header(args)
 
 
-tracer_src_directory = os.path.join(project_directory, "tracer")
-run_subprocess(["hipcc", f"-o ${app}", f"hip/{app}.hip"], "/tmp")
+tracer_src_directory = project_directory
+binary = os.path.join("/tmp", app)
+
+run_subprocess(["hipcc", "-o", f"{binary}", f"{tracer_directory}/hip/{app}.hip"], "/tmp")
 run_subprocess(["cmake", "-B", "build"], tracer_src_directory)
 run_subprocess(["cmake", "--build", "build"], tracer_src_directory)
 
-lib = os.path.join(project_directory, "tracer", "build", "lib", "libtracer.so")
+lib = os.path.join(project_directory, "build", "lib", "libtracer.so")
 
-binary = os.path.join(tracer_directory, "tmp", app)
 
 env = os.environ.copy()
 env["HSA_TOOLS_LIB"] = lib
@@ -274,12 +278,12 @@ for arg, handle, array_size in zip(args, ipc_handles, ptr_sizes):
 
 
         data = np.ctypeslib.as_array(typed_ptr, shape=(min(max_num_elements, num_elements),))
-        print(f"Received data from IPC ({arg_type}/{num_elements}): {host_array}")
-        print(f"Opened IPC Ptr: {ptr}")
+        logging.info(f"Received data from IPC ({arg_type}/{num_elements}): {host_array}")
+        logging.debug(f"Opened IPC Ptr: {ptr}")
 
 
 send_response()
 
-print("Python processing complete")
+logging.info("Python processing complete")
 
 # os.waitpid(pid, 0)
