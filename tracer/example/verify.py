@@ -8,23 +8,19 @@ import stat
 import logging
 
 PIPE_NAME = "/tmp/kernel_pipe"
-HANDSHAKE_PIPE = "/tmp/handshake_pipe"
-FILE_NAME = "/tmp/ipc_handle.bin"
+IPC_FILE_NAME = "/tmp/ipc_handle.bin"
 
-
-logging.basicConfig(level=logging.DEBUG,
-                    format="[Python] [%(asctime)s]: %(message)s")
+logging.basicConfig(level=logging.DEBUG, format="[Python] [%(asctime)s]: %(message)s")
 
 rt_path = "libamdhip64.so"
 hip_runtime = ctypes.cdll.LoadLibrary(rt_path)
 
 
 def prepare_ipc_file():
-    for file in [FILE_NAME, HANDSHAKE_PIPE, FILE_NAME]:
+    for file in [IPC_FILE_NAME, IPC_FILE_NAME]:
         if os.path.exists(file):
             os.remove(file)
     logging.debug("IPC file cleared before execution.")
-
 
 
 def run_subprocess(args, path):
@@ -89,14 +85,6 @@ def open_ipc_handle(ipc_handle_data):
     return ptr.value
 
 
-def get_device_buffer(ptr_value, size):
-    if not ptr_value:
-        raise RuntimeError("Invalid device pointer: NULL received.")
-
-    buffer_ptr = ctypes.cast(ptr_value, ctypes.POINTER(ctypes.c_uint8 * size))
-    np_array = np.ctypeslib.as_array(buffer_ptr.contents)
-    return np_array
-
 def generate_header(args: list[str]) -> str:
     header_path = "/tmp/KernelArguments.hpp"
     member_names = [arg.split()[-1] for arg in args]
@@ -118,26 +106,6 @@ struct KernelArguments {{
     return header_path
 
 
-def read_args_pointer():
-    with open(PIPE_NAME, "r") as fifo:
-        ptr_str = fifo.readline().strip()
-    return int(ptr_str, 16)
-
-
-def read_ipc_handle(fifo):
-    data = bytearray()
-    while len(data) < 64:
-        chunk = fifo.read(8)
-        if not chunk:
-            break
-        data.extend(chunk)
-        logging.debug(f"Received {len(chunk)} bytes: {' '.join(f'{b:02x}' for b in chunk)}")
-
-    logging.debug(f"Final IPC Handle (hex): {' '.join(f'{b:02x}' for b in data)}")
-    handle = np.frombuffer(data, dtype=np.uint8)
-    return handle
-
-
 def read_ipc_handles(args):
     count = sum(1 for arg in args if "*" in arg)
     handles = []
@@ -145,12 +113,12 @@ def read_ipc_handles(args):
     handles_set = set()
 
     while len(handles) < count:
-        if not os.path.exists(FILE_NAME):
+        if not os.path.exists(IPC_FILE_NAME):
             logging.debug("Waiting for IPC file...")
             time.sleep(0.1)
             continue
 
-        with open(FILE_NAME, "rb") as file:
+        with open(IPC_FILE_NAME, "rb") as file:
             data = file.read()
 
         messages = data.split(b"BEGIN\n")
@@ -169,7 +137,6 @@ def read_ipc_handles(args):
                         handles.append(handle_np)
                         handles_set.add(handle_tuple)
 
-                        # Convert size from bytes to an integer
                         size_value = int.from_bytes(size_data, byteorder="little")
                         sizes.append(size_value)
 
@@ -187,6 +154,7 @@ def read_ipc_handles(args):
     logging.debug(f"Successfully read {len(handles)} IPC handles and sizes.")
     return handles, sizes
 
+
 def send_response():
     with open(PIPE_NAME, "w") as fifo:
         fifo.write("done\n")
@@ -194,9 +162,6 @@ def send_response():
 
 tracer_directory = os.path.dirname(os.path.abspath(__file__))
 project_directory = os.path.dirname(tracer_directory)
-
-print(f"{tracer_directory=}")
-print(f"{project_directory=}")
 
 # app = "dummy"
 # kernel = "emptyKernel"'
@@ -212,7 +177,9 @@ generate_header(args)
 tracer_src_directory = project_directory
 binary = os.path.join("/tmp", app)
 
-run_subprocess(["hipcc", "-o", f"{binary}", f"{tracer_directory}/hip/{app}.hip"], "/tmp")
+run_subprocess(
+    ["hipcc", "-o", f"{binary}", f"{tracer_directory}/hip/{app}.hip"], "/tmp"
+)
 run_subprocess(["cmake", "-B", "build"], tracer_src_directory)
 run_subprocess(["cmake", "--build", "build"], tracer_src_directory)
 
@@ -222,7 +189,9 @@ lib = os.path.join(project_directory, "build", "lib", "libtracer.so")
 env = os.environ.copy()
 env["HSA_TOOLS_LIB"] = lib
 env["KERNEL_TO_TRACE"] = kernel
-env["TRACER_LOG_LEVEL"] = "detail"
+env["TRACER_LOG_LEVEL"] = "3"
+env["TRACER_PIPE_NAME"] = PIPE_NAME
+env["TRACER_IPC_OUTPUT_FILE"] = IPC_FILE_NAME
 
 # Remove IPC handles
 prepare_ipc_file()
@@ -258,32 +227,33 @@ for arg, handle, array_size in zip(args, ipc_handles, ptr_sizes):
 
         typed_pointers.append(typed_ptr)
         num_elements = array_size // type_size
-        max_num_elements=32
+        max_num_elements = 32
 
         num_elements_to_copy = min(max_num_elements, num_elements)
         host_array = np.zeros(num_elements_to_copy, dtype=np.dtype(ctype_ptr._type_))
-        hipMemcpyDeviceToHost = 2,
+        hipMemcpyDeviceToHost = (2,)
         hip_runtime.hipMemcpy.argtypes = [
             ctypes.c_void_p,
             ctypes.c_void_p,
             ctypes.c_size_t,
             ctypes.c_int,
-            ]
+        ]
         result = hip_runtime.hipMemcpy(
             ctypes.c_void_p(host_array.ctypes.data),
             ctypes.c_void_p(ptr),
             ctypes.c_size_t(num_elements_to_copy * type_size),
-            2
+            2,
         )
 
-
-        data = np.ctypeslib.as_array(typed_ptr, shape=(min(max_num_elements, num_elements),))
-        logging.info(f"Received data from IPC ({arg_type}/{num_elements}): {host_array}")
+        data = np.ctypeslib.as_array(
+            typed_ptr, shape=(min(max_num_elements, num_elements),)
+        )
+        logging.info(
+            f"Received data from IPC ({arg_type}/{num_elements}): {host_array}"
+        )
         logging.debug(f"Opened IPC Ptr: {ptr}")
 
 
 send_response()
 
 logging.info("Python processing complete")
-
-# os.waitpid(pid, 0)

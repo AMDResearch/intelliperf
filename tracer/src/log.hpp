@@ -33,20 +33,20 @@ inline void print_env_variables() {
 enum struct LogLevel {
   NONE,
   INFO,
-  DETAIL,
   ERROR,
+  DETAIL,
 };
 constexpr auto operator+(LogLevel logLevel) noexcept {
   return static_cast<std::underlying_type_t<LogLevel>>(logLevel);
 }
 
-constexpr auto log_level_to_string(const LogLevel level){
-  if(level ==  LogLevel::INFO){
+constexpr auto log_level_to_string(const LogLevel level) {
+  if (level == LogLevel::INFO) {
     return "INFO";
-  } else if (level ==  LogLevel::DETAIL){
-    return "DETAIL";
-  } else if (level ==  LogLevel::ERROR){
+  } else if (level == LogLevel::ERROR) {
     return "ERROR";
+  } else if (level == LogLevel::DETAIL) {
+    return "DETAIL";
   }
   return "";
 }
@@ -74,8 +74,13 @@ inline void log_message(const LogLevel level,
         formatted_message = msg;
       }
 
-      std::printf("%s%s: [%s:%d] %s%s\n", color, log_level_to_string(level), file, line,
-                  formatted_message.c_str(), color_reset);
+      std::printf("%s[%s]: [%s:%d] %s%s\n",
+                  color,
+                  log_level_to_string(level),
+                  file,
+                  line,
+                  formatted_message.c_str(),
+                  color_reset);
 
       static const char* log_file = std::getenv("TRACER_LOG_FILE");
       if (log_file) {
@@ -93,9 +98,12 @@ inline void log_message(const LogLevel level,
 }  // namespace detail
 }  // namespace maestro
 
-#define LOG_DETAIL(msg, ...) \
-  maestro::detail::log_message(maestro::detail::LogLevel::DETAIL, __FILE__, __LINE__, msg, ##__VA_ARGS__)
-#define LOG_INFO(msg, ...) \
-  maestro::detail::log_message(maestro::detail::LogLevel::INFO, __FILE__, __LINE__, msg, ##__VA_ARGS__)
-#define LOG_ERROR(msg, ...) \
-  maestro::detail::log_message(maestro::detail::LogLevel::ERROR, __FILE__, __LINE__, msg, ##__VA_ARGS__)
+#define LOG_DETAIL(msg, ...)    \
+  maestro::detail::log_message( \
+      maestro::detail::LogLevel::DETAIL, __FILE__, __LINE__, msg, ##__VA_ARGS__)
+#define LOG_INFO(msg, ...)      \
+  maestro::detail::log_message( \
+      maestro::detail::LogLevel::INFO, __FILE__, __LINE__, msg, ##__VA_ARGS__)
+#define LOG_ERROR(msg, ...)     \
+  maestro::detail::log_message( \
+      maestro::detail::LogLevel::ERROR, __FILE__, __LINE__, msg, ##__VA_ARGS__)

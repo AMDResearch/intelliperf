@@ -75,8 +75,7 @@ class tracer {
 
   hsa_status_t add_queue(hsa_queue_t* queue, hsa_agent_t agent);
   std::string packet_to_text(const hsa_ext_amd_aql_pm4_packet_t* packet);
-  std::optional<void*> is_traceable_packet(
-      const hsa_ext_amd_aql_pm4_packet_t* packet);
+  std::optional<void*> is_traceable_packet(const hsa_ext_amd_aql_pm4_packet_t* packet);
   // void writeIpcHandleToFile(const hipIpcMemHandle_t& handle, void* ptr);
   void send_message_and_wait(void* args);
   static hsa_status_t hsa_queue_create(hsa_agent_t agent,
@@ -93,15 +92,12 @@ class tracer {
                                                    size_t size,
                                                    uint32_t flags,
                                                    void** ptr);
-  static hsa_status_t hsa_memory_allocate(hsa_region_t region,
-                                          size_t size,
-                                          void** ptr);
+  static hsa_status_t hsa_memory_allocate(hsa_region_t region, size_t size, void** ptr);
   static hsa_status_t hsa_queue_destroy(hsa_queue_t* queue);
-  static hsa_status_t hsa_executable_get_symbol_by_name(
-      hsa_executable_t executable,
-      const char* symbol_name,
-      const hsa_agent_t* agent,
-      hsa_executable_symbol_t* symbol);
+  static hsa_status_t hsa_executable_get_symbol_by_name(hsa_executable_t executable,
+                                                        const char* symbol_name,
+                                                        const hsa_agent_t* agent,
+                                                        hsa_executable_symbol_t* symbol);
   static hsa_status_t hsa_executable_symbol_get_info(
       hsa_executable_symbol_t executable_symbol,
       hsa_executable_symbol_info_t attribute,
@@ -109,29 +105,24 @@ class tracer {
 
   using packet_word_t = uint32_t;
 
-  static const packet_word_t header_type_mask =
-      (1ul << HSA_PACKET_HEADER_WIDTH_TYPE) - 1;
+  static const packet_word_t header_type_mask = (1ul << HSA_PACKET_HEADER_WIDTH_TYPE) - 1;
   static const packet_word_t header_screlease_scope_mask = 0x3;
   static const packet_word_t header_scacquire_scope_mask = 0x3;
-  static hsa_packet_type_t get_header_type(
-      const hsa_ext_amd_aql_pm4_packet_t* packet) {
-    const packet_word_t* header =
-        reinterpret_cast<const packet_word_t*>(packet);
+  static hsa_packet_type_t get_header_type(const hsa_ext_amd_aql_pm4_packet_t* packet) {
+    const packet_word_t* header = reinterpret_cast<const packet_word_t*>(packet);
     return static_cast<hsa_packet_type_t>((*header >> HSA_PACKET_HEADER_TYPE) &
                                           header_type_mask);
   }
   static hsa_packet_type_t get_header_release_scope(
       const hsa_kernel_dispatch_packet_t* packet) {
-    const packet_word_t* header =
-        reinterpret_cast<const packet_word_t*>(packet);
+    const packet_word_t* header = reinterpret_cast<const packet_word_t*>(packet);
     return static_cast<hsa_packet_type_t>(
         (*header >> HSA_PACKET_HEADER_SCRELEASE_FENCE_SCOPE) &
         header_screlease_scope_mask);
   }
   static hsa_packet_type_t get_header_acquire_scope(
       const hsa_kernel_dispatch_packet_t* packet) {
-    const packet_word_t* header =
-        reinterpret_cast<const packet_word_t*>(packet);
+    const packet_word_t* header = reinterpret_cast<const packet_word_t*>(packet);
     return static_cast<hsa_packet_type_t>(
         (*header >> HSA_PACKET_HEADER_SCACQUIRE_FENCE_SCOPE) &
         header_scacquire_scope_mask);
