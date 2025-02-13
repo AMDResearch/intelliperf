@@ -7,7 +7,7 @@ project(
     tracer
     VERSION       0.1.0
     DESCRIPTION   "Maestro Tracing"
-    HOMEPAGE_URL  "https://github.com"
+    HOMEPAGE_URL  "https://github.com/AARInternal/maestro"
     LANGUAGES     CXX C
 )
 
