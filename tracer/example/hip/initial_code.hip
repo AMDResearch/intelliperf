@@ -4,14 +4,11 @@
 #include <cstdint>
 #include <iostream>
 
-__global__ void reduction_kernel(double* input,
-                                 double* result,
-                                 std::size_t count) {
+__global__ void reduction_kernel(double* input, double* result, std::size_t count) {
   const auto thread_id = threadIdx.x + blockIdx.x * blockDim.x;
   if (thread_id < count) {
     const auto value = input[thread_id];
     atomicAdd(result, value / (thread_id + 1));
-    // printf("Added\n");
   }
 }
 
