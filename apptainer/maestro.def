@@ -1,16 +1,36 @@
 Bootstrap: docker
 From: ubuntu:22.04
 
+%environment
+    # Locale
+    export LANG=en_US.UTF-8
+
+    # ROCm globals
+    export PATH=/opt/rocm/bin:$PATH
+    export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
+    export ROCM_PATH=/opt/rocm
+
+    # Misc globals
+    export GT_TUNING=/root/guided-tuning
+    export PYTHONPATH=$PYTHONPATH:/root/guided-tuning
+
 %post
+    # Set locale
+    apt-get -y update
+    apt-get install -y locales
+    locale-gen en_US.UTF-8
+    export LANG=en_US.UTF-8
 
     # Install dependencies
     apt-get -y update
     apt-get install -y software-properties-common 
     apt-get upgrade -y 
-    apt-get install -y build-essential python3 python3-pip git wget clang lld libzstd-dev libomp-dev
+    apt-get install -y build-essential python3 python3-pip git wget clang lld libzstd-dev libomp-dev vim
+    apt-get install -y locales
+    locale-gen en_US.UTF-8
     python3 -m pip install --upgrade pip 
     python3 -m pip install 'cmake==3.22'
-
+    
     # Add GitHub trusted host
     mkdir -p ~/.ssh
     touch ~/.ssh/known_hosts 
@@ -30,10 +50,14 @@ From: ubuntu:22.04
     
     apt-get -y update
     ROCM_VERSION=$(apt-cache search rocm-dev[0-9] | awk '{print $1}' | sed 's/rocm-dev//g')
-    apt-get install -y rocm-dev6.3.2 rocm-llvm-dev6.3.2 rocm-hip-runtime-dev6.3.2 rocm-smi-lib6.3.2 rocminfo6.3.2 rocthrust-dev6.3.2 
+    apt-get install -y rocm-dev6.3.2 rocm-llvm-dev6.3.2 rocm-hip-runtime-dev6.3.2 rocm-smi-lib6.3.2 rocminfo6.3.2 rocthrust-dev6.3.2 rocprofiler-compute6.3.2 rocblas6.3.2
     export PATH=/opt/rocm/bin:$PATH
     export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
     export ROCM_PATH=/opt/rocm
+
+    # Install rocprof-compute (via package manager)
+    python3 -m pip install --ignore-installed blinker
+    python3 -m pip install -r /opt/rocm/libexec/rocprofiler-compute/requirements.txt
 
     # Install logduration
     export SSH_AUTH_SOCK={{ SSH_AUTH_SOCK }}
@@ -45,24 +69,14 @@ From: ubuntu:22.04
     cmake -DCMAKE_INSTALL_PREFIX=/opt/logduration -DCMAKE_PREFIX_PATH=${ROCM_PATH} -DLLVM_INSTALL_DIR=/opt/rocm/llvm -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=ON -S . -B build 
     cmake --build build --target install
 
-    # Install rocprof-compute
-    cd /root
-    git clone -v git@github.com:ROCm/rocprofiler-compute.git
-    cd rocprofiler-compute
-    export INSTALL_DIR=/opt/rocprofiler-compute
-    python3 -m pip install -t ${INSTALL_DIR}/python-libs -r requirements.txt
-    mkdir build
-    cd build
-    cmake -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}/3.0.0 \
-        -DPYTHON_DEPS=${INSTALL_DIR}/python-libs \
-        -DMOD_INSTALL_PATH=${INSTALL_DIR}/modulefiles/rocprofiler-compute ..
-    make install
-    export PATH=${INSTALL_DIR}/3.0.0/bin:$PATH
-
     # Install guided-tuning (JBs tool)
     cd /root
     git clone -v git@github.com:AARInternal/guided-tuning.git
-    python3 -m pip install pandas duckdb
+    cd guided-tuning
+    python3 -m pip install -r requirements.txt
+    export GT_TUNING=$PWD
+    # [Patch] Remove the line starting with "gpu_series" in guided-tuning/prep/db.py. Won't be upstreamed until ROCm 6.4
+    sed -i '/gpu_series VARCHAR,/d' /root/guided-tuning/prep/db.py
 
     # Install agents dependencies
     python3 -m pip install openai
