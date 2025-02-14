@@ -1,4 +1,5 @@
 #include <thrust/device_vector.h>
+#include <thrust/sequence.h>
 #include <cstdint>
 #include <iostream>
 
@@ -9,7 +10,7 @@ __global__ void reduction_kernel(double* input, double* result, std::size_t coun
 
   double sum = 0.0;
   if (thread_id < count) {
-    sum = input[thread_id];
+    sum = input[thread_id] / (thread_id + 1);
   }
   shared_data[local_id] = sum;
   __syncthreads();
@@ -26,10 +27,11 @@ __global__ void reduction_kernel(double* input, double* result, std::size_t coun
   }
 }
 
-int main(){
+int main() {
   const std::size_t count{10000000};
   thrust::device_vector<double> input(count, 1);
   thrust::device_vector<double> result(1, 0);
+  thrust::sequence(input.begin(), input.end(), 1);
 
   const std::size_t block_size{512};
   const std::size_t num_blocks{(count + block_size - 1) / block_size};
