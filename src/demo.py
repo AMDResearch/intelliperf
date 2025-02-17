@@ -1,10 +1,16 @@
-from agents.agents import compiler_agent, correctness_agent, performance_agent, optimizer_agent
+from agents.agents import (
+    compiler_agent,
+    correctness_agent,
+    performance_agent,
+    optimizer_agent,
+)
 import logging
 
-logging.basicConfig(level=logging.DEBUG,
-                    format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-initial_code="""
+initial_code = """
 #include <thrust/device_vector.h>
 
 #include <cstdint>
@@ -47,22 +53,21 @@ if not success:
     print(f"Initial code compilation failed with message:\n{initial_binary}")
     exit(1)
 logging.debug(f"Initial binary is: {initial_binary}")
-    
+
 
 done = False
 
 while not done:
     prompt = f"Optimize the code: \n {initial_code}"
-
     # LLM Request
     success, message = optimizer_agent(prompt)
     if not success:
         logging.warning(f"Optimizer failed with message {message}")
-        continue 
+        continue
     optimized_code = message
-    
+
     logging.debug(f"Optimized code is: \n{optimized_code}")
-    
+
     # Compiler request
     success, message = compiler_agent(code=optimized_code)
     if not success:
@@ -70,32 +75,35 @@ while not done:
         continue
     optimized_binary = message
     logging.debug(f"Optimized binary is: {optimized_binary}")
-    
+
     # Correctness
-    success, message = correctness_agent(reference=initial_binary,
-                                         updated=optimized_binary)
+    success, message = correctness_agent(
+        reference=initial_binary, updated=optimized_binary
+    )
     if not success:
         logging.warning(f"Optimizer failed with message {message}")
         continue
     logging.debug(f"Optimizer result is: {message}")
-    
-    # Performance 
-    success, message = performance_agent(reference=initial_binary,
-                                         updated=optimized_binary)
+
+    # Performance
+    success, message = performance_agent(
+        reference=initial_binary, updated=optimized_binary
+    )
     if not success:
         logging.warning(f"Optimizer failed with message {message}")
         continue
     speedup = message
     logging.debug(f"Optimizer result is: {speedup}")
-    
+
     # Done
     logging.info(f"Initial code: \n{initial_code}\n=================================")
-    logging.info(f"Optimized code: \n{optimized_code}\=================================")
+    logging.info(
+        f"Optimized code: \n{optimized_code}\================================="
+    )
     logging.info(f"Speedup: {speedup}")
-    
-    with open("initial_code.hip", "w") as file:
-      file.write(initial_code)
-    with open("optimized_code.hip", "w") as file:
-      file.write(optimized_code)
-    break
 
+    with open("initial_code.hip", "w") as file:
+        file.write(initial_code)
+    with open("optimized_code.hip", "w") as file:
+        file.write(optimized_code)
+    break
