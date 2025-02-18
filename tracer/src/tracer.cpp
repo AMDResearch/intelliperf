@@ -111,7 +111,7 @@ void tracer::send_message_and_wait(void* args) {
 
   for_each_field(args_struct, [](const auto& field) {
     if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>>) {
-      LOG_DETAIL("Field (pointer): {}", static_cast<void*>(field));
+      LOG_DETAIL("Field (pointer): {}", static_cast<const void*>(field));
     } else {
       LOG_DETAIL("Field: {}", field);
     }
@@ -125,7 +125,8 @@ void tracer::send_message_and_wait(void* args) {
     return;
   }
   for_each_field(args_struct, [fd](const auto& field) {
-    if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>>) {
+    if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> && 
+                  !std::is_const_v<std::remove_pointer_t<std::decay_t<decltype(field)>>>) {
       hipIpcMemHandle_t handle;
       hipError_t ipc_result = hipIpcGetMemHandle(&handle, field);
       if (ipc_result != hipSuccess) {
@@ -289,7 +290,7 @@ std::optional<void*> tracer::is_traceable_packet(
       const auto kernel_name = get_kernel_name(disp->kernel_object);
       static const char* kernel_to_trace = std::getenv("KERNEL_TO_TRACE");
 
-      if (kernel_name.starts_with(kernel_to_trace)) {
+      if (kernel_name.contains(kernel_to_trace)) {
         return disp->kernarg_address;
       }
     }
