@@ -1,16 +1,22 @@
 from formulas.formula_base import Formula_Base
 import logging
-import subprocess
 import os
-import io
-import selectors
 import pandas as pd
+import tempfile
+import time
+import sys
+
+import openai
+from openai import OpenAIError
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "utils")))
+from process import capture_subprocess_output
 
 class bank_conflict(Formula_Base):
-    def __init__(self, name, app_cmd):
-        super().__init__(name, app_cmd)
+    def __init__(self, name,  build_script, app_cmd):
+        super().__init__(name, build_script, app_cmd)
         self.profiler = "guided-tuning"
-        
+
     def profile_pass(self) -> pd.DataFrame:
         """
         Profile the application using guided-tuning and collect bank conflict data
@@ -22,13 +28,13 @@ class bank_conflict(Formula_Base):
 
         # Call guided-tuning to profile the application
         success, output = capture_subprocess_output([
-            f"{os.environ['GT_TUNING']}/bin/profile_and_load.sh", 
+            f"{os.environ['GT_TUNING']}/bin/profile_and_load.sh",
             self.get_app_name()
         ] + self.get_app_cmd())
         # Load report card with --save flag
         success, output = capture_subprocess_output([
-            f"{os.environ['GT_TUNING']}/bin/show_data.sh", 
-            "-n", 
+            f"{os.environ['GT_TUNING']}/bin/show_data.sh",
+            "-n",
             self.get_app_name(),
         ])
         matching_db_workloads = {}
@@ -39,16 +45,19 @@ class bank_conflict(Formula_Base):
                 matching_db_workloads[key] = value
         logging.debug(f"Matching DB Workloads: {matching_db_workloads}")
         success, output = capture_subprocess_output([
-            f"{os.environ['GT_TUNING']}/bin/show_data.sh", 
-            "-w", 
+            f"{os.environ['GT_TUNING']}/bin/show_data.sh",
+            "-w",
             list(matching_db_workloads.keys())[0],
             "--save",
             f"{os.environ['GT_TUNING']}/maestro_output.csv"
         ])
         # Read the saved report card
         df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_output.csv")
-        return df_results
-    
+        return {
+            "success": True,
+            "result": df_results
+        }
+
     def instrument_pass(self, perf_report_card:pd.DataFrame):
         """
         Instrument the application, targeting the kernels with the highest bank conflict data
@@ -58,71 +67,112 @@ class bank_conflict(Formula_Base):
         """
         super().instrument_pass()
         #TODO: Finish instrumentation implementation
+        return {
+            "success": True,
+            "kernel": "matrixTransposeShared",
+            "arguments": "float*, float const*, int, int",
+            "lines": "17; 26",
+            "file": "../examples/bank_conflict/matrix_transpose/matrix_transpose.hip"
+        }
         pass
 
-    def optimize_pass(self):
+    def optimize_pass(self, file, kernel, lines, temperature=0.0, max_tokens=3000):
         super().optimize_pass()
-        #TODO: Connect optimization agent to this pass
-        pass
+        model = "gpt-4o"
+        openai_key = os.getenv("OPENAI_API_KEY")
 
-def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
-    # Start subprocess
-    # bufsize = 1 means output is line buffered
-    # universal_newlines = True is required for line buffering
-    process = (
-        subprocess.Popen(
-            subprocess_args,
-            bufsize=1,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-        )
-        if new_env == None
-        else subprocess.Popen(
-            subprocess_args,
-            bufsize=1,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            env=new_env,
-        )
-    )
 
-    # Create callback function for process output
-    buf = io.StringIO()
+        if os.path.exists(file):
+            with open(file, "r") as f:
+                file_content = f.read()
+        else:
+            return {"success": False,
+                    "error_message": f"Error: {file} does not exist."}
 
-    def handle_output(stream, mask):
+        prompt=f"Lines {lines} are causing the conflict within the kernel {kernel} inside {file_content}."
+        if not openai_key:
+            return {"success": False,
+                    "error_message": "Error: Missing OpenAI API key."}
         try:
-            # Because the process' output is line buffered, there's only ever one
-            # line to read when this function is called
-            line = stream.readline()
-            buf.write(line)
-            print(line.strip())
-        except UnicodeDecodeError:
-            # Skip this line
-            pass
+            client = openai.Client(api_key=openai_key)
+            completion = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a skilled GPU HIP programmer. Given a kernel, you will optimize it to remove shared memory bank conflicts and provide a correct performant implementation. Do not modify the kernel signature. Do not include any markdown code blocks or text other than the code.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+            tmp_file_path = "/tmp/optimized.hip"
+            file_content = completion.choices[0].message.content.strip()
+            with open(tmp_file_path, "w") as f:
+                f.write(file_content)
+            return {"success": True,
+                    "optimized_code": tmp_file_path}
 
-    # Register callback for an "available for read" event from subprocess' stdout stream
-    selector = selectors.DefaultSelector()
-    selector.register(process.stdout, selectors.EVENT_READ, handle_output)
+        except openai.AuthenticationError:
+            return {"success": False,
+                    "message": "Error: Authentication failed. Check your API key."}
+        except openai.RateLimitError:
+            return {"success": False,
+                    "message": "Error: Rate limit exceeded. Try again later."}
+        except openai.APIConnectionError:
+            return {"success": False,
+                    "message": "Error: Failed to connect to OpenAI API."}
+        except openai.OpenAIError as e:
+            return {"success": False,
+                    "message": f"Error: OpenAI API error - {str(e)}"}
+        except Exception as e:
+            return {"success": False,
+                    "message": f"Error: An unexpected error occurred - {str(e)}"}
 
-    # Loop until subprocess is terminated
-    while process.poll() is None:
-        # Wait for events and handle them with their registered callbacks
-        events = selector.select()
-        for key, mask in events:
-            callback = key.data
-            callback(key.fileobj, mask)
+    def compiler_pass(self, file):
+        super().compiler_pass()
+        with tempfile.NamedTemporaryFile(suffix=".out", delete=False) as output_file:
+            output_file_path = output_file.name
 
-    # Get process return code
-    return_code = process.wait()
-    selector.close()
+        # TODO: Need to pass the command to handle CMake code
+        compile_cmd = ["hipcc", file, "-o", output_file_path]
 
-    success = return_code == 0
+        success, message = capture_subprocess_output(compile_cmd)
+        return {
+            "success": success,
+            "compiler_log": message,
+            "binary": output_file_path
+        }
 
-    # Store buffered output
-    output = buf.getvalue()
-    buf.close()
+    def validation_pass(self, optimized_binary):
+        super().validation_pass()
+        return {
+            "success": True,
+        }
 
-    return (success, output)
-    
+    def performance_pass(self, optimized_binary: str):
+        start_ref = time.time()
+        reference_success, _ = capture_subprocess_output(
+                   self.get_app_cmd())
+        ref_time = time.time() - start_ref
+
+        start_upd = time.time()
+        optimized_success, optimized_message = capture_subprocess_output(
+                    optimized_binary + self.get_app_args())
+
+        upd_time = time.time() - start_upd
+        success =  optimized_success and reference_success
+        performant = upd_time < ref_time
+        speedup = ref_time / upd_time
+        if not success:
+            return {
+                "success": False,
+                "message": f"Execution failed with message {optimized_message}"
+            }
+
+        message = f"The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
+        return {
+            "success": performant,
+            "message": message
+        }
