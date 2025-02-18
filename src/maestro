@@ -6,37 +6,73 @@ from formulas.bank_conflict import bank_conflict
 
 def maestro_parser():
     parser = argparse.ArgumentParser(
-        description='Optimize the given application based on availible Maestro formulas.',
+        description='Optimize the given application based on available Maestro formulas.',
         prog="tool",
         formatter_class=lambda prog: argparse.RawTextHelpFormatter(
             prog, max_help_position=30
         ),
         usage="""
         maestro -n <workload_name> [options] -- <profile_cmd>
-        
+
         Example:
         maestro -n rocblas_gemm -- ~/rocBLAS/build/bin/rocblas_gemm
         """,
     )
     parser.add_argument('-n', '--name', type=str, required=True, help='Assign a name to distinguish your Maestro run.')
+    parser.add_argument('-s', '--script', type=str, required=True, help='A script to build your application.')
     parser.add_argument('remaining', metavar="-- [ ...]", nargs=argparse.REMAINDER, help='Provide the command to launch the application.')
     #TODO: Support different formulas via the `-f` option?
     parser.add_argument('-f', '--formula', type=str, help='Specify the formula to use for optimization.')
-    
+
     args = parser.parse_args()
     return args
 
+def check_return_result(result):
+    if not result["success"]:
+        print(f"Error: {result['message']}")
+        exit(1)
 def main():
     logging.raiseExceptions = True
     args = maestro_parser()
-    # Create an optimizer based on availible Maestro formulas.
-    optimizer = bank_conflict(args.name, args.remaining)
+
+    # Create an optimizer based on available Maestro formulas.
+    optimizer = bank_conflict(args.name, args.script, args.remaining)
+
+    # Build the application
+    build_result = optimizer.build()
+    check_return_result(build_result)
+
     # Profile the application and collect the results.
-    df_results = optimizer.profile_pass()
+    profiler_results = optimizer.profile_pass()
+
     # Instrument the application based on the results.
-    optimizer.instrument_pass(df_results)
+    instrument_results = optimizer.instrument_pass(profiler_results["result"])
+    check_return_result(instrument_results)
+
     # Optimize the application based on insights from instrumentation.
-    optimizer.optimize_pass()
+    optimizer_results = optimizer.optimize_pass(file = instrument_results["file"],
+                                                kernel = instrument_results["kernel"],
+                                                lines = instrument_results["lines"])
+
+    check_return_result(optimizer_results)
+
+    # Compile the new application
+    compiler_results = optimizer.compiler_pass(optimizer_results["optimized_code"])
+    check_return_result(compiler_results)
+
+    # Find the performance results
+    validation_results = optimizer.validation_pass(compiler_results["binary"])
+    check_return_result(validation_results)
+
+    print(validation_results)
+
+    # Find the performance results
+    optimizer_results = optimizer.performance_pass(compiler_results["binary"])
+    check_return_result(optimizer_results)
+    print(optimizer_results)
+
+    print(optimizer_results)
+    print(optimizer_results)
     return
 
 
