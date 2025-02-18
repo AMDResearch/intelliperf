@@ -4,12 +4,14 @@ import time
 import os
 import numpy as np
 import ctypes
+import stat
 
 
 from hip import open_ipc_handle, memcpy_d2h
 
 def read_ipc_handles(args, ipc_file_name):
-    count = sum(1 for arg in args if "*" in arg)
+    count = sum(1 for arg in args if "*" in arg and "const" not in arg)
+    
     handles = []
     sizes = []
     handles_set = set()
@@ -50,8 +52,9 @@ def read_ipc_handles(args, ipc_file_name):
                         logging.debug(f"Corresponding Pointer Size: {size_value} bytes")
 
         if len(handles) < count:
+            print(f"Waiting for {count - len(handles)} more IPC handles...")
             logging.debug(f"Waiting for {count - len(handles)} more IPC handles...")
-            time.sleep(0.1)
+            time.sleep(5)
 
     logging.debug(f"Successfully read {len(handles)} IPC handles and sizes.")
     return handles, sizes
@@ -77,7 +80,7 @@ def get_kern_arg_data(pipe_name, args, ipc_file_name):
         "std::size_t*": ctypes.c_size_t,
     }
     results = []
-    pointer_args = list(filter(lambda arg: "*" in arg, args))
+    pointer_args = list(filter(lambda arg: "*" in arg and "const" not in arg, args))
 
     for handle, arg, array_size in zip(ipc_handles, pointer_args, ptr_sizes):
         ptr = open_ipc_handle(handle)
