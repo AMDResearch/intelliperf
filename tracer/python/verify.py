@@ -29,7 +29,7 @@ results = {}
 for app in ["initial_code", "optimized_code"]:
 
     kernel = "reduction_kernel"
-    args = ["double* arg0", "double* arg1", "std::size_t arg2"]
+    args = ["double*", "double*", "std::size_t"]
 
     # Clear output
     for file in [ipc_file_name, ipc_file_name]:

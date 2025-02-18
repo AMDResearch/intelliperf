@@ -61,7 +61,9 @@ def main():
     check_return_result(compiler_results)
 
     # Find the performance results
-    validation_results = optimizer.validation_pass(compiler_results["binary"])
+    validation_results = optimizer.validation_pass(optimized_binary = compiler_results["binary"],
+                                                   kernel = instrument_results["kernel"],
+                                                   args = instrument_results["arguments"])
     check_return_result(validation_results)
 
     print(validation_results)
@@ -71,8 +73,6 @@ def main():
     check_return_result(optimizer_results)
     print(optimizer_results)
 
-    print(optimizer_results)
-    print(optimizer_results)
     return
 
 

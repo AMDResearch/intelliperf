@@ -1,10 +1,6 @@
-import os
 import ctypes
-import time
 import numpy as np
-import stat
 import logging
-
 
 
 rt_path = "libamdhip64.so"
@@ -61,7 +57,6 @@ def open_ipc_handle(ipc_handle_data):
     )
 
     return ptr.value
-
 
 
 def memcpy_d2h(ptr, num_elements_to_copy, dtype):
