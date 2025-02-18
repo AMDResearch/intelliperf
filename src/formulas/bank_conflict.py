@@ -76,7 +76,23 @@ class bank_conflict(Formula_Base):
             perf_report_card (pd.DataFrame): DataFrame containing kernel report card with bank conflict data
         """
         super().instrument_pass()
-        # TODO: Finish instrumentation implementation
+        # Get the kernel names with the highest bank conflict data and filter
+        filtered_report_card = perf_report_card[perf_report_card["LDS Bank Conflicts"] > 0]
+        filtered_report_card = filtered_report_card[~filtered_report_card["Kernel"].str.contains("Cijk")]
+        logging.debug(f"Filtered Report Card:\n{filtered_report_card}")
+        kernel_names = filtered_report_card["Kernel"].tolist()
+        
+        # Generate ECMA regex from the list of kernel names
+        ecma_regex = generate_ecma_regex_from_list(kernel_names)
+        logging.debug(f"ECMA Regex for kernel names: {ecma_regex}")
+
+        success, output = capture_subprocess_output([
+            "omniprobe",
+            "--instrumented",
+            "--analyzers", "MemoryAnalysis",
+            "--kernels", ecma_regex,
+            "--", " ".join(self.get_app_cmd())
+        ])
         return {
             "success": True,
             "kernel": "matrixTransposeShared",
@@ -84,7 +100,6 @@ class bank_conflict(Formula_Base):
             "lines": "17; 26",
             "file": "../examples/bank_conflict/matrix_transpose/matrix_transpose.hip",
         }
-        pass
 
     def optimize_pass(self, file, kernel, lines, temperature=0.0, max_tokens=3000):
         super().optimize_pass()
@@ -217,3 +232,8 @@ class bank_conflict(Formula_Base):
 
         message = f"The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
         return {"success": performant, "message": message}
+
+def generate_ecma_regex_from_list(kernel_name_list):
+    # Join the kernel names with the OR operator and wrap in parentheses
+    regex = f"({'|'.join(kernel_name_list)})"
+    return regex
