@@ -52,7 +52,6 @@ def read_ipc_handles(args, ipc_file_name):
                         logging.debug(f"Corresponding Pointer Size: {size_value} bytes")
 
         if len(handles) < count:
-            print(f"Waiting for {count - len(handles)} more IPC handles...")
             logging.debug(f"Waiting for {count - len(handles)} more IPC handles...")
             time.sleep(0.1)
 
