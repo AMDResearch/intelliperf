@@ -99,7 +99,7 @@ class bank_conflict(Formula_Base):
 
         prompt = f"Lines {lines} are causing the conflict within the kernel {kernel} inside {file_content}."
         if not openai_key:
-            return {"success": False, "error_message": "Error: Missing OpenAI API key."}
+            return {"success": False, "message": "Missing OpenAI API key."}
         try:
             client = openai.Client(api_key=openai_key)
             completion = client.chat.completions.create(
