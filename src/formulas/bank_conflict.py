@@ -233,7 +233,12 @@ class bank_conflict(Formula_Base):
         message = f"The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
         return {"success": performant, "message": message}
 
-def generate_ecma_regex_from_list(kernel_name_list):
-    # Join the kernel names with the OR operator and wrap in parentheses
-    regex = f"({'|'.join(kernel_name_list)})"
+def generate_ecma_regex_from_list(kernel_names)->str:  
+    res = []
+    for i in kernel_names:
+        escaped_string = re.escape(i)  
+        regex_string = r"^" + escaped_string + r"$"
+        res.append(regex_string)
+    
+    regex = f"({'|'.join(res)})"
     return regex
