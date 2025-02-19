@@ -5,9 +5,10 @@ import os
 import numpy as np
 import ctypes
 import stat
+import sys
 
-
-from hip import open_ipc_handle, memcpy_d2h
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from hip import memcpy_d2h, open_ipc_handle
 
 def read_ipc_handles(args, ipc_file_name):
     count = sum(1 for arg in args if "*" in arg and "const" not in arg)

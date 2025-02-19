@@ -1,4 +1,3 @@
-from formulas.formula_base import Formula_Base
 import logging
 import os
 import pandas as pd
@@ -6,19 +5,19 @@ import tempfile
 import time
 import sys
 import numpy as np
+import re
 
 import openai
 from openai import OpenAIError
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "utils")))
-from process import capture_subprocess_output
-
+from formulas.formula_base import Formula_Base
+from utils.process import capture_subprocess_output
 sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "tracer", "python"))
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 )
-from communicate import *
-from code_gen import *
-from utils import *
+from tracer.python.communicate import get_kern_arg_data, send_response
+from tracer.python.code_gen import generate_header
+from tracer.python.utils import run_subprocess
 
 
 class bank_conflict(Formula_Base):

@@ -1,10 +1,8 @@
 from abc import ABC, abstractmethod
 import logging
 import os
-import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "utils")))
-from process import capture_subprocess_output
+from utils.process import capture_subprocess_output
 
 class Formula_Base:
     def __init__(self, name: str, build_script: str, app_cmd: list):
