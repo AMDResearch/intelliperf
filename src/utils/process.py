@@ -14,6 +14,8 @@ def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if new_env == None
         else subprocess.Popen(
@@ -22,6 +24,8 @@ def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
+            encoding="utf-8",
+            errors="replace",
             env=new_env,
         )
     )
