@@ -51,23 +51,29 @@ def main():
     profiler_results = optimizer.profile_pass()
 
     # Instrument the application based on the results.
-    instrument_results = optimizer.instrument_pass(profiler_results)
+    instrument_results = optimizer.instrument_pass(perf_report_card=profiler_results.asset)
+    instrument_results.report_out()
 
     # Optimize the application based on insights from instrumentation.
-    optimizer_results = optimizer.optimize_pass(file = instrument_results["file"],
-                                                kernel = instrument_results["kernel"],
-                                                lines = instrument_results["lines"])
+    optimizer_results = optimizer.optimize_pass(file = instrument_results.asset["file"],
+                                                kernel = instrument_results.asset["kernel"],
+                                                lines = instrument_results.asset["lines"])
+    optimizer_results.report_out()
 
     # Compile the new application
-    compiler_results = optimizer.compiler_pass(optimizer_results["optimized_code"])
+    compiler_results = optimizer.compiler_pass(file=optimizer_results.asset)
+    compiler_results.report_out()
 
     # Find the performance results
-    optimizer.validation_pass(optimized_binary = compiler_results["binary"],
-                                kernel = instrument_results["kernel"],
-                                args = instrument_results["arguments"])
+    validation_results = optimizer.validation_pass(optimized_binary = compiler_results["binary"],
+                                                    kernel = instrument_results.asset["kernel"],
+                                                    args = instrument_results.asset["arguments"])
+    validation_results.report_out()
 
     # Find the performance results
-    optimizer.performance_pass(compiler_results["binary"])
+    performance_results = optimizer.performance_pass(optimized_binary=compiler_results.asset)
+    performance_results.report_out()
+
 
     return
 

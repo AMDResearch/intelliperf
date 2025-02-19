@@ -24,6 +24,7 @@ class Formula_Base:
         return self.__name
     def build(self):
         success, result = capture_subprocess_output(self.__build_script)
+        # Handle critical error
         if not success:
             logging.error(f"Failed to build {self.__name} application.")
             logging.error(result)
@@ -77,3 +78,22 @@ class Formula_Base:
         Validates the the application.
         """
         pass
+
+class Result:
+    def __init__(self, success:bool, error_report:str="", asset=None):
+        self.success:bool = success
+        # Only set error report if failure occurs
+        if not self.success and error_report == "":
+            logging.error("Invalid implementation of Report(). Must provide an error report if failure occurs.")
+            sys.exit(1)
+        self.error_report:str = error_report
+        self.log:str = ""
+        self.asset = asset
+
+    def report_out(self):
+        if self.success:
+            logging.info(self.log)
+        else:
+            logging.error(f"Error: {self.error_report}")
+            sys.exit(1)
+    

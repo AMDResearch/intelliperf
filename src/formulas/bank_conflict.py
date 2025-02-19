@@ -10,7 +10,7 @@ import re
 import openai
 from openai import OpenAIError
 
-from formulas.formula_base import Formula_Base
+from formulas.formula_base import Formula_Base, Result
 from utils.process import capture_subprocess_output
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
@@ -25,12 +25,12 @@ class bank_conflict(Formula_Base):
         super().__init__(name, build_script, app_cmd)
         self.profiler = "guided-tuning"
 
-    def profile_pass(self) -> pd.DataFrame:
+    def profile_pass(self) -> Result:
         """
         Profile the application using guided-tuning and collect bank conflict data
 
         Returns:
-            pd.DataFrame: DataFrame containing kernel report card with bank conflict data
+            Result: DataFrame containing the performance report card
         """
         super().profile_pass()
 
@@ -63,15 +63,19 @@ class bank_conflict(Formula_Base):
                 f"{os.environ['GT_TUNING']}/maestro_output.csv",
             ]
         )
+        # Handle critical error
         if not success:
-            logging.error(f"Error: {output}")
+            logging.error(f"Critical Error: {output}")
             logging.error("Failed to generate the performance report card.")
             sys.exit(1)
         # Read the saved report card
         df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_output.csv")
-        return df_results
+        return Result(
+            success=True,
+            asset=df_results
+        )
 
-    def instrument_pass(self, perf_report_card: pd.DataFrame) -> dict:
+    def instrument_pass(self, perf_report_card: pd.DataFrame) -> Result:
         """
         Instrument the application, targeting the kernels with the highest bank conflict data
 
@@ -79,7 +83,7 @@ class bank_conflict(Formula_Base):
             perf_report_card (pd.DataFrame): DataFrame containing kernel report card with bank conflict data
         
         Returns:
-            dict: Instrumentation data containing the kernel name, arguments, lines, and file
+            Result: Instrumentation data containing the kernel name, arguments, lines, and file path as dict
         """
         super().instrument_pass()
         # Get the kernel names with the highest bank conflict data and filter
@@ -100,18 +104,20 @@ class bank_conflict(Formula_Base):
             "--", " ".join(self.get_app_cmd())
         ])
         if not success:
-            logging.error(f"Error: {output}")
+            logging.error(f"Critical Error: {output}")
             logging.error("Failed to instrument the application.")
             sys.exit(1)
-        return {
-            "success": True,
-            "kernel": "matrixTransposeShared",
-            "arguments": ["float*", "float const*", "int", "int"],
-            "lines": "17; 26",
-            "file": "../examples/bank_conflict/matrix_transpose/matrix_transpose.hip",
-        }
+        return Result(
+            success=True,
+            asset={
+                "kernel": "matrixTransposeShared",
+                "arguments": ["float*", "float const*", "int", "int"],
+                "lines": "17; 26",
+                "file": "../examples/bank_conflict/matrix_transpose/matrix_transpose.hip",
+            }
+        )
 
-    def optimize_pass(self, file:str, kernel:str, lines:str, temperature:float=0.0, max_tokens:int=3000) -> str:
+    def optimize_pass(self, file:str, kernel:str, lines:str, temperature:float=0.0, max_tokens:int=3000) -> Result:
         """
         Optimize the kernel to remove shared memory bank conflicts via OpenAI API
         
@@ -123,7 +129,7 @@ class bank_conflict(Formula_Base):
             max_tokens (int): Maximum tokens for OpenAI API
 
         Returns:
-            str: File path of the optimized
+            Result: Optimized kernel as a file path
         """
         super().optimize_pass()
         model = "gpt-4o"
@@ -133,13 +139,17 @@ class bank_conflict(Formula_Base):
             with open(file, "r") as f:
                 file_content = f.read()
         else:
-            logging.error(f"Error: {file} does not exist.")
-            sys.exit(1)
+            return Result(
+                success=False,
+                error_report=f"{file} does not exist."
+            )
 
         prompt = f"Lines {lines} are causing the conflict within the kernel {kernel} inside {file_content}."
         if not openai_key:
-            logging.error("Error: Missing OpenAI API key.")
-            sys.exit(1)
+            return Result(
+                success=False,
+                error_report="Missing OpenAI API key."
+            )
         try:
             client = openai.Client(api_key=openai_key)
             completion = client.chat.completions.create(
@@ -158,26 +168,39 @@ class bank_conflict(Formula_Base):
             file_content = completion.choices[0].message.content.strip()
             with open(tmp_file_path, "w") as f:
                 f.write(file_content)
-            return tmp_file_path
+            return Result(
+                success=True,
+                asset=tmp_file_path
+            )
 
         except openai.AuthenticationError:
-            logging.error("Error: Authentication failed. Check your API key.")
-            sys.exit(1)
+            return Result(
+                success=False,
+                error_report="Authentication failed. Check your API key."
+            )
         except openai.RateLimitError:
-            logging.error("Error: Rate limit exceeded. Try again later.")
-            sys.exit(1)
+            return Result(
+                success=False,
+                error_report="Rate limit exceeded. Try again later."
+            )
 
         except openai.APIConnectionError:
-            logging.error("Error: Failed to connect to OpenAI API.")
-            sys.exit(1)
+            return Result(
+                success=False,
+                error_report="Failed to connect to OpenAI API."
+            )
         except openai.OpenAIError as e:
-            logging.error(f"Error: OpenAI API error - {str(e)}")
-            sys.exit(1)
+            return Result(
+                success=False,
+                error_report=f"OpenAI API error - {str(e)}"
+            )
         except Exception as e:
-            logging.error(f"Error: An unexpected error occurred - {str(e)}")
-            sys.exit(1)
+            return Result(
+                success=False,
+                error_report=f"An unexpected error occurred - {str(e)}"
+            )
 
-    def compiler_pass(self, file:str) -> dict:
+    def compiler_pass(self, file:str) -> Result:
         """
         Compile the optimized kernel using hipcc
         
@@ -185,7 +208,7 @@ class bank_conflict(Formula_Base):
             file (str): File path of the optimized kernel
 
         Returns:
-            dict: Compilation data containing the compiler log and binary path    
+            Result: Compilation status and the output file path 
         """
         super().compiler_pass()
         with tempfile.NamedTemporaryFile(suffix=".out", delete=False) as output_file:
@@ -195,13 +218,14 @@ class bank_conflict(Formula_Base):
         compile_cmd = ["hipcc", file, "-o", output_file_path]
 
         success, message = capture_subprocess_output(compile_cmd)
-        if not success:
-            logging.error(f"Error: {message}")
-            logging.error("Failed to compile the optimized kernel.")
-            sys.exit(1)
-        return {"compiler_log": message, "binary": output_file_path}
+        return Result(
+            success=success,
+            error_report="Failed to compile the optimized kernel.",
+            log=message,
+            asset=output_file_path
+        )
 
-    def validation_pass(self, optimized_binary:str, kernel:str, args:list):
+    def validation_pass(self, optimized_binary:str, kernel:str, args:list) -> Result:
         """
         Validate the optimized kernel by comparing the output with the reference kernel
 
@@ -209,6 +233,9 @@ class bank_conflict(Formula_Base):
             optimized_binary (str): File path of the optimized kernel
             kernel (str): Kernel name
             args (list): List of kernel arguments
+
+        Returns:
+            Result: Validation status
         """
         super().validation_pass()
         
@@ -241,11 +268,16 @@ class bank_conflict(Formula_Base):
         key0, key1 = results.keys()
         for i in range(len(results[key0])):
             if not np.allclose(results[key0][i], results[key1][i]):
-                logging.error(f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close.")
-                sys.exit(1)
+                return Result(
+                    success=False,
+                    error_report=f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close." 
+                )
+        return Result(
+            success=True
+        )
                 
 
-    def performance_pass(self, optimized_binary: str):
+    def performance_pass(self, optimized_binary: str) -> Result:
         start_ref = time.time()
         reference_success, _ = capture_subprocess_output(self.get_app_cmd())
         ref_time = time.time() - start_ref
@@ -260,11 +292,17 @@ class bank_conflict(Formula_Base):
         performant = upd_time < ref_time
         speedup = ref_time / upd_time
         if not success:
-            logging.error(f"Execution failed with message {optimized_message}")
-            sys.exit(1)
+            return Result(
+                success=False,
+                error_report=f"Execution failed with message {optimized_message}"
+            )
 
-        print(f"The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds.")
-
+        return Result(
+            success=performant,
+            error_report=f"No improvement in performance. The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds.",
+            log="The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
+        )
+    
 def generate_ecma_regex_from_list(kernel_names:list)->str:  
     res = []
     for i in kernel_names:
@@ -282,3 +320,7 @@ def generate_ecma_regex_from_list(kernel_names:list)->str:
     
     regex = f"({'|'.join(res)})"
     return regex
+
+
+
+        
