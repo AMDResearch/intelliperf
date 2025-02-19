@@ -1,4 +1,3 @@
-from formulas.formula_base import Formula_Base
 import logging
 import os
 import pandas as pd
@@ -6,19 +5,19 @@ import tempfile
 import time
 import sys
 import numpy as np
+import re
 
 import openai
 from openai import OpenAIError
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "utils")))
-from process import capture_subprocess_output
-
+from formulas.formula_base import Formula_Base, Result
+from utils.process import capture_subprocess_output
 sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "tracer", "python"))
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 )
-from communicate import *
-from code_gen import *
-from utils import *
+from tracer.python.communicate import get_kern_arg_data, send_response
+from tracer.python.code_gen import generate_header
+from tracer.python.utils import run_subprocess
 
 
 class bank_conflict(Formula_Base):
@@ -26,12 +25,12 @@ class bank_conflict(Formula_Base):
         super().__init__(name, build_script, app_cmd)
         self.profiler = "guided-tuning"
 
-    def profile_pass(self) -> pd.DataFrame:
+    def profile_pass(self) -> Result:
         """
         Profile the application using guided-tuning and collect bank conflict data
 
         Returns:
-            pd.DataFrame: DataFrame containing kernel report card with bank conflict data
+            Result: DataFrame containing the performance report card
         """
         super().profile_pass()
 
@@ -64,29 +63,74 @@ class bank_conflict(Formula_Base):
                 f"{os.environ['GT_TUNING']}/maestro_output.csv",
             ]
         )
+        # Handle critical error
+        if not success:
+            logging.error(f"Critical Error: {output}")
+            logging.error("Failed to generate the performance report card.")
+            sys.exit(1)
         # Read the saved report card
         df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_output.csv")
-        return {"success": True, "result": df_results}
+        return Result(
+            success=True,
+            asset=df_results
+        )
 
-    def instrument_pass(self, perf_report_card: pd.DataFrame):
+    def instrument_pass(self, perf_report_card: pd.DataFrame) -> Result:
         """
         Instrument the application, targeting the kernels with the highest bank conflict data
 
         Args:
             perf_report_card (pd.DataFrame): DataFrame containing kernel report card with bank conflict data
+        
+        Returns:
+            Result: Instrumentation data containing the kernel name, arguments, lines, and file path as dict
         """
         super().instrument_pass()
-        # TODO: Finish instrumentation implementation
-        return {
-            "success": True,
-            "kernel": "matrixTransposeShared",
-            "arguments": ["float*", "float const*", "int", "int"],
-            "lines": "17; 26",
-            "file": "../examples/bank_conflict/matrix_transpose/matrix_transpose.hip",
-        }
-        pass
+        # Get the kernel names with the highest bank conflict data and filter
+        filtered_report_card = perf_report_card[perf_report_card["LDS Bank Conflicts"] > 0]
+        filtered_report_card = filtered_report_card[~filtered_report_card["Kernel"].str.contains("Cijk")]
+        logging.debug(f"Filtered Report Card:\n{filtered_report_card}")
+        kernel_names = filtered_report_card["Kernel"].tolist()
+        
+        # Generate ECMA regex from the list of kernel names
+        ecma_regex = generate_ecma_regex_from_list(kernel_names)
+        logging.debug(f"ECMA Regex for kernel names: {ecma_regex}")
 
-    def optimize_pass(self, file, kernel, lines, temperature=0.0, max_tokens=3000):
+        success, output = capture_subprocess_output([
+            "omniprobe",
+            "--instrumented",
+            "--analyzers", "MemoryAnalysis",
+            "--kernels", ecma_regex,
+            "--", " ".join(self.get_app_cmd())
+        ])
+        if not success:
+            logging.error(f"Critical Error: {output}")
+            logging.error("Failed to instrument the application.")
+            sys.exit(1)
+        return Result(
+            success=True,
+            asset={
+                "kernel": "matrixTransposeShared",
+                "arguments": ["float*", "float const*", "int", "int"],
+                "lines": "17; 26",
+                "file": "../examples/bank_conflict/matrix_transpose/matrix_transpose.hip",
+            }
+        )
+
+    def optimize_pass(self, file:str, kernel:str, lines:str, temperature:float=0.0, max_tokens:int=3000) -> Result:
+        """
+        Optimize the kernel to remove shared memory bank conflicts via OpenAI API
+        
+        Args:
+            file (str): File path of the kernel
+            kernel (str): Kernel name
+            lines (str): Line numbers causing the conflict
+            temperature (float): Sampling temperature for OpenAI API
+            max_tokens (int): Maximum tokens for OpenAI API
+
+        Returns:
+            Result: Optimized kernel as a file path
+        """
         super().optimize_pass()
         model = "gpt-4o"
         openai_key = os.getenv("OPENAI_API_KEY")
@@ -95,11 +139,17 @@ class bank_conflict(Formula_Base):
             with open(file, "r") as f:
                 file_content = f.read()
         else:
-            return {"success": False, "message": f"{file} does not exist."}
+            return Result(
+                success=False,
+                error_report=f"{file} does not exist."
+            )
 
         prompt = f"Lines {lines} are causing the conflict within the kernel {kernel} inside {file_content}."
         if not openai_key:
-            return {"success": False, "message": "Missing OpenAI API key."}
+            return Result(
+                success=False,
+                error_report="Missing OpenAI API key."
+            )
         try:
             client = openai.Client(api_key=openai_key)
             completion = client.chat.completions.create(
@@ -118,32 +168,48 @@ class bank_conflict(Formula_Base):
             file_content = completion.choices[0].message.content.strip()
             with open(tmp_file_path, "w") as f:
                 f.write(file_content)
-            return {"success": True, "optimized_code": tmp_file_path}
+            return Result(
+                success=True,
+                asset=tmp_file_path
+            )
 
         except openai.AuthenticationError:
-            return {
-                "success": False,
-                "message": "Error: Authentication failed. Check your API key.",
-            }
+            return Result(
+                success=False,
+                error_report="Authentication failed. Check your API key."
+            )
         except openai.RateLimitError:
-            return {
-                "success": False,
-                "message": "Error: Rate limit exceeded. Try again later.",
-            }
-        except openai.APIConnectionError:
-            return {
-                "success": False,
-                "message": "Error: Failed to connect to OpenAI API.",
-            }
-        except openai.OpenAIError as e:
-            return {"success": False, "message": f"Error: OpenAI API error - {str(e)}"}
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Error: An unexpected error occurred - {str(e)}",
-            }
+            return Result(
+                success=False,
+                error_report="Rate limit exceeded. Try again later."
+            )
 
-    def compiler_pass(self, file):
+        except openai.APIConnectionError:
+            return Result(
+                success=False,
+                error_report="Failed to connect to OpenAI API."
+            )
+        except openai.OpenAIError as e:
+            return Result(
+                success=False,
+                error_report=f"OpenAI API error - {str(e)}"
+            )
+        except Exception as e:
+            return Result(
+                success=False,
+                error_report=f"An unexpected error occurred - {str(e)}"
+            )
+
+    def compiler_pass(self, file:str) -> Result:
+        """
+        Compile the optimized kernel using hipcc
+        
+        Args:   
+            file (str): File path of the optimized kernel
+
+        Returns:
+            Result: Compilation status and the output file path 
+        """
         super().compiler_pass()
         with tempfile.NamedTemporaryFile(suffix=".out", delete=False) as output_file:
             output_file_path = output_file.name
@@ -152,9 +218,25 @@ class bank_conflict(Formula_Base):
         compile_cmd = ["hipcc", file, "-o", output_file_path]
 
         success, message = capture_subprocess_output(compile_cmd)
-        return {"success": success, "compiler_log": message, "binary": output_file_path}
+        return Result(
+            success=success,
+            error_report="Failed to compile the optimized kernel.",
+            log=message,
+            asset=output_file_path
+        )
 
-    def validation_pass(self, optimized_binary, kernel, args):
+    def validation_pass(self, optimized_binary:str, kernel:str, args:list) -> Result:
+        """
+        Validate the optimized kernel by comparing the output with the reference kernel
+
+        Args:
+            optimized_binary (str): File path of the optimized kernel
+            kernel (str): Kernel name
+            args (list): List of kernel arguments
+
+        Returns:
+            Result: Validation status
+        """
         super().validation_pass()
         
         tracer_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "tracer"))
@@ -186,16 +268,16 @@ class bank_conflict(Formula_Base):
         key0, key1 = results.keys()
         for i in range(len(results[key0])):
             if not np.allclose(results[key0][i], results[key1][i]):
-                return {
-                    "success": False,
-                    "message": f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close."
-                }
+                return Result(
+                    success=False,
+                    error_report=f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close." 
+                )
+        return Result(
+            success=True
+        )
                 
-        return {
-            "success": True,
-        }
 
-    def performance_pass(self, optimized_binary: str):
+    def performance_pass(self, optimized_binary: str) -> Result:
         start_ref = time.time()
         reference_success, _ = capture_subprocess_output(self.get_app_cmd())
         ref_time = time.time() - start_ref
@@ -210,10 +292,35 @@ class bank_conflict(Formula_Base):
         performant = upd_time < ref_time
         speedup = ref_time / upd_time
         if not success:
-            return {
-                "success": False,
-                "message": f"Execution failed with message {optimized_message}",
-            }
+            return Result(
+                success=False,
+                error_report=f"Execution failed with message {optimized_message}"
+            )
 
-        message = f"The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
-        return {"success": performant, "message": message}
+        return Result(
+            success=performant,
+            error_report=f"No improvement in performance. The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds.",
+            log="The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
+        )
+    
+def generate_ecma_regex_from_list(kernel_names:list)->str:  
+    res = []
+    for i in kernel_names:
+        escaped_string = re.escape(i)  
+        regex_string = r"^" + escaped_string + r"$"
+        res.append(regex_string)
+        # Note: Temporary fix, but until bug in omniprobe is fixed we need to also
+        # add the name of the instrumented kernel clone to the regex, otherwise we'll skip it
+        # and exclude it from the memory analysis report
+        duplicate_kernel_str = f"__amd_crk_{i.replace(')', ', void*)', 1)}"
+        #duplicate_kernel_str = f"__amd_crk_{i.replace(")", ", void*)", 1)}"
+        escaped_string = re.escape(duplicate_kernel_str)
+        regex_string = r"^" + escaped_string + r"$"
+        res.append(regex_string)
+    
+    regex = f"({'|'.join(res)})"
+    return regex
+
+
+
+        

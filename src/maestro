@@ -18,6 +18,7 @@ def maestro_parser():
         maestro -n rocblas_gemm -- ~/rocBLAS/build/bin/rocblas_gemm
         """,
     )
+    parser.add_argument('-v', '--verbose', action='count', default=0, help='Increase verbosity level (e.g., -v, -vv, -vvv).')
     parser.add_argument('-n', '--name', type=str, required=True, help='Assign a name to distinguish your Maestro run.')
     parser.add_argument('-s', '--script', type=str, required=True, help='A script to build your application.')
     parser.add_argument('remaining', metavar="-- [ ...]", nargs=argparse.REMAINDER, help='Provide the command to launch the application.')
@@ -27,51 +28,52 @@ def maestro_parser():
     args = parser.parse_args()
     return args
 
-def check_return_result(result):
-    if not result["success"]:
-        print(f"Error: {result['message']}")
-        exit(1)
 def main():
     logging.raiseExceptions = True
     args = maestro_parser()
+    # Set logging level based on verbosity
+    if args.verbose == 1:
+        logging.basicConfig(level=logging.INFO)
+    elif args.verbose == 2:
+        logging.basicConfig(level=logging.DEBUG)
+    elif args.verbose >= 3:
+        logging.basicConfig(level=logging.NOTSET)
+    else:
+        logging.basicConfig(level=logging.WARNING)
 
     # Create an optimizer based on available Maestro formulas.
     optimizer = bank_conflict(args.name, args.script, args.remaining)
 
     # Build the application
-    build_result = optimizer.build()
-    check_return_result(build_result)
+    optimizer.build()
 
     # Profile the application and collect the results.
     profiler_results = optimizer.profile_pass()
 
     # Instrument the application based on the results.
-    instrument_results = optimizer.instrument_pass(profiler_results["result"])
-    check_return_result(instrument_results)
+    instrument_results = optimizer.instrument_pass(perf_report_card=profiler_results.asset)
+    instrument_results.report_out()
 
     # Optimize the application based on insights from instrumentation.
-    optimizer_results = optimizer.optimize_pass(file = instrument_results["file"],
-                                                kernel = instrument_results["kernel"],
-                                                lines = instrument_results["lines"])
-
-    check_return_result(optimizer_results)
+    optimizer_results = optimizer.optimize_pass(file = instrument_results.asset["file"],
+                                                kernel = instrument_results.asset["kernel"],
+                                                lines = instrument_results.asset["lines"])
+    optimizer_results.report_out()
 
     # Compile the new application
-    compiler_results = optimizer.compiler_pass(optimizer_results["optimized_code"])
-    check_return_result(compiler_results)
+    compiler_results = optimizer.compiler_pass(file=optimizer_results.asset)
+    compiler_results.report_out()
 
     # Find the performance results
     validation_results = optimizer.validation_pass(optimized_binary = compiler_results["binary"],
-                                                   kernel = instrument_results["kernel"],
-                                                   args = instrument_results["arguments"])
-    check_return_result(validation_results)
-
-    print(validation_results)
+                                                    kernel = instrument_results.asset["kernel"],
+                                                    args = instrument_results.asset["arguments"])
+    validation_results.report_out()
 
     # Find the performance results
-    optimizer_results = optimizer.performance_pass(compiler_results["binary"])
-    check_return_result(optimizer_results)
-    print(optimizer_results)
+    performance_results = optimizer.performance_pass(optimized_binary=compiler_results.asset)
+    performance_results.report_out()
+
 
     return
 

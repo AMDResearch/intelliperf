@@ -1,5 +1,6 @@
-#include <hip/hip_runtime.h>  
+#include <hip/hip_runtime.h>
 #include <iostream>  
+#include "dh_comms_dev.h"
   
 #define BLOCK_SIZE 256  
 #define LDS_SIZE 256  
