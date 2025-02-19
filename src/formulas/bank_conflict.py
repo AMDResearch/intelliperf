@@ -265,10 +265,18 @@ class bank_conflict(Formula_Base):
 
         print(f"The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds.")
 
-def generate_ecma_regex_from_list(kernel_names)->str:  
+def generate_ecma_regex_from_list(kernel_names:list)->str:  
     res = []
     for i in kernel_names:
         escaped_string = re.escape(i)  
+        regex_string = r"^" + escaped_string + r"$"
+        res.append(regex_string)
+        # Note: Temporary fix, but until bug in omniprobe is fixed we need to also
+        # add the name of the instrumented kernel clone to the regex, otherwise we'll skip it
+        # and exclude it from the memory analysis report
+        duplicate_kernel_str = f"__amd_crk_{i.replace(')', ', void*)', 1)}"
+        #duplicate_kernel_str = f"__amd_crk_{i.replace(")", ", void*)", 1)}"
+        escaped_string = re.escape(duplicate_kernel_str)
         regex_string = r"^" + escaped_string + r"$"
         res.append(regex_string)
     
