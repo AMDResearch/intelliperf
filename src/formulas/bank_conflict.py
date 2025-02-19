@@ -71,12 +71,15 @@ class bank_conflict(Formula_Base):
         df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_output.csv")
         return df_results
 
-    def instrument_pass(self, perf_report_card: pd.DataFrame):
+    def instrument_pass(self, perf_report_card: pd.DataFrame) -> dict:
         """
         Instrument the application, targeting the kernels with the highest bank conflict data
 
         Args:
             perf_report_card (pd.DataFrame): DataFrame containing kernel report card with bank conflict data
+        
+        Returns:
+            dict: Instrumentation data containing the kernel name, arguments, lines, and file
         """
         super().instrument_pass()
         # Get the kernel names with the highest bank conflict data and filter
@@ -108,7 +111,20 @@ class bank_conflict(Formula_Base):
             "file": "../examples/bank_conflict/matrix_transpose/matrix_transpose.hip",
         }
 
-    def optimize_pass(self, file, kernel, lines, temperature=0.0, max_tokens=3000):
+    def optimize_pass(self, file:str, kernel:str, lines:str, temperature:float=0.0, max_tokens:int=3000) -> str:
+        """
+        Optimize the kernel to remove shared memory bank conflicts via OpenAI API
+        
+        Args:
+            file (str): File path of the kernel
+            kernel (str): Kernel name
+            lines (str): Line numbers causing the conflict
+            temperature (float): Sampling temperature for OpenAI API
+            max_tokens (int): Maximum tokens for OpenAI API
+
+        Returns:
+            str: File path of the optimized
+        """
         super().optimize_pass()
         model = "gpt-4o"
         openai_key = os.getenv("OPENAI_API_KEY")
@@ -185,7 +201,15 @@ class bank_conflict(Formula_Base):
             sys.exit(1)
         return {"compiler_log": message, "binary": output_file_path}
 
-    def validation_pass(self, optimized_binary, kernel, args):
+    def validation_pass(self, optimized_binary:str, kernel:str, args:list):
+        """
+        Validate the optimized kernel by comparing the output with the reference kernel
+
+        Args:
+            optimized_binary (str): File path of the optimized kernel
+            kernel (str): Kernel name
+            args (list): List of kernel arguments
+        """
         super().validation_pass()
         
         tracer_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "tracer"))
