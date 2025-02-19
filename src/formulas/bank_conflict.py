@@ -95,7 +95,7 @@ class bank_conflict(Formula_Base):
             with open(file, "r") as f:
                 file_content = f.read()
         else:
-            return {"success": False, "error_message": f"Error: {file} does not exist."}
+            return {"success": False, "message": f"{file} does not exist."}
 
         prompt = f"Lines {lines} are causing the conflict within the kernel {kernel} inside {file_content}."
         if not openai_key:
