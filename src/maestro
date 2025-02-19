@@ -28,10 +28,6 @@ def maestro_parser():
     args = parser.parse_args()
     return args
 
-def check_return_result(result):
-    if not result["success"]:
-        print(f"Error: {result['message']}")
-        exit(1)
 def main():
     logging.raiseExceptions = True
     args = maestro_parser()
@@ -49,39 +45,29 @@ def main():
     optimizer = bank_conflict(args.name, args.script, args.remaining)
 
     # Build the application
-    build_result = optimizer.build()
-    check_return_result(build_result)
+    optimizer.build()
 
     # Profile the application and collect the results.
     profiler_results = optimizer.profile_pass()
 
     # Instrument the application based on the results.
-    instrument_results = optimizer.instrument_pass(profiler_results["result"])
-    check_return_result(instrument_results)
+    instrument_results = optimizer.instrument_pass(profiler_results)
 
     # Optimize the application based on insights from instrumentation.
     optimizer_results = optimizer.optimize_pass(file = instrument_results["file"],
                                                 kernel = instrument_results["kernel"],
                                                 lines = instrument_results["lines"])
 
-    check_return_result(optimizer_results)
-
     # Compile the new application
     compiler_results = optimizer.compiler_pass(optimizer_results["optimized_code"])
-    check_return_result(compiler_results)
 
     # Find the performance results
-    validation_results = optimizer.validation_pass(optimized_binary = compiler_results["binary"],
-                                                   kernel = instrument_results["kernel"],
-                                                   args = instrument_results["arguments"])
-    check_return_result(validation_results)
-
-    print(validation_results)
+    optimizer.validation_pass(optimized_binary = compiler_results["binary"],
+                                kernel = instrument_results["kernel"],
+                                args = instrument_results["arguments"])
 
     # Find the performance results
-    optimizer_results = optimizer.performance_pass(compiler_results["binary"])
-    check_return_result(optimizer_results)
-    print(optimizer_results)
+    optimizer.performance_pass(compiler_results["binary"])
 
     return
 

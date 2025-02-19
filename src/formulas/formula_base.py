@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import logging
 import os
+import sys
 
 from utils.process import capture_subprocess_output
 
@@ -23,10 +24,10 @@ class Formula_Base:
         return self.__name
     def build(self):
         success, result = capture_subprocess_output(self.__build_script)
-        return {
-            "success": success,
-            "result": result
-        }
+        if not success:
+            logging.error(f"Failed to build {self.__name} application.")
+            logging.error(result)
+            sys.exit(1)
     # ----------------------------------------------------
     # Required methods to be implemented by child classes
     # ----------------------------------------------------

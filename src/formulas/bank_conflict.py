@@ -63,9 +63,13 @@ class bank_conflict(Formula_Base):
                 f"{os.environ['GT_TUNING']}/maestro_output.csv",
             ]
         )
+        if not success:
+            logging.error(f"Error: {output}")
+            logging.error("Failed to generate the performance report card.")
+            sys.exit(1)
         # Read the saved report card
         df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_output.csv")
-        return {"success": True, "result": df_results}
+        return df_results
 
     def instrument_pass(self, perf_report_card: pd.DataFrame):
         """
@@ -92,6 +96,10 @@ class bank_conflict(Formula_Base):
             "--kernels", ecma_regex,
             "--", " ".join(self.get_app_cmd())
         ])
+        if not success:
+            logging.error(f"Error: {output}")
+            logging.error("Failed to instrument the application.")
+            sys.exit(1)
         return {
             "success": True,
             "kernel": "matrixTransposeShared",
@@ -109,11 +117,13 @@ class bank_conflict(Formula_Base):
             with open(file, "r") as f:
                 file_content = f.read()
         else:
-            return {"success": False, "message": f"{file} does not exist."}
+            logging.error(f"Error: {file} does not exist.")
+            sys.exit(1)
 
         prompt = f"Lines {lines} are causing the conflict within the kernel {kernel} inside {file_content}."
         if not openai_key:
-            return {"success": False, "message": "Missing OpenAI API key."}
+            logging.error("Error: Missing OpenAI API key.")
+            sys.exit(1)
         try:
             client = openai.Client(api_key=openai_key)
             completion = client.chat.completions.create(
@@ -132,32 +142,35 @@ class bank_conflict(Formula_Base):
             file_content = completion.choices[0].message.content.strip()
             with open(tmp_file_path, "w") as f:
                 f.write(file_content)
-            return {"success": True, "optimized_code": tmp_file_path}
+            return tmp_file_path
 
         except openai.AuthenticationError:
-            return {
-                "success": False,
-                "message": "Error: Authentication failed. Check your API key.",
-            }
+            logging.error("Error: Authentication failed. Check your API key.")
+            sys.exit(1)
         except openai.RateLimitError:
-            return {
-                "success": False,
-                "message": "Error: Rate limit exceeded. Try again later.",
-            }
-        except openai.APIConnectionError:
-            return {
-                "success": False,
-                "message": "Error: Failed to connect to OpenAI API.",
-            }
-        except openai.OpenAIError as e:
-            return {"success": False, "message": f"Error: OpenAI API error - {str(e)}"}
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Error: An unexpected error occurred - {str(e)}",
-            }
+            logging.error("Error: Rate limit exceeded. Try again later.")
+            sys.exit(1)
 
-    def compiler_pass(self, file):
+        except openai.APIConnectionError:
+            logging.error("Error: Failed to connect to OpenAI API.")
+            sys.exit(1)
+        except openai.OpenAIError as e:
+            logging.error(f"Error: OpenAI API error - {str(e)}")
+            sys.exit(1)
+        except Exception as e:
+            logging.error(f"Error: An unexpected error occurred - {str(e)}")
+            sys.exit(1)
+
+    def compiler_pass(self, file:str) -> dict:
+        """
+        Compile the optimized kernel using hipcc
+        
+        Args:   
+            file (str): File path of the optimized kernel
+
+        Returns:
+            dict: Compilation data containing the compiler log and binary path    
+        """
         super().compiler_pass()
         with tempfile.NamedTemporaryFile(suffix=".out", delete=False) as output_file:
             output_file_path = output_file.name
@@ -166,7 +179,11 @@ class bank_conflict(Formula_Base):
         compile_cmd = ["hipcc", file, "-o", output_file_path]
 
         success, message = capture_subprocess_output(compile_cmd)
-        return {"success": success, "compiler_log": message, "binary": output_file_path}
+        if not success:
+            logging.error(f"Error: {message}")
+            logging.error("Failed to compile the optimized kernel.")
+            sys.exit(1)
+        return {"compiler_log": message, "binary": output_file_path}
 
     def validation_pass(self, optimized_binary, kernel, args):
         super().validation_pass()
@@ -200,14 +217,9 @@ class bank_conflict(Formula_Base):
         key0, key1 = results.keys()
         for i in range(len(results[key0])):
             if not np.allclose(results[key0][i], results[key1][i]):
-                return {
-                    "success": False,
-                    "message": f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close."
-                }
+                logging.error(f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close.")
+                sys.exit(1)
                 
-        return {
-            "success": True,
-        }
 
     def performance_pass(self, optimized_binary: str):
         start_ref = time.time()
@@ -224,13 +236,10 @@ class bank_conflict(Formula_Base):
         performant = upd_time < ref_time
         speedup = ref_time / upd_time
         if not success:
-            return {
-                "success": False,
-                "message": f"Execution failed with message {optimized_message}",
-            }
+            logging.error(f"Execution failed with message {optimized_message}")
+            sys.exit(1)
 
-        message = f"The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
-        return {"success": performant, "message": message}
+        print(f"The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds.")
 
 def generate_ecma_regex_from_list(kernel_names)->str:  
     res = []
