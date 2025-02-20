@@ -21,9 +21,11 @@ from tracer.python.utils import run_subprocess
 
 
 class bank_conflict(Formula_Base):
-    def __init__(self, name, build_script, app_cmd):
+    def __init__(self, name, build_script, app_cmd, only_consider_top_kernel=False):
         super().__init__(name, build_script, app_cmd)
         self.profiler = "guided-tuning"
+        # This temp option allows us to toggle if we want a full or partial instrumentation report
+        self.only_consider_top_kernel = only_consider_top_kernel
 
     def profile_pass(self) -> Result:
         """
@@ -107,14 +109,12 @@ class bank_conflict(Formula_Base):
             logging.error(f"Critical Error: {output}")
             logging.error("Failed to instrument the application.")
             sys.exit(1)
+
+        bnk_conflicts_map = extract_bank_conflict_lines(output, kernel_names)
+
         return Result(
             success=True,
-            asset={
-                "kernel": "matrixTransposeShared",
-                "arguments": ["float*", "float const*", "int", "int"],
-                "lines": "17; 26",
-                "file": "../examples/bank_conflict/matrix_transpose/matrix_transpose.hip",
-            }
+            asset=bnk_conflicts_map[kernel_names[0]] if self.only_consider_top_kernel else bnk_conflicts_map
         )
 
     def optimize_pass(self, file:str, kernel:str, lines:str, temperature:float=0.0, max_tokens:int=3000) -> Result:
@@ -313,7 +313,7 @@ class bank_conflict(Formula_Base):
             }
         )
     
-def generate_ecma_regex_from_list(kernel_names:list)->str:  
+def generate_ecma_regex_from_list(kernel_names:set)->str:  
     res = []
     for i in kernel_names:
         escaped_string = re.escape(i)  
@@ -332,5 +332,58 @@ def generate_ecma_regex_from_list(kernel_names:list)->str:
     return regex
 
 
+def extract_bank_conflict_lines(output:str, kernel_names:list)->dict:
+    """
+    Extract the bank conflict report from omniprobe output
 
+    Args:
+        output (str): Omniprobe output
+        kernel_names (list): List of kernel names with bank conflicts
+
+    Returns:
+        dict: Dictionary containing kernel name, arguments, file path, and line number
+    """
+    kernel_reports = {}  
+    inside_kernel_report = False  
+    current_kernel_name = None  
+    filename = None
+  
+    for line in output.splitlines():
+        if "source location:" in line:
+            filename = line.split()[2].split(':')[0]
+        if not inside_kernel_report:  
+            # Check if the line marks the start of a kernel report  
+            for kernel_sig in kernel_names:  
+                if f"Memory analysis for {kernel_sig}" in line:
+                    inside_kernel_report = True
+                    current_kernel_name = kernel_sig
+
+                    kernel_args = kernel_sig.split('(')[1].split(')')[0].split(',')
+                    kernel_reports[current_kernel_name] = {
+                        'kernel': kernel_sig.split('(')[0],
+                        'arguments': [word.strip() for word in kernel_args],
+                        'file': filename,
+                        'lines': None
+                    }  
+                    break  
+        else:  
+            # Check for the bank conflicts report  
+            if "bank conflicts for location" in line:  
+                # Extract the line number  
+                line_number = int(line.split()[4])  
+                kernel_reports[current_kernel_name]['lines'] = line_number  
+                # Exit early after finding the relevant information  
+                inside_kernel_report = False  
+                current_kernel_name = None  
+  
+            # Check for the end of the bank conflicts report  
+            if "=== End of bank conflicts report" in line:  
+                inside_kernel_report = False  
+                current_kernel_name = None  
+                filename = None
+
+    logging.debug(f"Parsed instrumentation output:\n{kernel_reports}")
+    if len(kernel_reports) == 0:
+        logging.warning("No memory analysis data parsed from instrumentation.")
+    return kernel_reports
         
