@@ -1,18 +1,26 @@
 #!/bin/bash
 
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 parent_dir="$(dirname "$script_dir")"
 
 cd $parent_dir
 
 size=1024
-while getopts "s:" opt; do
-    case $opt in
-        s)
-            size=$OPTARG
+cmd=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -s)
+            size=$2
+            shift 2
+            ;;
+        --cmd)
+            cmd=$2
+            shift 2
             ;;
         *)
-            echo "Usage: $0 [-s size]"
+            echo "Usage: $0 [-s size] --cmd '<command>'"
             exit 1
             ;;
     esac
@@ -30,4 +38,5 @@ echo "[Log] Utilize the directory /var/cache/maestro as a sandbox to store data 
 
 # Run the container
 image="apptainer/maestro.sif"
-apptainer exec --overlay ${overlay} --cleanenv --env OPENAI_API_KEY=$OPENAI_API_KEY $image bash --rcfile /etc/bash.bashrc
+echo "cmd: $cmd"
+apptainer exec --overlay "${overlay}" --cleanenv --env OPENAI_API_KEY="$OPENAI_API_KEY" "$image" bash --rcfile /etc/bash.bashrc -c "cd src && eval \"$cmd\""
