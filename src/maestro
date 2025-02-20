@@ -21,6 +21,7 @@ def maestro_parser():
     parser.add_argument('-v', '--verbose', action='count', default=0, help='Increase verbosity level (e.g., -v, -vv, -vvv).')
     parser.add_argument('-n', '--name', type=str, required=True, help='Assign a name to distinguish your Maestro run.')
     parser.add_argument('-s', '--script', type=str, required=True, help='A script to build your application.')
+    parser.add_argument('-i', '--inplace', action='store_true', help='Enable in-place modification')
     parser.add_argument('remaining', metavar="-- [ ...]", nargs=argparse.REMAINDER, help='Provide the command to launch the application.')
     #TODO: Support different formulas via the `-f` option?
     parser.add_argument('-f', '--formula', type=str, help='Specify the formula to use for optimization.')
@@ -61,20 +62,25 @@ def main():
     optimizer_results.report_out()
 
     # Compile the new application
-    compiler_results = optimizer.compiler_pass(file=optimizer_results.asset)
+    compiler_results = optimizer.compiler_pass(file=optimizer_results.asset["optimized_code_path"])
     compiler_results.report_out()
 
     # Find the performance results
-    validation_results = optimizer.validation_pass(optimized_binary = compiler_results["binary"],
+    validation_results = optimizer.validation_pass(optimized_binary = compiler_results.asset["binary"],
                                                     kernel = instrument_results.asset["kernel"],
                                                     args = instrument_results.asset["arguments"])
     validation_results.report_out()
 
     # Find the performance results
-    performance_results = optimizer.performance_pass(optimized_binary=compiler_results.asset)
+    performance_results = optimizer.performance_pass(optimized_binary=compiler_results.asset["binary"])
     performance_results.report_out()
 
-
+    # Write output
+    if args.inplace:
+        output_file = instrument_results.asset["file"]
+        print(f"Writing output to {output_file}")
+        with open(output_file, 'w') as f:
+            f.write(optimizer_results.asset["optimized_code_string"])
     return
 
 

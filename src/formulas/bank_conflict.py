@@ -137,14 +137,14 @@ class bank_conflict(Formula_Base):
 
         if os.path.exists(file):
             with open(file, "r") as f:
-                file_content = f.read()
+                unoptimized_file_content = f.read()
         else:
             return Result(
                 success=False,
                 error_report=f"{file} does not exist."
             )
 
-        prompt = f"Lines {lines} are causing the conflict within the kernel {kernel} inside {file_content}."
+        prompt = f"Lines {lines} are causing the conflict within the kernel {kernel} inside {unoptimized_file_content}."
         if not openai_key:
             return Result(
                 success=False,
@@ -165,12 +165,15 @@ class bank_conflict(Formula_Base):
                 temperature=temperature,
             )
             tmp_file_path = "/tmp/optimized.hip"
-            file_content = completion.choices[0].message.content.strip()
+            optimized_file_content = completion.choices[0].message.content.strip()
             with open(tmp_file_path, "w") as f:
-                f.write(file_content)
+                f.write(optimized_file_content)
             return Result(
                 success=True,
-                asset=tmp_file_path
+                asset={
+                    "optimized_code_path": tmp_file_path,
+                    "optimized_code_string": optimized_file_content
+                }
             )
 
         except openai.AuthenticationError:
@@ -220,9 +223,10 @@ class bank_conflict(Formula_Base):
         success, message = capture_subprocess_output(compile_cmd)
         return Result(
             success=success,
-            error_report="Failed to compile the optimized kernel.",
-            log=message,
-            asset=output_file_path
+            asset={
+                "binary": output_file_path,
+                "log": message
+            }
         )
 
     def validation_pass(self, optimized_binary:str, kernel:str, args:list) -> Result:
@@ -241,8 +245,9 @@ class bank_conflict(Formula_Base):
         
         tracer_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "tracer"))
         
-        pipe_name = "/tmp/kernel_pipe"
-        ipc_file_name = "/tmp/ipc_handle.bin"
+        timestamp = int(time.time())
+        pipe_name = f"/tmp/kernel_pipe_{timestamp}"
+        ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
 
         results = {}
         for binary, label in zip([self.get_app_cmd()[0], optimized_binary], ["unoptimized", "optimized"]):
@@ -296,11 +301,16 @@ class bank_conflict(Formula_Base):
                 success=False,
                 error_report=f"Execution failed with message {optimized_message}"
             )
-
+        if not performant:
+                return Result(
+                success=False,
+                error_report=f"No improvement in performance. The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
+            )
         return Result(
             success=performant,
-            error_report=f"No improvement in performance. The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds.",
-            log="The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
+            asset={
+                "log": f"The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
+            }
         )
     
 def generate_ecma_regex_from_list(kernel_names:list)->str:  
