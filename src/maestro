@@ -43,7 +43,12 @@ def main():
         logging.basicConfig(level=logging.WARNING)
 
     # Create an optimizer based on available Maestro formulas.
-    optimizer = bank_conflict(args.name, args.script, args.remaining)
+    optimizer = bank_conflict(
+        name=args.name, 
+        build_script=args.script, 
+        app_cmd=args.remaining,
+        only_consider_top_kernel=True
+    )
 
     # Build the application
     optimizer.build()
