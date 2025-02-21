@@ -114,8 +114,6 @@ class bank_conflict(Formula_Base):
 
         bnk_conflicts_map = extract_bank_conflict_lines(output, kernel_names)
 
-        print(f"bnk_conflicts_map: {bnk_conflicts_map}")
-        print(f"kernel_names: {kernel_names}")
         return Result(
             success=True,
             asset=bnk_conflicts_map[kernel_names[0]] if self.only_consider_top_kernel else bnk_conflicts_map
