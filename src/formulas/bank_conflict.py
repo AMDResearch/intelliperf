@@ -58,16 +58,16 @@ class bank_conflict(Formula_Base):
             if len(parts) == 2:
                 key, value = parts
                 matching_db_workloads[key] = value
-        logging.debug(f"Matching DB Workloads: {matching_db_workloads}")
-        success, output = capture_subprocess_output(
-            [
-                f"{os.environ['GT_TUNING']}/bin/show_data.sh",
-                "-w",
-                list(matching_db_workloads.keys())[0],
-                "--save",
-                f"{os.environ['GT_TUNING']}/maestro_output.csv",
-            ]
-        )
+                logging.debug(f"Matching DB Workloads: {matching_db_workloads}")
+                success, output = capture_subprocess_output(
+                    [
+                        f"{os.environ['GT_TUNING']}/bin/show_data.sh",
+                        "-w",
+                        list(matching_db_workloads.keys())[0],
+                        "--save",
+                        f"{os.environ['GT_TUNING']}/maestro_output.csv",
+                    ]
+                )
         # Handle critical error
         if not success:
             logging.error(f"Critical Error: {output}")
@@ -151,6 +151,7 @@ class bank_conflict(Formula_Base):
             )
 
         prompt = f"Lines {lines} are causing the conflict within the kernel {kernel} inside {unoptimized_file_content}."
+        logging.debug(f"LLM prompt: {prompt}")
         if not openai_key:
             return Result(
                 success=False,
@@ -170,14 +171,13 @@ class bank_conflict(Formula_Base):
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
-            tmp_file_path = "/tmp/optimized.hip"
             optimized_file_content = completion.choices[0].message.content.strip()
-            with open(tmp_file_path, "w") as f:
+            with open(file, "w") as f:
                 f.write(optimized_file_content)
             return Result(
                 success=True,
                 asset={
-                    "optimized_code_path": tmp_file_path,
+                    "optimized_code_path": file,
                     "optimized_code_string": optimized_file_content
                 }
             )
@@ -235,7 +235,7 @@ class bank_conflict(Formula_Base):
             }
         )
 
-    def validation_pass(self, optimized_binary:str, kernel:str, args:list) -> Result:
+    def validation_pass(self, unoptimized_binary:str, optimized_binary:str, kernel:str, args:list) -> Result:
         """
         Validate the optimized kernel by comparing the output with the reference kernel
 
@@ -256,7 +256,7 @@ class bank_conflict(Formula_Base):
         ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
 
         results = {}
-        for binary, label in zip([self.get_app_cmd()[0], optimized_binary], ["unoptimized", "optimized"]):
+        for binary, label in zip([unoptimized_binary, optimized_binary], ["unoptimized", "optimized"]):
             for file in [ipc_file_name, ipc_file_name]:
                 if os.path.exists(file):
                     os.remove(file)
@@ -264,7 +264,6 @@ class bank_conflict(Formula_Base):
 
             run_subprocess(["cmake", "-B", "build"], tracer_directory)
             run_subprocess(["cmake", "--build", "build", "--parallel", "16"], tracer_directory)
-
             lib = os.path.join(tracer_directory, "build", "lib", "libtracer.so")
             env = os.environ.copy()
             env["HSA_TOOLS_LIB"] = lib

@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import logging
 import os
 import sys
+import shutil
 
 from utils.process import capture_subprocess_output
 
@@ -34,6 +35,14 @@ class Formula_Base:
 
         # Public
         self.profiler:str = None
+    def backup(self, suffix: str):
+        """Creates a backup of the application by appending the given suffix."""
+        binary = self.__app_cmd[0]
+        backup_name = f"{binary}.{suffix}"
+        print(f"copying: {binary}")
+        print(f"copying: {backup_name}")
+        shutil.copy2(binary, backup_name)
+        return backup_name 
 
     def get_app_cmd(self):
         return self.__app_cmd
