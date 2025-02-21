@@ -44,17 +44,19 @@ def main():
 
     # Create an optimizer based on available Maestro formulas.
     optimizer = bank_conflict(
-        name=args.name, 
-        build_script=args.script, 
+        name=args.name,
+        build_script=args.script,
         app_cmd=args.remaining,
         only_consider_top_kernel=True
     )
 
     # Build the application
-    optimizer.build()
+    build_results = optimizer.build()
+    build_results.report_out()
 
     # Profile the application and collect the results.
     profiler_results = optimizer.profile_pass()
+
 
     # Instrument the application based on the results.
     instrument_results = optimizer.instrument_pass(perf_report_card=profiler_results.asset)
@@ -67,13 +69,19 @@ def main():
     optimizer_results.report_out()
 
     # Compile the new application
-    compiler_results = optimizer.compiler_pass(file=optimizer_results.asset["optimized_code_path"])
+    # Backup the unoptimized binary
+    unoptimized_binary = optimizer.backup("unoptimized")
+    compiler_results = optimizer.build()
     compiler_results.report_out()
 
+    # Backup the optimized binary
+    optimized_binary = optimizer.backup("optimized")
+
     # Find the performance results
-    validation_results = optimizer.validation_pass(optimized_binary = compiler_results.asset["binary"],
-                                                    kernel = instrument_results.asset["kernel"],
-                                                    args = instrument_results.asset["arguments"])
+    validation_results = optimizer.validation_pass(unoptimized_binary = unoptimized_binary,
+                                                   optimized_binary = optimized_binary,
+                                                   kernel = instrument_results.asset["kernel"],
+                                                   args = instrument_results.asset["arguments"])
     validation_results.report_out()
 
     # Find the performance results

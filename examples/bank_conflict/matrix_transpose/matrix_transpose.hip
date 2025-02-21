@@ -50,10 +50,12 @@ void runTranspose(int width, int height) {
     std::terminate();
   }
 
+
   hipMemcpy(h_out.data(), d_out, width * height * sizeof(float), hipMemcpyDeviceToHost);
   hipFree(d_in);
   hipFree(d_out);
 }
+
 
 int main() {
   runTranspose(1024, 1024);
