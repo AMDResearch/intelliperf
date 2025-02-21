@@ -37,11 +37,14 @@ class bank_conflict(Formula_Base):
         super().profile_pass()
 
         # Call guided-tuning to profile the application
+        print(f"self.get_app_name(): {self.get_app_name()}")
+        print(f"self.get_app_cmd(): {self.get_app_cmd()}")
         success, output = capture_subprocess_output(
             [f"{os.environ['GT_TUNING']}/bin/profile_and_load.sh", self.get_app_name()]
             + self.get_app_cmd()
         )
         # Load report card with --save flag
+        print(f"self.get_app_name(): {self.get_app_name()}")
         success, output = capture_subprocess_output(
             [
                 f"{os.environ['GT_TUNING']}/bin/show_data.sh",
@@ -83,7 +86,7 @@ class bank_conflict(Formula_Base):
 
         Args:
             perf_report_card (pd.DataFrame): DataFrame containing kernel report card with bank conflict data
-        
+
         Returns:
             Result: Instrumentation data containing the kernel name, arguments, lines, and file path as dict
         """
@@ -93,11 +96,12 @@ class bank_conflict(Formula_Base):
         filtered_report_card = filtered_report_card[~filtered_report_card["Kernel"].str.contains("Cijk")]
         logging.debug(f"Filtered Report Card:\n{filtered_report_card}")
         kernel_names = filtered_report_card["Kernel"].tolist()
-        
+
         # Generate ECMA regex from the list of kernel names
         ecma_regex = generate_ecma_regex_from_list(kernel_names)
         logging.debug(f"ECMA Regex for kernel names: {ecma_regex}")
-
+        cmd=' '.join(self.get_app_cmd())
+        logging.debug(f"Omniprobe profiling command is: {cmd}")
         success, output = capture_subprocess_output([
             "omniprobe",
             "--instrumented",
@@ -112,6 +116,8 @@ class bank_conflict(Formula_Base):
 
         bnk_conflicts_map = extract_bank_conflict_lines(output, kernel_names)
 
+        print(f"bnk_conflicts_map: {bnk_conflicts_map}")
+        print(f"kernel_names: {kernel_names}")
         return Result(
             success=True,
             asset=bnk_conflicts_map[kernel_names[0]] if self.only_consider_top_kernel else bnk_conflicts_map
@@ -120,7 +126,7 @@ class bank_conflict(Formula_Base):
     def optimize_pass(self, file:str, kernel:str, lines:str, temperature:float=0.0, max_tokens:int=3000) -> Result:
         """
         Optimize the kernel to remove shared memory bank conflicts via OpenAI API
-        
+
         Args:
             file (str): File path of the kernel
             kernel (str): Kernel name
@@ -206,12 +212,12 @@ class bank_conflict(Formula_Base):
     def compiler_pass(self, file:str) -> Result:
         """
         Compile the optimized kernel using hipcc
-        
-        Args:   
+
+        Args:
             file (str): File path of the optimized kernel
 
         Returns:
-            Result: Compilation status and the output file path 
+            Result: Compilation status and the output file path
         """
         super().compiler_pass()
         with tempfile.NamedTemporaryFile(suffix=".out", delete=False) as output_file:
@@ -242,9 +248,9 @@ class bank_conflict(Formula_Base):
             Result: Validation status
         """
         super().validation_pass()
-        
+
         tracer_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "tracer"))
-        
+
         timestamp = int(time.time())
         pipe_name = f"/tmp/kernel_pipe_{timestamp}"
         ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
@@ -254,11 +260,11 @@ class bank_conflict(Formula_Base):
             for file in [ipc_file_name, ipc_file_name]:
                 if os.path.exists(file):
                     os.remove(file)
-            generate_header(args) 
-                        
+            generate_header(args)
+
             run_subprocess(["cmake", "-B", "build"], tracer_directory)
             run_subprocess(["cmake", "--build", "build", "--parallel", "16"], tracer_directory)
-            
+
             lib = os.path.join(tracer_directory, "build", "lib", "libtracer.so")
             env = os.environ.copy()
             env["HSA_TOOLS_LIB"] = lib
@@ -275,12 +281,12 @@ class bank_conflict(Formula_Base):
             if not np.allclose(results[key0][i], results[key1][i]):
                 return Result(
                     success=False,
-                    error_report=f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close." 
+                    error_report=f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close."
                 )
         return Result(
             success=True
         )
-                
+
 
     def performance_pass(self, optimized_binary: str) -> Result:
         start_ref = time.time()
@@ -312,11 +318,11 @@ class bank_conflict(Formula_Base):
                 "log": f"The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
             }
         )
-    
-def generate_ecma_regex_from_list(kernel_names:set)->str:  
+
+def generate_ecma_regex_from_list(kernel_names:set)->str:
     res = []
     for i in kernel_names:
-        escaped_string = re.escape(i)  
+        escaped_string = re.escape(i)
         regex_string = r"^" + escaped_string + r"$"
         res.append(regex_string)
         # Note: Temporary fix, but until bug in omniprobe is fixed we need to also
@@ -327,7 +333,7 @@ def generate_ecma_regex_from_list(kernel_names:set)->str:
         escaped_string = re.escape(duplicate_kernel_str)
         regex_string = r"^" + escaped_string + r"$"
         res.append(regex_string)
-    
+
     regex = f"({'|'.join(res)})"
     return regex
 
@@ -343,17 +349,17 @@ def extract_bank_conflict_lines(output:str, kernel_names:list)->dict:
     Returns:
         dict: Dictionary containing kernel name, arguments, file path, and line number
     """
-    kernel_reports = {}  
-    inside_kernel_report = False  
-    current_kernel_name = None  
+    kernel_reports = {}
+    inside_kernel_report = False
+    current_kernel_name = None
     filename = None
-  
+
     for line in output.splitlines():
         if "source location:" in line:
             filename = line.split()[2].split(':')[0]
-        if not inside_kernel_report:  
-            # Check if the line marks the start of a kernel report  
-            for kernel_sig in kernel_names:  
+        if not inside_kernel_report:
+            # Check if the line marks the start of a kernel report
+            for kernel_sig in kernel_names:
                 if f"Memory analysis for {kernel_sig}" in line:
                     inside_kernel_report = True
                     current_kernel_name = kernel_sig
@@ -364,26 +370,25 @@ def extract_bank_conflict_lines(output:str, kernel_names:list)->dict:
                         'arguments': [word.strip() for word in kernel_args],
                         'file': filename,
                         'lines': None
-                    }  
-                    break  
-        else:  
-            # Check for the bank conflicts report  
-            if "bank conflicts for location" in line:  
-                # Extract the line number  
-                line_number = int(line.split()[4])  
-                kernel_reports[current_kernel_name]['lines'] = line_number  
-                # Exit early after finding the relevant information  
-                inside_kernel_report = False  
-                current_kernel_name = None  
-  
-            # Check for the end of the bank conflicts report  
-            if "=== End of bank conflicts report" in line:  
-                inside_kernel_report = False  
-                current_kernel_name = None  
+                    }
+                    break
+        else:
+            # Check for the bank conflicts report
+            if "bank conflicts for location" in line:
+                # Extract the line number
+                line_number = int(line.split()[4])
+                kernel_reports[current_kernel_name]['lines'] = line_number
+                # Exit early after finding the relevant information
+                inside_kernel_report = False
+                current_kernel_name = None
+
+            # Check for the end of the bank conflicts report
+            if "=== End of bank conflicts report" in line:
+                inside_kernel_report = False
+                current_kernel_name = None
                 filename = None
 
     logging.debug(f"Parsed instrumentation output:\n{kernel_reports}")
     if len(kernel_reports) == 0:
         logging.warning("No memory analysis data parsed from instrumentation.")
     return kernel_reports
-        

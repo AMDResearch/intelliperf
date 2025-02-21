@@ -5,6 +5,26 @@ import sys
 
 from utils.process import capture_subprocess_output
 
+
+class Result:
+    def __init__(self, success:bool, error_report:str="", asset=None):
+        self.success:bool = success
+        # Only set error report if failure occurs
+        if not self.success and error_report == "":
+            logging.error("Invalid implementation of Report(). Must provide an error report if failure occurs.")
+            sys.exit(1)
+        self.error_report:str = error_report
+        self.log:str = ""
+        self.asset = asset
+
+    def report_out(self):
+        if self.success:
+            logging.info(self.log)
+        else:
+            logging.error(f"Error: {self.error_report}")
+            sys.exit(1)
+
+
 class Formula_Base:
     def __init__(self, name: str, build_script: str, app_cmd: list):
         # Private
@@ -29,6 +49,12 @@ class Formula_Base:
             logging.error(f"Failed to build {self.__name} application.")
             logging.error(result)
             sys.exit(1)
+        return Result(
+            success=success,
+            asset={
+                "log": result
+            }
+        )
     # ----------------------------------------------------
     # Required methods to be implemented by child classes
     # ----------------------------------------------------
@@ -78,22 +104,3 @@ class Formula_Base:
         Validates the the application.
         """
         pass
-
-class Result:
-    def __init__(self, success:bool, error_report:str="", asset=None):
-        self.success:bool = success
-        # Only set error report if failure occurs
-        if not self.success and error_report == "":
-            logging.error("Invalid implementation of Report(). Must provide an error report if failure occurs.")
-            sys.exit(1)
-        self.error_report:str = error_report
-        self.log:str = ""
-        self.asset = asset
-
-    def report_out(self):
-        if self.success:
-            logging.info(self.log)
-        else:
-            logging.error(f"Error: {self.error_report}")
-            sys.exit(1)
-    
