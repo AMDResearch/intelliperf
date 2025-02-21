@@ -56,16 +56,16 @@ class bank_conflict(Formula_Base):
             if len(parts) == 2:
                 key, value = parts
                 matching_db_workloads[key] = value
-                logging.debug(f"Matching DB Workloads: {matching_db_workloads}")
-                success, output = capture_subprocess_output(
-                    [
-                        f"{os.environ['GT_TUNING']}/bin/show_data.sh",
-                        "-w",
-                        list(matching_db_workloads.keys())[0],
-                        "--save",
-                        f"{os.environ['GT_TUNING']}/maestro_output.csv",
-                    ]
-                )
+        logging.debug(f"Matching DB Workloads: {matching_db_workloads}")
+        success, output = capture_subprocess_output(
+            [
+                f"{os.environ['GT_TUNING']}/bin/show_data.sh",
+                "-w",
+                list(matching_db_workloads.keys())[-1],
+                "--save",
+                f"{os.environ['GT_TUNING']}/maestro_output.csv",
+            ]
+        )
         # Handle critical error
         if not success:
             logging.error(f"Critical Error: {output}")
