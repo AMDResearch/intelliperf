@@ -14,6 +14,9 @@ From: ubuntu:22.04
     export GT_TUNING=/root/guided-tuning
     export PATH=/opt/logduration/bin/logDuration:$PATH
 
+%files
+    examples/bank_conflict/llm.c/requirements.txt /examples/bank_conflict/llm.c/requirements.txt
+
 %post
     # Set locale
     apt-get -y update
@@ -83,3 +86,5 @@ From: ubuntu:22.04
     # Install agents dependencies
     python3 -m pip install openai
 
+    # Install examples dependencies
+    pip3 install --no-cache-dir -r /examples/bank_conflict/llm.c/requirements.txt
