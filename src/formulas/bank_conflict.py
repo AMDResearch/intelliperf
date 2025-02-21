@@ -42,7 +42,6 @@ class bank_conflict(Formula_Base):
             + self.get_app_cmd()
         )
         # Load report card with --save flag
-        print(f"self.get_app_name(): {self.get_app_name()}")
         success, output = capture_subprocess_output(
             [
                 f"{os.environ['GT_TUNING']}/bin/show_data.sh",
