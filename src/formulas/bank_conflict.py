@@ -58,11 +58,11 @@ class bank_conflict(Formula_Base):
         logging.debug(f"Matching DB Workloads: {matching_db_workloads}")
         success, output = capture_subprocess_output(
             [
-            f"{os.environ['GT_TUNING']}/bin/show_data.sh",
-            "-w",
-            list(matching_db_workloads.keys())[-1],
-            "--save",
-            f"{os.environ['GT_TUNING']}/maestro_output.csv",
+                f"{os.environ['GT_TUNING']}/bin/show_data.sh",
+                "-w",
+                list(matching_db_workloads.keys())[-1],
+                "--save",
+                f"{os.environ['GT_TUNING']}/maestro_output.csv",
             ]
         )
         # Handle critical error
