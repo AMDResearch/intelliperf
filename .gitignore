@@ -6,3 +6,6 @@ build/
 
 matrix_transpose
 !matrix_transpose/
+
+bnk_conflict*
+!bnk_conflict.cpp

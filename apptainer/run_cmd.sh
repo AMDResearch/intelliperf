@@ -6,7 +6,7 @@ parent_dir="$(dirname "$script_dir")"
 
 cd $parent_dir
 
-size=1024
+size=2048
 cmd=""
 
 while [[ $# -gt 0 ]]; do
@@ -26,8 +26,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+workload=$(date +"%Y%m%d%H%M%S")
+
 # Create filesystem image overlay, if it doesn't exist
-overlay="/tmp/maestro_overlay_$(whoami).img"
+overlay="/tmp/maestro_overlay_$(whoami)_$workload.img"
 if [ ! -f $overlay ]; then
     echo "[Log] Overlay image ${overlay} does not exist. Creating overlay of ${size} MiB..."
     apptainer overlay create --size ${size} --create-dir /var/cache/maestro ${overlay}
