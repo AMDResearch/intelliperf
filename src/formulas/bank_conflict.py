@@ -60,7 +60,7 @@ class bank_conflict(Formula_Base):
             [
                 f"{os.environ['GT_TUNING']}/bin/show_data.sh",
                 "-w",
-                list(matching_db_workloads.keys())[0],
+                list(matching_db_workloads.keys())[-1],
                 "--save",
                 f"{os.environ['GT_TUNING']}/maestro_output.csv",
             ]
