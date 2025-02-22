@@ -59,6 +59,7 @@ def main():
     unoptimized_binary_profiler_results = optimizer.profile_pass()
     
 
+
     # Instrument the application based on the results.
     instrument_results = optimizer.instrument_pass(perf_report_card=unoptimized_binary_profiler_results.asset)
     instrument_results.report_out()

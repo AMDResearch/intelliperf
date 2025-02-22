@@ -24,6 +24,7 @@ class Result:
             if self.asset is not None:
                 for asset in self.asset:
                     logging.info(self.asset)
+
         else:
             logging.error(f"Error: {self.error_report}")
             sys.exit(1)
@@ -38,13 +39,15 @@ class Formula_Base:
 
         # Public
         self.profiler:str = None
-        
+
+          
         # Validate app command
         if self.__app_cmd:
             self.__app_cmd = self.__app_cmd[1:]
         else:
             logging.error("Profiling command required. Pass application executable after -- at the end of options.")
         
+
     def backup(self, suffix: str):
         """Creates a backup of the application by appending the given suffix."""
         binary = self.__app_cmd[0]

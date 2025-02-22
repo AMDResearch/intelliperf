@@ -1,6 +1,6 @@
-#include <hip/hip_runtime.h>
 #include "dh_comms_dev.h"
-#include <iostream>
+
+#include <hip/hip_runtime.h>
 
 #define TILE_DIM 16
 
@@ -43,8 +43,6 @@ void runTranspose(int width, int height) {
   dim3 blockSize(TILE_DIM, TILE_DIM);
   dim3 gridSize((width + TILE_DIM - 1) / TILE_DIM, (height + TILE_DIM - 1) / TILE_DIM);
 
-  std::cout << "d_in: " << d_in << std::endl;
-  std::cout << "d_out: " << d_out << std::endl;
 
   matrixTransposeShared<<<gridSize, blockSize>>>(d_out, d_in, width, height);
 
@@ -54,14 +52,10 @@ void runTranspose(int width, int height) {
   }
   hipMemcpy(h_out.data(), d_out, width * height * sizeof(float), hipMemcpyDeviceToHost);
 
-  for(std::size_t i = 0; i <32; i++){
-    std::cout << h_out[i] << ",";
-  }
-  std::cout << std::endl;
-
   hipFree(d_in);
   hipFree(d_out);
 }
+
 
 int main() {
   runTranspose(16, 16);

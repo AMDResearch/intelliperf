@@ -150,6 +150,7 @@ class bank_conflict(Formula_Base):
         system_prompt = "You are a skilled GPU HIP programmer. Given a kernel, you will optimize it to remove shared memory bank conflicts and provide a correct performant implementation. Do not modify the kernel signature and include the dh_comms_dev.h header. Do not include any markdown code blocks or text other than the code."
         logging.debug(f"LLM prompt: {user_prompt}")
         logging.debug(f"System prompt: {system_prompt}")
+
         if not openai_key:
             return Result(
                 success=False,
@@ -254,7 +255,7 @@ class bank_conflict(Formula_Base):
             timestamp = int(time.time())
             pipe_name = f"/tmp/kernel_pipe_{timestamp}"
             ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
-        
+
             for file in [ipc_file_name, ipc_file_name]:
                 if os.path.exists(file):
                     os.remove(file)
@@ -294,6 +295,12 @@ class bank_conflict(Formula_Base):
         return Result(
             success=True
         )
+
+
+    def performance_pass(self, optimized_binary: str) -> Result:
+        start_ref = time.time()
+        reference_success, _ = capture_subprocess_output(self.get_app_cmd())
+        ref_time = time.time() - start_ref
 
 
     def performance_pass(self, optimized_binary_result: Result,
