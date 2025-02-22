@@ -3,6 +3,7 @@
 import argparse
 import logging
 from formulas.bank_conflict import bank_conflict
+from tabulate import tabulate
 
 def maestro_parser():
     parser = argparse.ArgumentParser(
