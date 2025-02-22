@@ -23,6 +23,7 @@
 #include <optional>
 #include <sstream>
 
+#include <hip/hip_runtime.h>
 #include "KernelArguments.hpp"
 
 namespace maestro {
@@ -57,6 +58,12 @@ tracer::tracer(HsaApiTable* table,
     LOG_ERROR("Set TRACER_PIPE_NAME to communicate with driver script.");
     std::terminate();
   }
+
+  HsaAgent::get_all_agents(agents_);
+  for (const auto& agent : agents_){
+    agent.print_info();
+  }
+
 }
 
 template <typename T, typename Func, std::size_t... Is>
@@ -84,6 +91,7 @@ void printHipIpcMemHandle(const hipIpcMemHandle_t& handle, const std::string& me
     }
   }
 }
+
 
 void writeIpcHandleToFile(const hipIpcMemHandle_t& handle, size_t ptr_size) {
   static const char* file_name = std::getenv("TRACER_IPC_OUTPUT_FILE");
@@ -147,6 +155,12 @@ void tracer::send_message_and_wait(void* args) {
           LOG_ERROR("Pointer size not found for {}", static_cast<void*>(field));
         }
       }
+      const auto float_ptr = reinterpret_cast<const float*>(field);
+      LOG_DETAIL("Sending the handle for the pointer {} ({} bytes).", reinterpret_cast<void*>(field), ptr_size);
+      LOG_DETAIL("The first 4 values are {}, {}, {}, {}.", float_ptr[0],
+                                                          float_ptr[1],
+                                                          float_ptr[2],
+                                                          float_ptr[3]);
       writeIpcHandleToFile(handle, ptr_size);
     }
   });
@@ -291,6 +305,7 @@ std::optional<void*> tracer::is_traceable_packet(
       static const char* kernel_to_trace = std::getenv("KERNEL_TO_TRACE");
 
       if (kernel_name.contains(kernel_to_trace)) {
+        LOG_INFO("Found the target kernel {}", kernel_name);
         return disp->kernarg_address;
       }
     }
@@ -440,7 +455,8 @@ void tracer::write_packets(hsa_queue_t* queue,
     writer(&modified_packet, count);
 
     hsa_signal_wait_scacquire(
-        new_signal, HSA_SIGNAL_CONDITION_EQ, 0, UINT64_MAX, HSA_WAIT_STATE_ACTIVE);
+        new_signal, HSA_SIGNAL_CONDITION_EQ, 0, UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
+
     if (old_signal.handle != 0) {
       hsa_core_call(instance, hsa_signal_subtract_relaxed, old_signal, 1);
     }
