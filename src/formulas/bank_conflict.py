@@ -267,7 +267,7 @@ class bank_conflict(Formula_Base):
             env = os.environ.copy()
             env["HSA_TOOLS_LIB"] = lib
             env["KERNEL_TO_TRACE"] = kernel
-            env["TRACER_LOG_LEVEL"] = "3"
+            env["TRACER_LOG_LEVEL"] = "0"
             env["TRACER_PIPE_NAME"] = pipe_name
             env["TRACER_IPC_OUTPUT_FILE"] = ipc_file_name
 
