@@ -92,7 +92,9 @@ def main():
     optimized_binary_profiler_results = optimizer.profile_pass()
     optimized_binary_profiler_results.report_out()
     
+    logging.info("Optimized code:")
     logging.info(tabulate(optimized_binary_profiler_results.asset, headers='keys', tablefmt='psql'))
+    logging.info("Unoptimized code:")
     logging.info(tabulate(unoptimized_binary_profiler_results.asset, headers='keys', tablefmt='psql'))
 
     performance_results = optimizer.performance_pass(unoptimized_binary_result=unoptimized_binary_profiler_results,
