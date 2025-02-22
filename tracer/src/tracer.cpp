@@ -66,6 +66,42 @@ tracer::tracer(HsaApiTable* table,
 
 }
 
+static void* memcpy_d2h(const void* device_ptr, size_t size, const std::vector<HsaAgent>& agents_) {
+  // Find a CPU agent with a fine-grained memory region
+  for (const auto& agent : agents_) {
+      if (!agent.is_gpu) { // Find a CPU agent
+          for (const auto& region : agent.memory_regions) {
+              if (region.is_global) { // Fine-grained memory for CPU
+                  void* host_ptr = nullptr;
+                  hsa_status_t status = hsa_memory_allocate(region.region, size, &host_ptr);
+                  
+                  LOG_DETAIL("Allocated CPU pointer {} ({} bytes).", host_ptr, size);
+                  if (status != HSA_STATUS_SUCCESS || host_ptr == nullptr) {
+                      LOG_DETAIL("Failed to allocate fine-grained host memory of size {}", size);
+                      return nullptr;
+                  }
+
+                  // Copy memory from device to host
+                  LOG_DETAIL("D2H copying to {} from ({} bytes).", host_ptr, device_ptr, size);
+                  
+                  status = hsa_memory_copy(host_ptr, device_ptr, size);
+                  if (status != HSA_STATUS_SUCCESS) {
+                      LOG_DETAIL("Failed to copy device memory to host");
+                      hsa_amd_memory_pool_free(host_ptr);
+                      return nullptr;
+                  }
+
+                  return host_ptr;
+              }
+          }
+      }
+  }
+
+  LOG_DETAIL("No suitable CPU agent with fine-grained memory found.");
+  return nullptr;
+}
+
+
 template <typename T, typename Func, std::size_t... Is>
 inline void for_each_field_impl(const T& obj, Func func, std::index_sequence<Is...>) {
   (func(std::get<Is>(obj->as_tuple())), ...);
@@ -132,18 +168,10 @@ void tracer::send_message_and_wait(void* args) {
     LOG_ERROR("Failed to open FIFO for writing");
     return;
   }
-  for_each_field(args_struct, [fd](const auto& field) {
+  for_each_field(args_struct, [&](const auto& field) {
     if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> && 
                   !std::is_const_v<std::remove_pointer_t<std::decay_t<decltype(field)>>>) {
-      hipIpcMemHandle_t handle;
-      hipError_t ipc_result = hipIpcGetMemHandle(&handle, field);
-      if (ipc_result != hipSuccess) {
-        LOG_ERROR("Failed to get IPC handle for pointer {} : {}",
-                  static_cast<void*>(field),
-                  ipc_result);
-      }
-      printHipIpcMemHandle(handle, "handle");
-
+      
       size_t ptr_size = 0;
       {
         auto instance = get_instance();
@@ -155,13 +183,23 @@ void tracer::send_message_and_wait(void* args) {
           LOG_ERROR("Pointer size not found for {}", static_cast<void*>(field));
         }
       }
+
+      auto cpu_ptr = memcpy_d2h(field, ptr_size, agents_);
+      LOG_DETAIL("Sending the handle for the CPU pointer {} ({} bytes).", reinterpret_cast<void*>(cpu_ptr), ptr_size);
+      
+      hipIpcMemHandle_t handle;
+      hipError_t ipc_result = hipIpcGetMemHandle(&handle, field);
+      if (ipc_result != hipSuccess) {
+        LOG_ERROR("Failed to get IPC handle for pointer {} : {}",
+                  static_cast<void*>(field),
+                  ipc_result);
+      }
+      printHipIpcMemHandle(handle, "handle");
+
+
       const auto float_ptr = reinterpret_cast<const float*>(field);
       LOG_DETAIL("Sending the handle for the pointer {} ({} bytes).", reinterpret_cast<void*>(field), ptr_size);
-      LOG_DETAIL("The first 4 values are {}, {}, {}, {}.", float_ptr[0],
-                                                          float_ptr[1],
-                                                          float_ptr[2],
-                                                          float_ptr[3]);
-      writeIpcHandleToFile(handle, ptr_size);
+       writeIpcHandleToFile(handle, ptr_size);
     }
   });
 

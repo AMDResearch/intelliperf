@@ -10,13 +10,60 @@ from communicate import *
 from code_gen import *
 from utils import *
 
-logging.basicConfig(level=logging.INFO, format="[Python] [%(asctime)s]: %(message)s")
+logging.basicConfig(level=logging.DEBUG, format="[Python] [%(asctime)s]: %(message)s")
 
-pipe_name = "/tmp/kernel_pipe"
-ipc_file_name = "/tmp/ipc_handle.bin"
 
 example_directory = os.path.dirname(os.path.abspath(__file__))
 tracer_directory = os.path.dirname(example_directory)
+
+def fetch_results(binary):
+
+    timestamp = int(time.time())
+    pipe_name = f"/tmp/kernel_pipe_{timestamp}"
+    ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
+
+    # Clear output
+    for file in [ipc_file_name, ipc_file_name]:
+        if os.path.exists(file):
+            os.remove(file)
+            logging.debug(f"Remove the {file} file")
+
+    logging.debug(f"IPC files {pipe_name} and {ipc_file_name} cleared before execution.")
+
+    # Compile
+    generate_header(args)
+    run_subprocess(["cmake", "-B", "build"], tracer_directory)
+    run_subprocess(["cmake", "--build", "build", "--parallel", "16"], tracer_directory)
+
+    lib = os.path.join(tracer_directory, "build", "lib", "libtracer.so")
+
+    env = os.environ.copy()
+    env["HSA_TOOLS_LIB"] = lib
+    env["KERNEL_TO_TRACE"] = kernel
+    env["TRACER_LOG_LEVEL"] = "3"
+    env["TRACER_PIPE_NAME"] = pipe_name
+    env["TRACER_IPC_OUTPUT_FILE"] = ipc_file_name
+
+    pid = os.posix_spawn(binary, [binary], env)
+
+    results = get_kern_arg_data(pipe_name, args, ipc_file_name)
+
+    send_response(pipe_name)
+    logging.info("Sent response -- waiting.")
+
+    _, status = os.waitpid(pid, 0)
+
+    # Check the exit status
+    if os.WIFEXITED(status):
+        exit_code = os.WEXITSTATUS(status)
+        print(f"Process exited with code {exit_code}")
+    elif os.WIFSIGNALED(status):
+        print(f"Process was terminated by signal {os.WTERMSIG(status)}")
+    
+    logging.info("Python processing complete")       
+    return results    
+     
+
 
 
 # app = "dummy"
@@ -26,42 +73,27 @@ tracer_directory = os.path.dirname(example_directory)
 
 results = {}
 
+kernel = "matrixTransposeShared"
+args = ["float*", "const float*", "int", "int"]
+apps = {
+    "initial_code": "examples/bank_conflict/matrix_transpose/matrix_transpose.optimized",
+    "optimized_code": "examples/bank_conflict/matrix_transpose/matrix_transpose.unoptimized"
+}
+
+
+
+kernel = "reduction_kernel"
+args = ["const float*", "float*", "std::size_t"]
+apps = {
+    "initial_code": "examples/contention/reduction/reduction.optimized",
+    "optimized_code": "examples/contention/reduction/reduction.unoptimized"
+}
+
+                                      
 for app in ["initial_code", "optimized_code"]:
-
-    kernel = "reduction_kernel"
-    args = ["double*", "double*", "std::size_t"]
-
-    # Clear output
-    for file in [ipc_file_name, ipc_file_name]:
-        if os.path.exists(file):
-            os.remove(file)
-    logging.debug("IPC file cleared before execution.")
-
-    # Compile
-    generate_header(args)
-    binary = os.path.join("/tmp", app)
-    run_subprocess(
-        ["hipcc", "-o", f"{binary}", f"{example_directory}/hip/{app}.hip"], "/tmp"
-    )
-    run_subprocess(["cmake", "-B", "build"], tracer_directory)
-    run_subprocess(["cmake", "--build", "build"], tracer_directory)
-
-    lib = os.path.join(tracer_directory, "build", "lib", "libtracer.so")
-
-    env = os.environ.copy()
-    env["HSA_TOOLS_LIB"] = lib
-    env["KERNEL_TO_TRACE"] = kernel
-    # env["TRACER_LOG_LEVEL"] = "0"
-    env["TRACER_PIPE_NAME"] = pipe_name
-    env["TRACER_IPC_OUTPUT_FILE"] = ipc_file_name
-
-    pid = os.posix_spawn(binary, [binary], env)
-
-    results[app] = get_kern_arg_data(pipe_name, args, ipc_file_name)
-
-    send_response(pipe_name)
-
-    logging.info("Python processing complete")
+    binary = "../../" + apps[app]
+    results[app] = fetch_results(binary)
+    print(f"{app} results {results[app]}")
 
 for key in results.keys():
     logging.info(f"Collected results for {key}:\n{results[key]}")
