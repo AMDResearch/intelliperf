@@ -319,7 +319,7 @@ class bank_conflict(Formula_Base):
         success = optimized_conflicts < unoptimized_conflicts 
         speedup = unoptimized_time / optimized_time
         conflict_improvement = unoptimized_conflicts / optimized_conflicts
-        report_message = (f" The code contains {conflict_improvement}x fewer shared memory conflicts." 
+        report_message = (f"The optimized code contains {conflict_improvement}x fewer shared memory conflicts." 
                         f" The initial implementation contained {unoptimized_conflicts} conflicts and"
                         f" the optimized code contained {optimized_conflicts} conflicts."
                         f" The new code is {speedup:.3f}x faster than the original code. The initial"
