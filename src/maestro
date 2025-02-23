@@ -26,6 +26,7 @@ def maestro_parser():
     #TODO: Support different formulas via the `-f` option?
     parser.add_argument('-f', '--formula', type=str, help='Specify the formula to use for optimization.')
     parser.add_argument("-o", "--output_file", type=str, help="Path to the output file (optional)")
+    parser.add_argument("-c", "--ci_output_file", type=str, help="Path to the output file for CI integration (optional)")
 
     args = parser.parse_args()
     return args
@@ -107,6 +108,16 @@ def main():
             f.write(performance_results.asset['log'])
     else:
         print(performance_results.asset['log'])
+        
+    if args.ci_output_file:
+        kernel = instrument_results.asset['kernel']
+        lines = instrument_results.asset['lines']
+        
+        message = (f"Maestro detected bank conflicts in the kernel `{kernel}` at the line(s) {lines}." 
+                   f" This PR contains an optimized and validated implementation. See log below for complete output.")
+        with open(args.output_file, 'w') as f:
+            f.write(message)
+        
 
 if __name__ == '__main__':
     main()
