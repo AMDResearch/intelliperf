@@ -7,8 +7,13 @@ build/
 matrix_transpose
 !matrix_transpose/
 
+reduce*
+!reduce/
+
 bnk_conflict*
 !bnk_conflict.cpp
 *.log
 *.optimized
 *.unoptimized
+
+
