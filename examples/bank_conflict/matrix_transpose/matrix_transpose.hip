@@ -55,6 +55,6 @@ void runTranspose(int width, int height) {
 }
 
 int main() {
-  runTranspose(16, 16);
+  runTranspose(1024, 1024);
   return 0;
 }
