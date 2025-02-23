@@ -68,10 +68,14 @@ def memcpy_d2h(ptr, num_elements_to_copy, dtype):
         ctypes.c_size_t,
         ctypes.c_int,
     ]
-    result = hip_runtime.hipMemcpy(
+    bytes_to_copy = num_elements_to_copy * ctypes.sizeof(dtype)
+    logging.debug(f"Copying {num_elements_to_copy * ctypes.sizeof(dtype)} bytes "
+                f"from {hex(ptr)} to {hex(host_array.ctypes.data)}")
+
+    hip_try(hip_runtime.hipMemcpy(
         ctypes.c_void_p(host_array.ctypes.data),
         ctypes.c_void_p(ptr),
-        ctypes.c_size_t(num_elements_to_copy * ctypes.sizeof(dtype)),
+        ctypes.c_size_t(bytes_to_copy),
         2,
-    )
+    ))
     return host_array

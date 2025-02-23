@@ -35,7 +35,8 @@ class bank_conflict(Formula_Base):
             Result: DataFrame containing the performance report card
         """
         super().profile_pass()
-
+        logging.debug(f"Profiling app with name {self.get_app_name()}")
+        logging.debug(f"Profiling app with command {self.get_app_cmd()}")
         # Call guided-tuning to profile the application
         success, output = capture_subprocess_output(
             [f"{os.environ['GT_TUNING']}/bin/profile_and_load.sh", self.get_app_name()]
@@ -145,8 +146,11 @@ class bank_conflict(Formula_Base):
                 error_report=f"{file} does not exist."
             )
 
-        prompt = f"Lines {lines} are causing the conflict within the kernel {kernel} inside {unoptimized_file_content}."
-        logging.debug(f"LLM prompt: {prompt}")
+        user_prompt = f"Line {lines} is causing the conflict within the kernel {kernel} inside {unoptimized_file_content}. Please fix the conflict but do not change the semantics of the program."
+        system_prompt = "You are a skilled GPU HIP programmer. Given a kernel, you will optimize it to remove shared memory bank conflicts and provide a correct performant implementation. Do not modify the kernel signature and include the dh_comms_dev.h header. Do not include any markdown code blocks or text other than the code."
+        logging.debug(f"LLM prompt: {user_prompt}")
+        logging.debug(f"System prompt: {system_prompt}")
+
         if not openai_key:
             return Result(
                 success=False,
@@ -159,9 +163,9 @@ class bank_conflict(Formula_Base):
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a skilled GPU HIP programmer. Given a kernel, you will optimize it to remove shared memory bank conflicts and provide a correct performant implementation. Do not modify the kernel signature. Do not include any markdown code blocks or text other than the code.",
+                        "content": system_prompt,
                     },
-                    {"role": "user", "content": prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 max_tokens=max_tokens,
                 temperature=temperature,
@@ -246,12 +250,12 @@ class bank_conflict(Formula_Base):
 
         tracer_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "tracer"))
 
-        timestamp = int(time.time())
-        pipe_name = f"/tmp/kernel_pipe_{timestamp}"
-        ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
-
         results = {}
         for binary, label in zip([unoptimized_binary, optimized_binary], ["unoptimized", "optimized"]):
+            timestamp = int(time.time())
+            pipe_name = f"/tmp/kernel_pipe_{timestamp}"
+            ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
+
             for file in [ipc_file_name, ipc_file_name]:
                 if os.path.exists(file):
                     os.remove(file)
@@ -270,13 +274,24 @@ class bank_conflict(Formula_Base):
             pid = os.posix_spawn(binary, [binary], env)
             results[label] = get_kern_arg_data(pipe_name, args, ipc_file_name)
             send_response(pipe_name)
+        logging.debug(f"results unoptimized: results['unoptimized']")
+        logging.debug(f"results optimized: results['optimized']")
         key0, key1 = results.keys()
+        for i in range(len(results[key0])):
+            if not np.allclose(results[key0][i], results[key1][i]):
+                diff = np.abs(results[key0][i] - results[key1][i])
+                logging.debug(f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close.")
+                logging.debug(f"  {key0}[{i}]: {results[key0][i]}")
+                logging.debug(f"  {key1}[{i}]: {results[key1][i]}")
+                logging.debug(f"  Difference: {diff}")
+        
         for i in range(len(results[key0])):
             if not np.allclose(results[key0][i], results[key1][i]):
                 return Result(
                     success=False,
                     error_report=f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close."
                 )
+        logging.debug("Validation succeeded.")
         return Result(
             success=True
         )
@@ -287,29 +302,40 @@ class bank_conflict(Formula_Base):
         reference_success, _ = capture_subprocess_output(self.get_app_cmd())
         ref_time = time.time() - start_ref
 
-        start_upd = time.time()
-        optimized_success, optimized_message = capture_subprocess_output(
-            optimized_binary + self.get_app_args()
-        )
 
-        upd_time = time.time() - start_upd
-        success = optimized_success and reference_success
-        performant = upd_time < ref_time
-        speedup = ref_time / upd_time
+    def performance_pass(self, optimized_binary_result: Result,
+                              unoptimized_binary_result: Result,
+                              kernel_signature: str) -> Result:
+        
+        unoptimized_df = unoptimized_binary_result.asset
+        unoptimized_time = unoptimized_df.loc[unoptimized_df['Kernel'] == kernel_signature, 'Avg-Duration'].sum()
+        unoptimized_conflicts = unoptimized_df.loc[unoptimized_df['Kernel'] == kernel_signature, 'LDS Bank Conflicts'].sum()
+        
+        optimized_df = optimized_binary_result.asset
+        optimized_time = optimized_df.loc[optimized_df['Kernel'] == kernel_signature, 'Avg-Duration'].sum()
+        optimized_conflicts = optimized_df.loc[optimized_df['Kernel'] == kernel_signature, 'LDS Bank Conflicts'].sum()
+        
+    
+        success = optimized_conflicts < unoptimized_conflicts 
+        speedup = unoptimized_time / optimized_time
+        conflict_improvement = unoptimized_conflicts / optimized_conflicts
+        report_message = (f" The code contains {conflict_improvement}x fewer shared memory conflicts." 
+                        f" The initial implementation contained {unoptimized_conflicts} conflicts and"
+                        f" the optimized code contained {optimized_conflicts} conflicts."
+                        f" The new code is {speedup:.3f}x faster than the original code. The initial"
+                        f" implementation took {unoptimized_time} ns and the new one took"
+                        f" {optimized_time} ns.")
+                            
         if not success:
             return Result(
                 success=False,
-                error_report=f"Execution failed with message {optimized_message}"
-            )
-        if not performant:
-                return Result(
-                success=False,
-                error_report=f"No improvement in performance. The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
+                error_report=f"The optimized code had more shared memory bank conflicts." + report_message
+
             )
         return Result(
-            success=performant,
+            success=True,
             asset={
-                "log": f"The code is {speedup}x faster. Old code took {ref_time} seconds and the optimized code took {upd_time} seconds."
+                "log": report_message
             }
         )
 
@@ -361,6 +387,7 @@ def extract_bank_conflict_lines(output:str, kernel_names:list)->dict:
                     kernel_args = kernel_sig.split('(')[1].split(')')[0].split(',')
                     kernel_reports[current_kernel_name] = {
                         'kernel': kernel_sig.split('(')[0],
+                        'kernel_signature': kernel_sig,
                         'arguments': [word.strip() for word in kernel_args],
                         'file': filename,
                         'lines': None

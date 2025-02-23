@@ -9,3 +9,6 @@ matrix_transpose
 
 bnk_conflict*
 !bnk_conflict.cpp
+*.log
+*.optimized
+*.unoptimized

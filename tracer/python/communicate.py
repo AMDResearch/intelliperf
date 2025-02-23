@@ -84,15 +84,15 @@ def get_kern_arg_data(pipe_name, args, ipc_file_name):
 
     for handle, arg, array_size in zip(ipc_handles, pointer_args, ptr_sizes):
         ptr = open_ipc_handle(handle)
-        logging.debug(f"Opened IPC Ptr: {ptr}")
+        logging.debug(f"Opened IPC Ptr: {ptr} (0x{ptr:x})")
         arg_type = arg.split()[0]
         if arg_type in type_map:
             dtype = type_map[arg_type]
         else:
             raise TypeError(f"Unsupported pointer type: {arg_type}")
         num_elements = array_size // ctypes.sizeof(dtype)
-        max_num_elements = 32
-        num_elements_to_copy = min(max_num_elements, num_elements)
+        # max_num_elements = 32
+        num_elements_to_copy = num_elements
         host_array = memcpy_d2h(ptr, num_elements_to_copy, dtype)
         logging.debug(
             f"Received data from IPC ({arg_type}/{num_elements}): {host_array}"
