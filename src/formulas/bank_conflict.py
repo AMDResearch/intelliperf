@@ -146,8 +146,14 @@ class bank_conflict(Formula_Base):
                 error_report=f"{file} does not exist."
             )
 
-        user_prompt = f"Line {lines} is causing the conflict within the kernel {kernel} inside {unoptimized_file_content}. Please fix the conflict but do not change the semantics of the program."
-        system_prompt = "You are a skilled GPU HIP programmer. Given a kernel, you will optimize it to remove shared memory bank conflicts and provide a correct performant implementation. Do not modify the kernel signature and include the dh_comms_dev.h header. Do not include any markdown code blocks or text other than the code."
+        user_prompt = (f"Line {lines} is causing the conflict within the kernel {kernel}"
+                       f" inside {unoptimized_file_content}. Please fix the conflict but"
+                       f" do not change the semantics of the program.")
+        system_prompt = ("You are a skilled GPU HIP programmer. Given a kernel,"
+                         " you will optimize it to remove shared memory bank conflicts"
+                         " and provide a correct performant implementation. Do not modify"
+                         " the kernel signature and include the dh_comms_dev.h header."
+                         " Do not include any markdown code blocks or text other than the code.")
         logging.debug(f"LLM prompt: {user_prompt}")
         logging.debug(f"System prompt: {system_prompt}")
 
