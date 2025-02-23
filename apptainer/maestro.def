@@ -13,6 +13,7 @@ From: ubuntu:22.04
     # Misc globals
     export GT_TUNING=/root/guided-tuning
     export PATH=/opt/logduration/bin/logDuration:$PATH
+    export PATH=/root/rocprofiler-compute/src:$PATH
 
 %files
     examples/bank_conflict/llm.c/requirements.txt /examples/bank_conflict/llm.c/requirements.txt
@@ -59,11 +60,20 @@ From: ubuntu:22.04
     export ROCM_PATH=/opt/rocm
 
     # Install rocprof-compute (via package manager)
+    # python3 -m pip install --ignore-installed blinker
+    # python3 -m pip install -r /opt/rocm/libexec/rocprofiler-compute/requirements.txt
+    # Install rocprof-compute (from feature branch)
+    export SSH_AUTH_SOCK={{ SSH_AUTH_SOCK }}
+    cd /root
+    git clone -v git@github.com:coleramos425/rocprofiler-compute.git
+    cd rocprofiler-compute
+    git checkout colramos/omniperf-for-gt
     python3 -m pip install --ignore-installed blinker
-    python3 -m pip install -r /opt/rocm/libexec/rocprofiler-compute/requirements.txt
+    python3 -m pip install -r requirements.txt
+    cd src
+    export PATH=$PWD:$PATH
 
     # Install logduration
-    export SSH_AUTH_SOCK={{ SSH_AUTH_SOCK }}
     cd /root
     git clone -v git@github.com:AARInternal/logduration.git
     cd logduration
@@ -78,10 +88,11 @@ From: ubuntu:22.04
     cd /root
     git clone -v git@github.com:AARInternal/guided-tuning.git
     cd guided-tuning
+    git checkout colramos/omniperf-for-gt
     python3 -m pip install -r requirements.txt
     export GT_TUNING=$PWD
     # [Patch] Remove the line starting with "gpu_series" in guided-tuning/prep/db.py. Won't be upstreamed until ROCm 6.4
-    sed -i '/gpu_series VARCHAR,/d' /root/guided-tuning/prep/db.py
+    #sed -i '/gpu_series VARCHAR,/d' /root/guided-tuning/prep/db.py
 
     # Install agents dependencies
     python3 -m pip install openai
