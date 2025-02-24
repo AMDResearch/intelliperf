@@ -1,6 +1,5 @@
-#include "dh_comms_dev.h"
-
 #include <hip/hip_runtime.h>
+#include "dh_comms_dev.h"
 
 #define TILE_DIM 16
 
@@ -43,7 +42,6 @@ void runTranspose(int width, int height) {
   dim3 blockSize(TILE_DIM, TILE_DIM);
   dim3 gridSize((width + TILE_DIM - 1) / TILE_DIM, (height + TILE_DIM - 1) / TILE_DIM);
 
-
   matrixTransposeShared<<<gridSize, blockSize>>>(d_out, d_in, width, height);
 
   const auto status = hipDeviceSynchronize();
@@ -56,8 +54,7 @@ void runTranspose(int width, int height) {
   hipFree(d_out);
 }
 
-
 int main() {
-  runTranspose(16, 16);
+  runTranspose(1024, 1024);
   return 0;
 }

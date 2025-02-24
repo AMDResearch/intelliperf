@@ -56,6 +56,13 @@ def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
             callback = key.data
             callback(key.fileobj, mask)
 
+    # If the process terminated, capture any output that remains.
+    remaining = process.stdout.read()
+    if remaining:
+        buf.write(remaining)
+        for line in remaining.splitlines():
+            print(line.strip())
+             
     # Get process return code
     return_code = process.wait()
     selector.close()
