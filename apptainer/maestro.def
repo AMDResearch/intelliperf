@@ -77,7 +77,7 @@ From: ubuntu:22.04
     cd /root
     git clone -v git@github.com:AARInternal/logduration.git
     cd logduration
-    git checkout muhaawad/maestro-demo
+    git checkout colramos/sb_cleanup
     git submodule update --init --recursive
     mkdir -p build 
     cmake -DCMAKE_INSTALL_PREFIX=/opt/logduration -DCMAKE_PREFIX_PATH=${ROCM_PATH} -DLLVM_INSTALL_DIR=/opt/rocm/llvm -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=ON -S . -B build 
