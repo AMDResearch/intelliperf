@@ -377,12 +377,10 @@ def extract_bank_conflict_lines(output:str, kernel_names:list)->dict:
     """
     kernel_reports = {}
     inside_kernel_report = False
+    inside_bank_conflict_report = False
     current_kernel_name = None
-    filename = None
 
     for line in output.splitlines():
-        if "source location:" in line:
-            filename = line.split()[2].split(':')[0]
         if not inside_kernel_report:
             # Check if the line marks the start of a kernel report
             for kernel_sig in kernel_names:
@@ -395,25 +393,25 @@ def extract_bank_conflict_lines(output:str, kernel_names:list)->dict:
                         'kernel': kernel_sig.split('(')[0],
                         'kernel_signature': kernel_sig,
                         'arguments': [word.strip() for word in kernel_args],
-                        'file': filename,
-                        'lines': None
+                        'file': None,
+                        'lines': set()
                     }
                     break
+        elif not inside_bank_conflict_report:
+            if "Bank conflicts report" in line:
+                inside_bank_conflict_report = True
         else:
-            # Check for the bank conflicts report
-            if "bank conflicts for location" in line:
-                # Extract the line number
-                line_number = int(line.split()[4])
-                kernel_reports[current_kernel_name]['lines'] = line_number
-                # Exit early after finding the relevant information
-                inside_kernel_report = False
-                current_kernel_name = None
+            line_l = line.replace("WARNING:root:", "").split(":")
+            if os.path.isfile(line_l[0]):
+                kernel_reports[current_kernel_name]['file'] = str(line_l[0])
+                kernel_reports[current_kernel_name]['lines'].add(str(line_l[1]))
 
             # Check for the end of the bank conflicts report
             if "=== End of bank conflicts report" in line:
+                kernel_reports[current_kernel_name]['lines'] = ";".join(kernel_reports[current_kernel_name]['lines'])
                 inside_kernel_report = False
                 current_kernel_name = None
-                filename = None
+                inside_bank_conflict_report = False
 
     logging.debug(f"Parsed instrumentation output:\n{kernel_reports}")
     if len(kernel_reports) == 0:
