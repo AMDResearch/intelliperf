@@ -28,6 +28,7 @@ def maestro_parser():
 
     # Optional arguments group
     optional_args = parser.add_argument_group('optional arguments')
+    optional_args.add_argument('-d', '--diagnose-only', action='store_true', help='Only diagnose and report the application bottleneck without optimization.')
     optional_args.add_argument('-f', '--formula', choices=['bankConflict'], default='bankConflict', type=str, help='Specify the formula to use for optimization (default: bankConflict).')
     optional_args.add_argument("-o", "--output_file", type=str, help="Path to the output file (optional)")
     optional_args.add_argument("-c", "--ci_output_file", type=str, help="Path to the output file for CI integration (optional)")
@@ -64,9 +65,11 @@ def main():
     build_results.report_out()
 
     # Profile the application and collect the results.
-    unoptimized_binary_profiler_results = optimizer.profile_pass()
+    unoptimized_binary_profiler_results = optimizer.profile_pass(args.diagnose_only)
     
-
+    if args.diagnose_only:
+        unoptimized_binary_profiler_results.report_out()
+        return
 
     # Instrument the application based on the results.
     instrument_results = optimizer.instrument_pass(perf_report_card=unoptimized_binary_profiler_results.asset)
