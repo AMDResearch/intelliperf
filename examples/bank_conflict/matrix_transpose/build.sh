@@ -9,6 +9,6 @@ INCLUDE="-I ${INST_BASE}/include/kerneldb -I ${INST_BASE}/include/dh_comms -I /o
 NO_WARN=-Wno-unused-result
 
 
-INST_LIB=${INST_BASE}/lib/libAMDGCNMemTraceHip.so
+INST_LIB=${INST_BASE}/lib/libAMDGCNSubmitAddressMessages-rocm.so
 
 hipcc ${NO_WARN} ${INCLUDE} -fgpu-rdc -fpass-plugin=${INST_LIB} -O3 -g -o matrix_transpose matrix_transpose.hip
