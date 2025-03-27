@@ -73,11 +73,12 @@ From: ubuntu:22.04
     cd src
     export PATH=$PWD:$PATH
 
-    # Install Triton
+    # Install Triton (version pinned)
     cd /root
     export TRITON_HOME=/root
     git clone -v https://github.com/triton-lang/triton.git
     cd triton
+    git checkout 6fa33ef1eecc97348d056688df84845db7d22507
     python3 -m pip install ninja wheel pybind11
     python3 -m pip install -e python
     ls -la /root/.triton/llvm/
