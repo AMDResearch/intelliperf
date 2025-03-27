@@ -6,6 +6,7 @@ import time
 import sys
 import numpy as np
 import re
+import json
 
 import openai
 from openai import OpenAIError
@@ -63,7 +64,7 @@ class bank_conflict(Formula_Base):
                 "-w",
                 list(matching_db_workloads.keys())[-1],
                 "--save",
-                f"{os.environ['GT_TUNING']}/maestro_output.csv",
+                f"{os.environ['GT_TUNING']}/maestro_summary.csv",
             ]
         )
         # Handle critical error
@@ -71,8 +72,9 @@ class bank_conflict(Formula_Base):
             logging.error(f"Critical Error: {output}")
             logging.error("Failed to generate the performance report card.")
             sys.exit(1)
-        # Read the saved report card
-        df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_output.csv")
+
+        df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_summary.csv")
+
         return Result(
             success=True,
             asset=df_results
