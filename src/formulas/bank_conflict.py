@@ -28,7 +28,7 @@ class bank_conflict(Formula_Base):
         # This temp option allows us to toggle if we want a full or partial instrumentation report
         self.only_consider_top_kernel = only_consider_top_kernel
 
-    def profile_pass(self, diagnose_only: bool) -> Result:
+    def profile_pass(self) -> Result:
         """
         Profile the application using guided-tuning and collect bank conflict data
 
@@ -72,23 +72,9 @@ class bank_conflict(Formula_Base):
             logging.error(f"Critical Error: {output}")
             logging.error("Failed to generate the performance report card.")
             sys.exit(1)
-        # Read the saved report card
+
         df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_summary.csv")
-        if diagnose_only:
-            top_n_kernels = list(df_results.head(10)["Kernel"])
-            logging.debug(f"top_n_kernels: {top_n_kernels}")
-            success, output = capture_subprocess_output(
-                [
-                    f"{os.environ['GT_TUNING']}/bin/show_data.sh",
-                    "-w",
-                    list(matching_db_workloads.keys())[-1],
-                    "-k",
-                    *top_n_kernels,
-                    "--save",
-                    f"{os.environ['GT_TUNING']}/maestro_report_card.json",
-                ]
-            )
-        df_results = json.loads(open(f"{os.environ['GT_TUNING']}/maestro_report_card.json").read())
+
         return Result(
             success=True,
             asset=df_results
