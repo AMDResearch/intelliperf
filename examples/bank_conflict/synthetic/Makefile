@@ -6,7 +6,7 @@ INCLUDE=-I ${INST_BASE}/include/kerneldb -I ${INST_BASE}/include/dh_comms -I /op
 NO_WARN=-Wno-unused-result
 
 
-INST_LIB=${INST_BASE}/lib/libAMDGCNMemTraceHip.so
+INST_LIB=${INST_BASE}/lib/libAMDGCNSubmitAddressMessages-rocm.so
 
 %: %.cpp
 	hipcc ${NO_WARN} ${INCLUDE} -O3 -g -o $@ $<
