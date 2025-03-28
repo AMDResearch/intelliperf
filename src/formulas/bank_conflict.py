@@ -292,7 +292,7 @@ class bank_conflict(Formula_Base):
                 logging.debug(f"  {key0}[{i}]: {results[key0][i]}")
                 logging.debug(f"  {key1}[{i}]: {results[key1][i]}")
                 logging.debug(f"  Difference: {diff}")
-        
+
         for i in range(len(results[key0])):
             if not np.allclose(results[key0][i], results[key1][i]):
                 return Result(
@@ -314,26 +314,27 @@ class bank_conflict(Formula_Base):
     def performance_pass(self, optimized_binary_result: Result,
                               unoptimized_binary_result: Result,
                               kernel_signature: str) -> Result:
-        
+
         unoptimized_df = unoptimized_binary_result.asset
         unoptimized_time = unoptimized_df.loc[unoptimized_df['Kernel'] == kernel_signature, 'Avg-Duration'].sum()
         unoptimized_conflicts = unoptimized_df.loc[unoptimized_df['Kernel'] == kernel_signature, 'LDS Bank Conflicts'].sum()
-        
+
         optimized_df = optimized_binary_result.asset
         optimized_time = optimized_df.loc[optimized_df['Kernel'] == kernel_signature, 'Avg-Duration'].sum()
         optimized_conflicts = optimized_df.loc[optimized_df['Kernel'] == kernel_signature, 'LDS Bank Conflicts'].sum()
-        
-    
-        success = optimized_conflicts < unoptimized_conflicts 
+
+
+        success = optimized_conflicts < unoptimized_conflicts
         speedup = unoptimized_time / optimized_time
-        conflict_improvement = unoptimized_conflicts / optimized_conflicts
-        report_message = (f"The optimized code contains {conflict_improvement}x fewer shared memory conflicts." 
+        conflict_improvement = unoptimized_conflicts / optimized_conflicts if optimized_conflicts != 0 else 1
+
+        report_message = (f"The optimized code contains {conflict_improvement * 100}% fewer shared memory conflicts."
                         f" The initial implementation contained {unoptimized_conflicts} conflicts and"
                         f" the optimized code contained {optimized_conflicts} conflicts."
                         f" The new code is {speedup:.3f}x faster than the original code. The initial"
                         f" implementation took {unoptimized_time} ns and the new one took"
                         f" {optimized_time} ns.")
-                            
+
         if not success:
             return Result(
                 success=False,
