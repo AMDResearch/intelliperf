@@ -12,7 +12,7 @@ import openai
 from openai import OpenAIError
 
 from formulas.formula_base import Formula_Base, Result
-from utils.process import capture_subprocess_output
+from utils.process import capture_subprocess_output, exit_on_fail
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 )
@@ -43,6 +43,10 @@ class bank_conflict(Formula_Base):
             [f"{os.environ['GT_TUNING']}/bin/profile_and_load.sh", self.get_app_name()]
             + self.get_app_cmd()
         )
+        exit_on_fail(success = success,
+                     message = "Failed to profile the binary",
+                     log = output)
+                    
         # Load report card with --save flag
         success, output = capture_subprocess_output(
             [
@@ -51,6 +55,10 @@ class bank_conflict(Formula_Base):
                 self.get_app_name(),
             ]
         )
+        exit_on_fail(success = success,
+                     message = "Failed to generate the performance report card.",
+                     log = output)
+                
         matching_db_workloads = {}
         for line in output.splitlines():
             parts = line.split(maxsplit=1)
@@ -67,11 +75,9 @@ class bank_conflict(Formula_Base):
                 f"{os.environ['GT_TUNING']}/maestro_summary.csv",
             ]
         )
-        # Handle critical error
-        if not success:
-            logging.error(f"Critical Error: {output}")
-            logging.error("Failed to generate the performance report card.")
-            sys.exit(1)
+        exit_on_fail(success = success,
+                     message = "Failed to generate the performance report card.",
+                     log = output)
 
         df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_summary.csv")
 

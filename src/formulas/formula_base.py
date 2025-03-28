@@ -64,7 +64,7 @@ class Formula_Base:
     def get_app_name(self):
         return self.__name
     def build(self):
-        success, result = capture_subprocess_output(self.__build_script)
+        success, result = capture_subprocess_output([self.__build_script])
         # Handle critical error
         if not success:
             logging.error(f"Failed to build {self.__name} application.")
