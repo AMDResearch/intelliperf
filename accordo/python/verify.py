@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.DEBUG, format="[Python] [%(asctime)s]: %(messa
 
 
 example_directory = os.path.dirname(os.path.abspath(__file__))
-tracer_directory = os.path.dirname(example_directory)
+accordo_directory = os.path.dirname(example_directory)
 
 def fetch_results(binary):
 
@@ -32,10 +32,10 @@ def fetch_results(binary):
 
     # Compile
     generate_header(args)
-    run_subprocess(["cmake", "-B", "build"], tracer_directory)
-    run_subprocess(["cmake", "--build", "build", "--parallel", "16"], tracer_directory)
+    run_subprocess(["cmake", "-B", "build"], accordo_directory)
+    run_subprocess(["cmake", "--build", "build", "--parallel", "16"], accordo_directory)
 
-    lib = os.path.join(tracer_directory, "build", "lib", "libtracer.so")
+    lib = os.path.join(accordo_directory, "build", "lib", "libaccordo.so")
 
     env = os.environ.copy()
     env["HSA_TOOLS_LIB"] = lib

@@ -16,9 +16,9 @@ from utils.process import capture_subprocess_output, exit_on_fail
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 )
-from tracer.python.communicate import get_kern_arg_data, send_response
-from tracer.python.code_gen import generate_header
-from tracer.python.utils import run_subprocess
+from accordo.python.communicate import get_kern_arg_data, send_response
+from accordo.python.code_gen import generate_header
+from accordo.python.utils import run_subprocess
 
 
 class bank_conflict(Formula_Base):
@@ -262,7 +262,7 @@ class bank_conflict(Formula_Base):
         """
         super().validation_pass()
 
-        tracer_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "tracer"))
+        accordo_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "accordo"))
 
         results = {}
         for binary, label in zip([unoptimized_binary, optimized_binary], ["unoptimized", "optimized"]):
@@ -275,9 +275,9 @@ class bank_conflict(Formula_Base):
                     os.remove(file)
             generate_header(args)
 
-            run_subprocess(["cmake", "-B", "build"], tracer_directory)
-            run_subprocess(["cmake", "--build", "build", "--parallel", "16"], tracer_directory)
-            lib = os.path.join(tracer_directory, "build", "lib", "libtracer.so")
+            run_subprocess(["cmake", "-B", "build"], accordo_directory)
+            run_subprocess(["cmake", "--build", "build", "--parallel", "16"], accordo_directory)
+            lib = os.path.join(accordo_directory, "build", "lib", "libaccordo.so")
             env = os.environ.copy()
             env["HSA_TOOLS_LIB"] = lib
             env["KERNEL_TO_TRACE"] = kernel

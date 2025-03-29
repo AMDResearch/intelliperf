@@ -167,19 +167,19 @@ struct HsaAgent {
 
 
 
-class tracer {
+class accordo {
  public:
-  static tracer* get_instance(HsaApiTable* table = nullptr,
+  static accordo* get_instance(HsaApiTable* table = nullptr,
                               uint64_t runtime_version = 0,
                               uint64_t failed_tool_count = 0,
                               const char* const* failed_tool_names = nullptr);
 
  private:
-  tracer(HsaApiTable* table,
+  accordo(HsaApiTable* table,
          std::uint64_t runtime_version,
          std::uint64_t failed_tool_count,
          const char* const* failed_tool_names);
-  ~tracer();
+  ~accordo();
   void save_hsa_api();
   void restore_hsa_api();
   void hook_api();
@@ -253,7 +253,7 @@ class tracer {
  private:
   static std::mutex mutex_;
   static std::shared_mutex stop_mutex_;
-  static tracer* singleton_;
+  static accordo* singleton_;
 
   std::vector<HsaAgent> agents_;
 
