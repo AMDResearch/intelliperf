@@ -17,3 +17,4 @@ bnk_conflict*
 *.unoptimized
 
 
+*.egg-info
