@@ -1,0 +1,62 @@
+[project]
+name = "maestro"
+version = "0.0.1"
+description = "Automated bottleneck detection and solution orchestration"
+authors = [
+    { name = "Muhammad Awad", email = "muhaawad@amd.com" },
+    { name = "Cole Ramos", email = "Cole.Ramos@amd.com" }
+]
+
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.8"
+
+# Python dependencies 
+dependencies = [
+    "openai>=1.0.0"
+]
+
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.rocprofiler-compute]
+git = "git@github.com:coleramos425/rocprofiler-compute.git"
+branch = "colramos/omniperf-for-gt"
+build_command = """
+python3 -m pip install --ignore-installed blinker &&
+python3 -m pip install -r requirements.txt
+"""
+
+[tool.guided-tuning]
+git = "git@github.com:AARInternal/guided-tuning.git"
+branch = "colramos/omniperf-for-gt"
+build_command = """
+python3 -m pip install -r requirements.txt
+"""
+
+
+[tool.logduration]
+git = "git@github.com:AARInternal/logduration.git"
+branch = "colramos/hackathon"
+build_command = """
+git submodule update --init --recursive
+cmake -DCMAKE_INSTALL_PREFIX=/opt/logduration \
+      -DCMAKE_PREFIX_PATH=${ROCM_PATH} \
+      -DTRITON_LLVM=/root/.triton/llvm/llvm-ubuntu-x64 \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_VERBOSE_MAKEFILE=ON -S . -B build &&
+cmake --build build --parallel 1 &&
+cmake --install build
+"""
+
+[tool.nexus]
+git = "git@github.com:AARInternal/nexus.git"
+branch = "main"
+build_command = """
+cmake -B build -DCMAKE_PREFIX_PATH=/opt/rocm\
+    -DLLVM_INSTALL_DIR=/opt/rocm/llvm\
+    -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --parallel 16
+"""
