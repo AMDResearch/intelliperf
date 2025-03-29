@@ -4,9 +4,9 @@
 cmake_minimum_required(VERSION 3.22 FATAL_ERROR)
 
 project(
-    tracer
+    accordo
     VERSION       0.1.0
-    DESCRIPTION   "Maestro Tracing"
+    DESCRIPTION   "Accordo"
     HOMEPAGE_URL  "https://github.com/AARInternal/maestro"
     LANGUAGES     CXX C
 )
@@ -16,7 +16,7 @@ list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_CURRENT_LIST_DIR}/cmake/Modules)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # helper functions
-include(cmake/MaestroCompilerOptions.cmake)
+include(cmake/AccordoCompilerOptions.cmake)
 
 # disable in-source builds to avoid source tree corruption
 if ("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
@@ -42,10 +42,10 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif ()
 
 # target
-add_library(tracer SHARED)
-add_library(tracer::tracer ALIAS tracer)
+add_library(accordo SHARED)
+add_library(accordo::accordo ALIAS accordo)
 
-target_include_directories(tracer
+target_include_directories(accordo
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>"
@@ -61,7 +61,7 @@ set(CMAKE_C_FLAGS "-O0 -g")
 
 
 # library properties
-set_target_properties(tracer
+set_target_properties(accordo
     PROPERTIES
         CXX_STANDARD                23
         CXX_STANDARD_REQUIRED       ON
@@ -71,8 +71,8 @@ set_target_properties(tracer
         POSITION_INDEPENDENT_CODE   ON
         VERSION                     "${PROJECT_VERSION}"
         SOVERSION                   "${PROJECT_VERSION_MAJOR}"
-        EXPORT_NAME                 tracer
-        OUTPUT_NAME                 tracer
+        EXPORT_NAME                 accordo
+        OUTPUT_NAME                 accordo
         PUBLIC_HEADER               "${PUBLIC_HEADERS}"
         # enable RPATH during both build and installation; use relative RPATH as well
         SKIP_BUILD_RPATH            FALSE
