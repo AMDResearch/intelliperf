@@ -49,13 +49,13 @@ accordo::accordo(HsaApiTable* table,
   }
 
   // Create the FIFO
-  static const char* pipe_name = std::getenv("TRACER_PIPE_NAME");
+  static const char* pipe_name = std::getenv("ACCORDO_PIPE_NAME");
   if (pipe_name) {
     if (mkfifo(pipe_name, 0666) == -1 && errno != EEXIST) {
       LOG_DETAIL("mkfifo failed");
     }
   } else {
-    LOG_ERROR("Set TRACER_PIPE_NAME to communicate with driver script.");
+    LOG_ERROR("Set ACCORDO_PIPE_NAME to communicate with driver script.");
     std::terminate();
   }
 
@@ -130,9 +130,9 @@ void printHipIpcMemHandle(const hipIpcMemHandle_t& handle, const std::string& me
 
 
 void writeIpcHandleToFile(const hipIpcMemHandle_t& handle, size_t ptr_size) {
-  static const char* file_name = std::getenv("TRACER_IPC_OUTPUT_FILE");
+  static const char* file_name = std::getenv("ACCORDO_IPC_OUTPUT_FILE");
   if (!file_name) {
-    LOG_ERROR("Set TRACER_IPC_OUTPUT_FILE to communicate with driver script.");
+    LOG_ERROR("Set ACCORDO_IPC_OUTPUT_FILE to communicate with driver script.");
     std::terminate();
   }
   std::ofstream file(file_name, std::ios::binary | std::ios::app);
@@ -162,7 +162,7 @@ void accordo::send_message_and_wait(void* args) {
   });
 
   // Export IPC handles
-  static const char* pipe_name = std::getenv("TRACER_PIPE_NAME");
+  static const char* pipe_name = std::getenv("ACCORDO_PIPE_NAME");
   int fd = open(pipe_name, O_WRONLY);
   if (fd < 0) {
     LOG_ERROR("Failed to open FIFO for writing");

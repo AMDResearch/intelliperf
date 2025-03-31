@@ -40,9 +40,9 @@ def fetch_results(binary):
     env = os.environ.copy()
     env["HSA_TOOLS_LIB"] = lib
     env["KERNEL_TO_TRACE"] = kernel
-    env["TRACER_LOG_LEVEL"] = "3"
-    env["TRACER_PIPE_NAME"] = pipe_name
-    env["TRACER_IPC_OUTPUT_FILE"] = ipc_file_name
+    env["ACCORDO_LOG_LEVEL"] = "3"
+    env["ACCORDO_PIPE_NAME"] = pipe_name
+    env["ACCORDO_IPC_OUTPUT_FILE"] = ipc_file_name
 
     pid = os.posix_spawn(binary, [binary], env)
 
