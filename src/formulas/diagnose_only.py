@@ -93,3 +93,14 @@ class diagnose_only(Formula_Base):
     def validation_pass(self):
         super().validation_pass()
     
+    def source_code_pass(self):
+        super().source_code_pass()
+        nexus_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../external/nexus"))
+        lib = os.path.join(nexus_directory, "build", "lib", "libnexus.so")
+        env = os.environ.copy()
+        json_result_file = "results.json"
+        env["HSA_TOOLS_LIB"] = lib
+        env["NEXUS_LOG_LEVEL"] = "2"
+        env["ACCORDO_OUTPUT_FILE"] = json_result_file
+        print(f"self.get_app_cmd(): {self.get_app_cmd()}")
+        success, log = capture_subprocess_output(self.get_app_cmd(), new_env=env)

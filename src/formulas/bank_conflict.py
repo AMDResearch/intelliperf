@@ -281,9 +281,9 @@ class bank_conflict(Formula_Base):
             env = os.environ.copy()
             env["HSA_TOOLS_LIB"] = lib
             env["KERNEL_TO_TRACE"] = kernel
-            env["TRACER_LOG_LEVEL"] = "0"
-            env["TRACER_PIPE_NAME"] = pipe_name
-            env["TRACER_IPC_OUTPUT_FILE"] = ipc_file_name
+            env["ACCORDO_LOG_LEVEL"] = "0"
+            env["ACCORDO_PIPE_NAME"] = pipe_name
+            env["ACCORDO_IPC_OUTPUT_FILE"] = ipc_file_name
 
             pid = os.posix_spawn(binary, [binary], env)
             results[label] = get_kern_arg_data(pipe_name, args, ipc_file_name)

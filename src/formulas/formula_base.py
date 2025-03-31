@@ -128,3 +128,9 @@ class Formula_Base:
         Validates the the application.
         """
         pass
+    @abstractmethod
+    def source_code_pass(self):
+        """
+        Finds the source code.
+        """
+        pass

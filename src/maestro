@@ -78,6 +78,10 @@ def main():
     build_results = optimizer.build()
     build_results.report_out()
 
+    if args.formula == 'diagnoseOnly':
+        source_code_collection = optimizer.source_code_pass()
+        source_code_collection.report_out()
+    return
     # Profile the application and collect the results.
     unoptimized_binary_profiler_results = optimizer.profile_pass()
 
@@ -123,8 +127,8 @@ def main():
                                                         optimized_binary_result=optimized_binary_profiler_results,
                                                         kernel_signature=instrument_results.asset["kernel_signature"] )
         performance_results.report_out()
+
     # Write output
-    
     log = json.dumps(unoptimized_binary_profiler_results.asset, indent=4) if args.formula == "diagnoseOnly" else performance_results.asset['log']
     if args.output_file:
         with open(args.output_file, 'w') as f:
