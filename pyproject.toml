@@ -13,6 +13,7 @@ requires-python = ">=3.8"
 
 # Python dependencies 
 dependencies = [
+    "tomli",
     "openai>=1.0.0"
 ]
 
