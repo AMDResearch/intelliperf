@@ -12,7 +12,7 @@ import openai
 from openai import OpenAIError
 
 from formulas.formula_base import Formula_Base, Result
-from utils.process import capture_subprocess_output
+from utils.process import capture_subprocess_output, exit_on_fail
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 )
@@ -43,6 +43,10 @@ class bank_conflict(Formula_Base):
             [f"{os.environ['GT_TUNING']}/bin/profile_and_load.sh", self.get_app_name()]
             + self.get_app_cmd()
         )
+        exit_on_fail(success = success,
+                     message = "Failed to profile the binary",
+                     log = output)
+                    
         # Load report card with --save flag
         success, output = capture_subprocess_output(
             [
@@ -51,6 +55,10 @@ class bank_conflict(Formula_Base):
                 self.get_app_name(),
             ]
         )
+        exit_on_fail(success = success,
+                     message = "Failed to generate the performance report card.",
+                     log = output)
+                
         matching_db_workloads = {}
         for line in output.splitlines():
             parts = line.split(maxsplit=1)
@@ -67,11 +75,9 @@ class bank_conflict(Formula_Base):
                 f"{os.environ['GT_TUNING']}/maestro_summary.csv",
             ]
         )
-        # Handle critical error
-        if not success:
-            logging.error(f"Critical Error: {output}")
-            logging.error("Failed to generate the performance report card.")
-            sys.exit(1)
+        exit_on_fail(success = success,
+                     message = "Failed to generate the performance report card.",
+                     log = output)
 
         df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_summary.csv")
 
@@ -292,7 +298,7 @@ class bank_conflict(Formula_Base):
                 logging.debug(f"  {key0}[{i}]: {results[key0][i]}")
                 logging.debug(f"  {key1}[{i}]: {results[key1][i]}")
                 logging.debug(f"  Difference: {diff}")
-        
+
         for i in range(len(results[key0])):
             if not np.allclose(results[key0][i], results[key1][i]):
                 return Result(
@@ -314,26 +320,27 @@ class bank_conflict(Formula_Base):
     def performance_pass(self, optimized_binary_result: Result,
                               unoptimized_binary_result: Result,
                               kernel_signature: str) -> Result:
-        
+
         unoptimized_df = unoptimized_binary_result.asset
         unoptimized_time = unoptimized_df.loc[unoptimized_df['Kernel'] == kernel_signature, 'Avg-Duration'].sum()
         unoptimized_conflicts = unoptimized_df.loc[unoptimized_df['Kernel'] == kernel_signature, 'LDS Bank Conflicts'].sum()
-        
+
         optimized_df = optimized_binary_result.asset
         optimized_time = optimized_df.loc[optimized_df['Kernel'] == kernel_signature, 'Avg-Duration'].sum()
         optimized_conflicts = optimized_df.loc[optimized_df['Kernel'] == kernel_signature, 'LDS Bank Conflicts'].sum()
-        
-    
-        success = optimized_conflicts < unoptimized_conflicts 
+
+
+        success = optimized_conflicts < unoptimized_conflicts
         speedup = unoptimized_time / optimized_time
-        conflict_improvement = unoptimized_conflicts / optimized_conflicts
-        report_message = (f"The optimized code contains {conflict_improvement}x fewer shared memory conflicts." 
+        conflict_improvement = unoptimized_conflicts / optimized_conflicts if optimized_conflicts != 0 else 1
+
+        report_message = (f"The optimized code contains {conflict_improvement * 100}% fewer shared memory conflicts."
                         f" The initial implementation contained {unoptimized_conflicts} conflicts and"
                         f" the optimized code contained {optimized_conflicts} conflicts."
                         f" The new code is {speedup:.3f}x faster than the original code. The initial"
                         f" implementation took {unoptimized_time} ns and the new one took"
                         f" {optimized_time} ns.")
-                            
+
         if not success:
             return Result(
                 success=False,

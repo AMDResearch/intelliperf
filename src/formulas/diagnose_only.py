@@ -4,7 +4,7 @@ import json
 import logging
 import pandas as pd
 from formulas.formula_base import Formula_Base, Result
-from utils.process import capture_subprocess_output
+from utils.process import capture_subprocess_output, exit_on_fail
 
 TOP_N = 10
 
@@ -22,6 +22,11 @@ class diagnose_only(Formula_Base):
             [f"{os.environ['GT_TUNING']}/bin/profile_and_load.sh", self.get_app_name()]
             + self.get_app_cmd()
         )
+        
+        exit_on_fail(success = success,
+                     message = "Failed to profile the binary",
+                     log = output)
+                
         # Load report card with --save flag
         success, output = capture_subprocess_output(
             [
@@ -30,6 +35,10 @@ class diagnose_only(Formula_Base):
                 self.get_app_name(),
             ]
         )
+        exit_on_fail(success = success,
+                     message = "Failed to generate the performance report card.",
+                     log = output)
+                
         matching_db_workloads = {}
         for line in output.splitlines():
             parts = line.split(maxsplit=1)
@@ -47,10 +56,9 @@ class diagnose_only(Formula_Base):
             ]
         )
         # Handle critical error
-        if not success:
-            logging.error(f"Critical Error: {output}")
-            logging.error("Failed to generate the performance report card.")
-            sys.exit(1)
+        exit_on_fail(success = success,
+                     message = "Failed to generate the performance report card.",
+                     log = output)
         df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_summary.csv")
         # Create a targeted report card
         top_n_kernels = list(df_results.head(TOP_N)["Kernel"])
