@@ -4,7 +4,7 @@ import os
 import sys
 import shutil
 
-from utils.process import capture_subprocess_output
+from utils.process import capture_subprocess_output, exit_on_fail
 
 
 class Result:
