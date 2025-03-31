@@ -2,11 +2,23 @@
 import subprocess
 import io
 import selectors
+import logging
+import sys
 
+def exit_on_fail(success: bool, message: str, log: str = ""):
+    if not success:
+        full_msg = f"{message}\n{log.strip()}" if log.strip() else message
+        logging.error("Critical Error: %s", full_msg)
+        sys.exit(1)
+    
 def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
     # Start subprocess
     # bufsize = 1 means output is line buffered
     # universal_newlines = True is required for line buffering
+    logging.debug(f"Running the command: {' '.join(subprocess_args)}")
+    if new_env != None:
+        logging.debug(f"Inside the environment: {new_env}")
+    
     process = (
         subprocess.Popen(
             subprocess_args,
@@ -66,7 +78,6 @@ def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
     # Get process return code
     return_code = process.wait()
     selector.close()
-
     success = return_code == 0
 
     # Store buffered output

@@ -4,7 +4,7 @@ import os
 import sys
 import shutil
 
-from utils.process import capture_subprocess_output
+from utils.process import capture_subprocess_output, exit_on_fail
 
 
 class Result:
@@ -73,11 +73,12 @@ class Formula_Base:
             )
         else:
             success, result = capture_subprocess_output(self.__build_script)
+            
             # Handle critical error
-            if not success:
-                logging.error(f"Failed to build {self.__name} application.")
-                logging.error(result)
-                sys.exit(1)
+            exit_on_fail(success = success,
+                        message = f"Failed to build {self.__name} application.",
+                        log = result)
+
             return Result(
                 success=success,
                 asset={

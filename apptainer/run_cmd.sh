@@ -8,6 +8,7 @@ cd $parent_dir
 
 size=2048
 cmd=""
+debug=0
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -19,8 +20,12 @@ while [[ $# -gt 0 ]]; do
             cmd=$2
             shift 2
             ;;
+        -d|--debug)
+            debug=1
+            shift
+            ;;
         *)
-            echo "Usage: $0 [-s size] --cmd '<command>'"
+            echo "Usage: $0 [-s size] --cmd '<command>' [-d|--debug]"
             exit 1
             ;;
     esac
@@ -39,6 +44,13 @@ fi
 echo "[Log] Utilize the directory /var/cache/maestro as a sandbox to store data you'd like to persist between container runs."
 
 # Run the container
-image="apptainer/maestro.sif"
+if [[ $debug -eq 1 ]]; then
+    image="apptainer/maestro_debug.sif"
+else
+    image="apptainer/maestro.sif"
+fi
 echo "cmd: $cmd"
-apptainer exec --overlay "${overlay}" --cleanenv --env OPENAI_API_KEY="$OPENAI_API_KEY" "$image" bash --rcfile /etc/bash.bashrc -c "cd src && eval \"$cmd\""
+apptainer exec --overlay "${overlay}"\
+            --cleanenv --env OPENAI_API_KEY="$OPENAI_API_KEY"\
+            "$image" bash --rcfile /etc/bash.bashrc\
+            -c "cd src && eval \"$cmd\""
