@@ -4,7 +4,7 @@ import os
 import sys
 import shutil
 
-from utils.process import capture_subprocess_output
+from utils.process import capture_subprocess_output, exit_on_fail
 
 
 class Result:
@@ -64,18 +64,27 @@ class Formula_Base:
     def get_app_name(self):
         return self.__name
     def build(self):
-        success, result = capture_subprocess_output([self.__build_script])
-        # Handle critical error
-        if not success:
-            logging.error(f"Failed to build {self.__name} application.")
-            logging.error(result)
-            sys.exit(1)
-        return Result(
-            success=success,
-            asset={
-                "log": result
-            }
-        )
+        if not self.__build_script:
+            return Result(
+                success=True,
+                asset={
+                    "log": "No build script provided. Skipping build step."
+                }
+            )
+        else:
+            success, result = capture_subprocess_output(self.__build_script)
+            
+            # Handle critical error
+            exit_on_fail(success = success,
+                        message = f"Failed to build {self.__name} application.",
+                        log = result)
+
+            return Result(
+                success=success,
+                asset={
+                    "log": result
+                }
+            )
     # ----------------------------------------------------
     # Required methods to be implemented by child classes
     # ----------------------------------------------------
