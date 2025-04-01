@@ -3,7 +3,9 @@ import logging
 import os
 import sys
 import shutil
-
+import pandas as pd
+import json
+from pprint import pformat
 from utils.process import capture_subprocess_output, exit_on_fail
 
 
@@ -23,8 +25,12 @@ class Result:
             logging.info(self.log)
             if self.asset is not None:
                 for asset in self.asset:
-                    logging.info(self.asset)
-
+                    if isinstance(asset, pd.DataFrame):
+                        logging.info("\n%s", asset.to_string(index=False))
+                    elif isinstance(asset, dict):
+                        logging.info("\n%s", json.dumps(asset, indent=2))
+                    else:
+                        logging.info("\n%s", pformat(asset))
         else:
             logging.error(f"Error: {self.error_report}")
             sys.exit(1)
