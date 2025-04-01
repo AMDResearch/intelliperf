@@ -99,13 +99,7 @@ class Formula_Base:
         """
         Extract any required performance data from the application using the specified profiler.
         """
-        # Validate profiler
-        if self.profiler == "guided-tuning":
-            if 'GT_TUNING' not in os.environ:
-                logging.error(f"Cannot resolve profiler {self.profiler}: GT_TUNING environment variable must be set to install dir.")
-        else:
-            logging.error(f"Profiler {self.profiler} not supported.")
-
+        pass
 
     @abstractmethod
     def instrument_pass(self):

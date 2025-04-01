@@ -13,13 +13,14 @@ from openai import OpenAIError
 
 from formulas.formula_base import Formula_Base, Result
 from utils.process import capture_subprocess_output, exit_on_fail
+from utils.env import get_guided_tuning_path
+
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 )
 from accordo.python.communicate import get_kern_arg_data, send_response
 from accordo.python.code_gen import generate_header
 from accordo.python.utils import run_subprocess
-
 
 class bank_conflict(Formula_Base):
     def __init__(self, name, build_script, app_cmd, only_consider_top_kernel=False):
@@ -40,7 +41,7 @@ class bank_conflict(Formula_Base):
         logging.debug(f"Profiling app with command {self.get_app_cmd()}")
         # Call guided-tuning to profile the application
         success, output = capture_subprocess_output(
-            [f"{os.environ['GT_TUNING']}/bin/profile_and_load.sh", self.get_app_name()]
+            [f"{get_guided_tuning_path()}/bin/profile_and_load.sh", self.get_app_name()]
             + self.get_app_cmd()
         )
         exit_on_fail(success = success,
@@ -50,7 +51,7 @@ class bank_conflict(Formula_Base):
         # Load report card with --save flag
         success, output = capture_subprocess_output(
             [
-                f"{os.environ['GT_TUNING']}/bin/show_data.sh",
+                f"{get_guided_tuning_path()}/bin/show_data.sh",
                 "-n",
                 self.get_app_name(),
             ]
@@ -68,18 +69,18 @@ class bank_conflict(Formula_Base):
         logging.debug(f"Matching DB Workloads: {matching_db_workloads}")
         success, output = capture_subprocess_output(
             [
-                f"{os.environ['GT_TUNING']}/bin/show_data.sh",
+                f"{get_guided_tuning_path()}/bin/show_data.sh",
                 "-w",
                 list(matching_db_workloads.keys())[-1],
                 "--save",
-                f"{os.environ['GT_TUNING']}/maestro_summary.csv",
+                f"{get_guided_tuning_path()}/maestro_summary.csv",
             ]
         )
         exit_on_fail(success = success,
                      message = "Failed to generate the performance report card.",
                      log = output)
 
-        df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_summary.csv")
+        df_results = pd.read_csv(f"{get_guided_tuning_path()}/maestro_summary.csv")
 
         return Result(
             success=True,

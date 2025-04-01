@@ -5,6 +5,9 @@ import logging
 import pandas as pd
 from formulas.formula_base import Formula_Base, Result
 from utils.process import capture_subprocess_output, exit_on_fail
+from utils.env import get_guided_tuning_path
+import re
+import tempfile
 
 TOP_N = 10
 
@@ -19,7 +22,7 @@ class diagnose_only(Formula_Base):
         logging.debug(f"Profiling app with command {self.get_app_cmd()}")
         # Call guided-tuning to profile the application
         success, output = capture_subprocess_output(
-            [f"{os.environ['GT_TUNING']}/bin/profile_and_load.sh", self.get_app_name()]
+            [f"{get_guided_tuning_path()}/bin/profile_and_load.sh", self.get_app_name()]
             + self.get_app_cmd()
         )
         
@@ -30,7 +33,7 @@ class diagnose_only(Formula_Base):
         # Load report card with --save flag
         success, output = capture_subprocess_output(
             [
-                f"{os.environ['GT_TUNING']}/bin/show_data.sh",
+                f"{get_guided_tuning_path()}/bin/show_data.sh",
                 "-n",
                 self.get_app_name(),
             ]
@@ -48,34 +51,40 @@ class diagnose_only(Formula_Base):
         logging.debug(f"Matching DB Workloads: {matching_db_workloads}")
         success, output = capture_subprocess_output(
             [
-                f"{os.environ['GT_TUNING']}/bin/show_data.sh",
+                f"{get_guided_tuning_path()}/bin/show_data.sh",
                 "-w",
                 list(matching_db_workloads.keys())[-1],
                 "--save",
-                f"{os.environ['GT_TUNING']}/maestro_summary.csv",
+                f"{get_guided_tuning_path()}/maestro_summary.csv",
             ]
         )
         # Handle critical error
         exit_on_fail(success = success,
                      message = "Failed to generate the performance report card.",
                      log = output)
-        df_results = pd.read_csv(f"{os.environ['GT_TUNING']}/maestro_summary.csv")
+        df_results = pd.read_csv(f"{get_guided_tuning_path()}/maestro_summary.csv")
         # Create a targeted report card
         top_n_kernels = list(df_results.head(TOP_N)["Kernel"])
         logging.debug(f"top_n_kernels: {top_n_kernels}")
         success, output = capture_subprocess_output(
             [
-                f"{os.environ['GT_TUNING']}/bin/show_data.sh",
+                f"{get_guided_tuning_path()}/bin/show_data.sh",
                 "-w",
                 list(matching_db_workloads.keys())[-1],
                 "-k",
                 *top_n_kernels,
                 "--separate",
                 "--save",
-                f"{os.environ['GT_TUNING']}/maestro_report_card.json",
+                f"{get_guided_tuning_path()}/maestro_report_card.json",
             ]
         )
-        df_results = json.loads(open(f"{os.environ['GT_TUNING']}/maestro_report_card.json").read())
+        df_results = json.loads(open(f"{get_guided_tuning_path()}/maestro_report_card.json").read())
+
+        for entry in df_results:
+            kernel = entry.get("workload", {}).get("kernel", "")
+            entry["workload"]["kernel"] = re.sub(r"\s*\[clone\s+\.kd\]", "", kernel)
+
+
         return Result(
             success=True,
             asset=df_results
@@ -98,9 +107,25 @@ class diagnose_only(Formula_Base):
         nexus_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../external/nexus"))
         lib = os.path.join(nexus_directory, "build", "lib", "libnexus.so")
         env = os.environ.copy()
-        json_result_file = "results.json"
-        env["HSA_TOOLS_LIB"] = lib
-        env["NEXUS_LOG_LEVEL"] = "2"
-        env["ACCORDO_OUTPUT_FILE"] = json_result_file
-        print(f"self.get_app_cmd(): {self.get_app_cmd()}")
-        success, log = capture_subprocess_output(self.get_app_cmd(), new_env=env)
+
+
+        with tempfile.TemporaryDirectory() as tmp:
+            json_result_file = os.path.join(tmp, 'nexus_output.json')
+
+
+            env["HSA_TOOLS_LIB"] = lib
+            env["NEXUS_LOG_LEVEL"] = "2"
+            env["NEXUS_OUTPUT_FILE"] = json_result_file
+            success, log = capture_subprocess_output(self.get_app_cmd(), new_env=env)
+            df_results = json.loads(open(json_result_file).read())
+
+        if not success:
+            return Result(
+                success=False,
+                asset=log
+            )
+
+        return Result(
+            success=True,
+            asset=df_results
+        )        

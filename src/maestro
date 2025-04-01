@@ -78,12 +78,22 @@ def main():
     build_results = optimizer.build()
     build_results.report_out()
 
+    # Profile the application and collect the results.
+    unoptimized_binary_profiler_results = optimizer.profile_pass()
+    unoptimized_binary_profiler_results.report_out()
+
+    # Get source code mappings
     if args.formula == 'diagnoseOnly':
         source_code_collection = optimizer.source_code_pass()
         source_code_collection.report_out()
-    return
-    # Profile the application and collect the results.
-    unoptimized_binary_profiler_results = optimizer.profile_pass()
+
+        profiler_data = unoptimized_binary_profiler_results.asset
+        source_kernels = source_code_collection.asset["kernels"]
+
+        # In-place append of source info
+        for entry in profiler_data:
+            kernel_name = entry["workload"]["kernel"]
+            entry["source"] = source_kernels.get(kernel_name, None)
 
     if args.formula != 'diagnoseOnly':
         # Instrument the application based on the results.
