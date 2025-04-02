@@ -53,7 +53,7 @@ cmake -DCMAKE_PREFIX_PATH=${ROCM_PATH} \
       -DTRITON_LLVM=$TRITON_LLVM_PATH \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_VERBOSE_MAKEFILE=ON -S . -B build &&
-cmake --build build --parallel 1 &&
+cmake --build build --parallel 1
 """
 
 
