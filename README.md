@@ -39,7 +39,7 @@ python3 scripts/install_tool.py --all
 ```
 
 4. Additional dependencies:
-```
+```shell
 # For ROCm
 apt-get install -y rocm-llvm-dev libzstd-dev
 
