@@ -490,22 +490,18 @@ void accordo::write_packets(hsa_queue_t* queue,
 
     hsa_ext_amd_aql_pm4_packet_t modified_packet = *packet;
 
-    // I think that:
-    // For some reason this messes up the timing of events?
-    // Benchmarking code relies on events and some how this result in zero different
-
-    // hsa_signal_t old_signal = modified_packet.completion_signal;
-    // modified_packet.completion_signal = new_signal;
+    hsa_signal_t old_signal = modified_packet.completion_signal;
+    modified_packet.completion_signal = new_signal;
 
     writer(&modified_packet, count);
 
-    // hsa_signal_wait_scacquire(
-    //     new_signal, HSA_SIGNAL_CONDITION_EQ, 0, UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
+    hsa_signal_wait_scacquire(
+        new_signal, HSA_SIGNAL_CONDITION_EQ, 0, UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
 
-    // if (old_signal.handle != 0) {
-    //   hsa_core_call(instance, hsa_signal_subtract_relaxed, old_signal, 1);
-    // }
-    // hsa_core_call(instance, hsa_signal_destroy, new_signal);
+    if (old_signal.handle != 0) {
+      hsa_core_call(instance, hsa_signal_subtract_relaxed, old_signal, 1);
+    }
+    hsa_core_call(instance, hsa_signal_destroy, new_signal);
 
     auto args = is_traceable_packet(packet);
     if (args.has_value()) {
