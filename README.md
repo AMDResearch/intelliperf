@@ -60,8 +60,8 @@ export PATH=$(pwd)/$maestro/src:$PATH
 
 ## Usage:
 
-```shell
-./maestro --help
+```console
+$ maestro --help
 usage: 
         maestro [options] -- <profile_cmd>
 
