@@ -33,9 +33,9 @@ std::shared_mutex accordo::stop_mutex_{};
 accordo* accordo::singleton_{nullptr};
 
 accordo::accordo(HsaApiTable* table,
-               uint64_t runtime_version,
-               uint64_t failed_tool_count,
-               const char* const* failed_tool_names)
+                 uint64_t runtime_version,
+                 uint64_t failed_tool_count,
+                 const char* const* failed_tool_names)
     : api_table_{table} {
   LOG_DETAIL("Saving current APIs.");
   save_hsa_api();
@@ -60,47 +60,47 @@ accordo::accordo(HsaApiTable* table,
   }
 
   HsaAgent::get_all_agents(agents_);
-  for (const auto& agent : agents_){
+  for (const auto& agent : agents_) {
     agent.print_info();
   }
-
 }
 
-static void* memcpy_d2h(const void* device_ptr, size_t size, const std::vector<HsaAgent>& agents_) {
+static void* memcpy_d2h(const void* device_ptr,
+                        size_t size,
+                        const std::vector<HsaAgent>& agents_) {
   // Find a CPU agent with a fine-grained memory region
   for (const auto& agent : agents_) {
-      if (!agent.is_gpu) { // Find a CPU agent
-          for (const auto& region : agent.memory_regions) {
-              if (region.is_global) { // Fine-grained memory for CPU
-                  void* host_ptr = nullptr;
-                  hsa_status_t status = hsa_memory_allocate(region.region, size, &host_ptr);
-                  
-                  LOG_DETAIL("Allocated CPU pointer {} ({} bytes).", host_ptr, size);
-                  if (status != HSA_STATUS_SUCCESS || host_ptr == nullptr) {
-                      LOG_DETAIL("Failed to allocate fine-grained host memory of size {}", size);
-                      return nullptr;
-                  }
+    if (!agent.is_gpu) {  // Find a CPU agent
+      for (const auto& region : agent.memory_regions) {
+        if (region.is_global) {  // Fine-grained memory for CPU
+          void* host_ptr = nullptr;
+          hsa_status_t status = hsa_memory_allocate(region.region, size, &host_ptr);
 
-                  // Copy memory from device to host
-                  LOG_DETAIL("D2H copying to {} from ({} bytes).", host_ptr, device_ptr, size);
-                  
-                  status = hsa_memory_copy(host_ptr, device_ptr, size);
-                  if (status != HSA_STATUS_SUCCESS) {
-                      LOG_DETAIL("Failed to copy device memory to host");
-                      hsa_amd_memory_pool_free(host_ptr);
-                      return nullptr;
-                  }
-
-                  return host_ptr;
-              }
+          LOG_DETAIL("Allocated CPU pointer {} ({} bytes).", host_ptr, size);
+          if (status != HSA_STATUS_SUCCESS || host_ptr == nullptr) {
+            LOG_DETAIL("Failed to allocate fine-grained host memory of size {}", size);
+            return nullptr;
           }
+
+          // Copy memory from device to host
+          LOG_DETAIL("D2H copying to {} from ({} bytes).", host_ptr, device_ptr, size);
+
+          status = hsa_memory_copy(host_ptr, device_ptr, size);
+          if (status != HSA_STATUS_SUCCESS) {
+            LOG_DETAIL("Failed to copy device memory to host");
+            hsa_amd_memory_pool_free(host_ptr);
+            return nullptr;
+          }
+
+          return host_ptr;
+        }
       }
+    }
   }
 
   LOG_DETAIL("No suitable CPU agent with fine-grained memory found.");
   return nullptr;
 }
-
 
 template <typename T, typename Func, std::size_t... Is>
 inline void for_each_field_impl(const T& obj, Func func, std::index_sequence<Is...>) {
@@ -127,7 +127,6 @@ void printHipIpcMemHandle(const hipIpcMemHandle_t& handle, const std::string& me
     }
   }
 }
-
 
 void writeIpcHandleToFile(const hipIpcMemHandle_t& handle, size_t ptr_size) {
   static const char* file_name = std::getenv("ACCORDO_IPC_OUTPUT_FILE");
@@ -169,9 +168,9 @@ void accordo::send_message_and_wait(void* args) {
     return;
   }
   for_each_field(args_struct, [&](const auto& field) {
-    if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> && 
-                  !std::is_const_v<std::remove_pointer_t<std::decay_t<decltype(field)>>>) {
-      
+    if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> &&
+                  !std::is_const_v<
+                      std::remove_pointer_t<std::decay_t<decltype(field)>>>) {
       size_t ptr_size = 0;
       {
         auto instance = get_instance();
@@ -185,8 +184,10 @@ void accordo::send_message_and_wait(void* args) {
       }
 
       auto cpu_ptr = memcpy_d2h(field, ptr_size, agents_);
-      LOG_DETAIL("Sending the handle for the CPU pointer {} ({} bytes).", reinterpret_cast<void*>(cpu_ptr), ptr_size);
-      
+      LOG_DETAIL("Sending the handle for the CPU pointer {} ({} bytes).",
+                 reinterpret_cast<void*>(cpu_ptr),
+                 ptr_size);
+
       hipIpcMemHandle_t handle;
       hipError_t ipc_result = hipIpcGetMemHandle(&handle, field);
       if (ipc_result != hipSuccess) {
@@ -196,10 +197,11 @@ void accordo::send_message_and_wait(void* args) {
       }
       printHipIpcMemHandle(handle, "handle");
 
-
       const auto float_ptr = reinterpret_cast<const float*>(field);
-      LOG_DETAIL("Sending the handle for the pointer {} ({} bytes).", reinterpret_cast<void*>(field), ptr_size);
-       writeIpcHandleToFile(handle, ptr_size);
+      LOG_DETAIL("Sending the handle for the pointer {} ({} bytes).",
+                 reinterpret_cast<void*>(field),
+                 ptr_size);
+      writeIpcHandleToFile(handle, ptr_size);
     }
   });
 
@@ -352,9 +354,9 @@ std::optional<void*> accordo::is_traceable_packet(
 }
 
 accordo* accordo::get_instance(HsaApiTable* table,
-                             uint64_t runtime_version,
-                             uint64_t failed_tool_count,
-                             const char* const* failed_tool_names) {
+                               uint64_t runtime_version,
+                               uint64_t failed_tool_count,
+                               const char* const* failed_tool_names) {
   const std::lock_guard<std::mutex> lock(mutex_);
   if (!singleton_) {
     if (table != NULL) {
@@ -374,9 +376,9 @@ accordo::~accordo() {
 }
 
 hsa_status_t accordo::hsa_executable_get_symbol_by_name(hsa_executable_t executable,
-                                                       const char* symbol_name,
-                                                       const hsa_agent_t* agent,
-                                                       hsa_executable_symbol_t* symbol) {
+                                                        const char* symbol_name,
+                                                        const hsa_agent_t* agent,
+                                                        hsa_executable_symbol_t* symbol) {
   LOG_DETAIL(
       "Looking up the kernel {} \n\t ({})", symbol_name, demangle_name(symbol_name));
 
@@ -456,10 +458,10 @@ hsa_status_t accordo::add_queue(hsa_queue_t* queue, hsa_agent_t agent) {
 }
 
 void accordo::on_submit_packet(const void* in_packets,
-                              uint64_t count,
-                              uint64_t user_que_idx,
-                              void* data,
-                              hsa_amd_queue_intercept_packet_writer writer) {
+                               uint64_t count,
+                               uint64_t user_que_idx,
+                               void* data,
+                               hsa_amd_queue_intercept_packet_writer writer) {
   auto instance = get_instance();
   if (instance) {
     hsa_queue_t* queue = reinterpret_cast<hsa_queue_t*>(data);
@@ -471,9 +473,9 @@ void accordo::on_submit_packet(const void* in_packets,
 }
 
 void accordo::write_packets(hsa_queue_t* queue,
-                           const hsa_ext_amd_aql_pm4_packet_t* packet,
-                           uint64_t count,
-                           hsa_amd_queue_intercept_packet_writer writer) {
+                            const hsa_ext_amd_aql_pm4_packet_t* packet,
+                            uint64_t count,
+                            hsa_amd_queue_intercept_packet_writer writer) {
   try {
     LOG_DETAIL("Executing packet: {}", packet_to_text(packet));
     auto instance = get_instance();
@@ -487,18 +489,23 @@ void accordo::write_packets(hsa_queue_t* queue,
     }
 
     hsa_ext_amd_aql_pm4_packet_t modified_packet = *packet;
-    hsa_signal_t old_signal = modified_packet.completion_signal;
-    modified_packet.completion_signal = new_signal;
+
+    // I think that:
+    // For some reason this messes up the timing of events?
+    // Benchmarking code relies on events and some how this result in zero different
+
+    // hsa_signal_t old_signal = modified_packet.completion_signal;
+    // modified_packet.completion_signal = new_signal;
 
     writer(&modified_packet, count);
 
-    hsa_signal_wait_scacquire(
-        new_signal, HSA_SIGNAL_CONDITION_EQ, 0, UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
+    // hsa_signal_wait_scacquire(
+    //     new_signal, HSA_SIGNAL_CONDITION_EQ, 0, UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
 
-    if (old_signal.handle != 0) {
-      hsa_core_call(instance, hsa_signal_subtract_relaxed, old_signal, 1);
-    }
-    hsa_core_call(instance, hsa_signal_destroy, new_signal);
+    // if (old_signal.handle != 0) {
+    //   hsa_core_call(instance, hsa_signal_subtract_relaxed, old_signal, 1);
+    // }
+    // hsa_core_call(instance, hsa_signal_destroy, new_signal);
 
     auto args = is_traceable_packet(packet);
     if (args.has_value()) {
@@ -510,9 +517,9 @@ void accordo::write_packets(hsa_queue_t* queue,
 }
 
 hsa_status_t accordo::hsa_amd_memory_pool_allocate(hsa_amd_memory_pool_t pool,
-                                                  size_t size,
-                                                  uint32_t flags,
-                                                  void** ptr) {
+                                                   size_t size,
+                                                   uint32_t flags,
+                                                   void** ptr) {
   auto instance = get_instance();
   const auto result =
       hsa_ext_call(instance, hsa_amd_memory_pool_allocate, pool, size, flags, ptr);
@@ -535,15 +542,15 @@ hsa_status_t accordo::hsa_memory_allocate(hsa_region_t region, size_t size, void
 }
 
 hsa_status_t accordo::hsa_queue_create(hsa_agent_t agent,
-                                      uint32_t size,
-                                      hsa_queue_type32_t type,
-                                      void (*callback)(hsa_status_t status,
-                                                       hsa_queue_t* source,
-                                                       void* data),
-                                      void* data,
-                                      uint32_t private_segment_size,
-                                      uint32_t group_segment_size,
-                                      hsa_queue_t** queue) {
+                                       uint32_t size,
+                                       hsa_queue_type32_t type,
+                                       void (*callback)(hsa_status_t status,
+                                                        hsa_queue_t* source,
+                                                        void* data),
+                                       void* data,
+                                       uint32_t private_segment_size,
+                                       uint32_t group_segment_size,
+                                       hsa_queue_t** queue) {
   LOG_DETAIL("Creating maestro-rt queue");
 
   hsa_status_t result = HSA_STATUS_SUCCESS;
