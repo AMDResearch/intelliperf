@@ -29,7 +29,7 @@ cd maestro
 ```
 
 2. Install Maestro:
-```
+```shell
 pip install -e .
 ```
 
