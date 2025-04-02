@@ -3,7 +3,7 @@
 ![Maestro](./images/maestro.png)
 
 
-**Maestro** is a tool that provides summarizations of workloads and performance metrics and their source code alongside suggestions for code improvements. Maestro orchestrates existing Omni-tools such as `rocprofiler-compute`, and _Guided Tuning_ and new ones such as _Accordo_ and _Nexus_ for correctness validation and code object back to source code mapping.
+**Maestro** is a tool that reports and optimizes performance bottlenecks in an automated workflow. Given a target application, our tool generates kernel report cards containing performance metrics and their source code object alongside suggestions for code improvements. Maestro orchestrates existing Omni-tools such as [rocprofiler-compute](https://github.com/ROCm/rocprofiler-compute), and [guided-tuning](https://github.com/AARInternal/guided-tuning) in addition to new ones like _Accordo_ for correctness validation and [nexus](https://github.com/AARInternal/nexus) for code object back to source code mapping.
 
 
 ## Getting Started
