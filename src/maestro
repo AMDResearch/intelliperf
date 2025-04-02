@@ -11,7 +11,7 @@ from tabulate import tabulate
 
 def maestro_parser():
     parser = argparse.ArgumentParser(
-        description='Optimize the given application based on available Maestro formulas.',
+        description='Optimize and analyze the given application based on available Maestro formulas.',
         prog="tool",
         formatter_class=lambda prog: argparse.RawTextHelpFormatter(
             prog, max_help_position=30
