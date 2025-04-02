@@ -51,7 +51,7 @@ locale-gen en_US.UTF-8
 5. Add Maestro and dependencies to your path:
 
 ```shell
-export PATH=/opt/logduration/bin/logDuration:$PATH
+export PATH=$(pwd)/external/logduration/omniprobe:$PATH
 export PATH=$(pwd)/external/rocprofiler-compute/src:$PATH
 export PATH=$(pwd)/$maestro/src:$PATH
 ```
