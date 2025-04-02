@@ -34,7 +34,7 @@ pip install -e .
 ```
 
 3. Install the dependencies:
-```terminal
+```shell
 python3 scripts/install_tool.py --all
 ```
 
