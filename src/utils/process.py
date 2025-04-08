@@ -4,6 +4,7 @@ import io
 import selectors
 import logging
 import sys
+import json
 
 def exit_on_fail(success: bool, message: str, log: str = ""):
     if not success:
@@ -17,7 +18,7 @@ def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
     # universal_newlines = True is required for line buffering
     logging.debug(f"Running the command: {' '.join(subprocess_args)}")
     if new_env != None:
-        logging.debug(f"Inside the environment: {new_env}")
+        logging.debug("Inside the environment:\n%s", json.dumps(new_env, indent=2))
     
     process = (
         subprocess.Popen(

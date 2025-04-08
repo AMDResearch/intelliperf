@@ -3,7 +3,7 @@
 
 include_guard()
 
-option(TRACER_WERROR "Make all warnings into errors." OFF)
+option(ACCORDO_WERROR "Make all warnings into errors." OFF)
 
 
 function(maestro_compiler_options TARGET)
@@ -25,6 +25,6 @@ function(maestro_compiler_warnings TARGET)
     message("Adding ${TARGET}")
     target_compile_options(${TARGET} INTERFACE
         $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX>
-        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic $<$<BOOL:${TRACER_WERROR}>:-Werror>>
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic $<$<BOOL:${ACCORDO_WERROR}>:-Werror>>
     )
 endfunction()

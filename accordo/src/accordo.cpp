@@ -1,7 +1,7 @@
 
 #define __HIP_PLATFORM_AMD__
 
-#include "tracer.hpp"
+#include "accordo.hpp"
 #include <fmt/core.h>
 #include "log.hpp"
 
@@ -28,14 +28,14 @@
 
 namespace maestro {
 
-std::mutex tracer::mutex_{};
-std::shared_mutex tracer::stop_mutex_{};
-tracer* tracer::singleton_{nullptr};
+std::mutex accordo::mutex_{};
+std::shared_mutex accordo::stop_mutex_{};
+accordo* accordo::singleton_{nullptr};
 
-tracer::tracer(HsaApiTable* table,
-               uint64_t runtime_version,
-               uint64_t failed_tool_count,
-               const char* const* failed_tool_names)
+accordo::accordo(HsaApiTable* table,
+                 uint64_t runtime_version,
+                 uint64_t failed_tool_count,
+                 const char* const* failed_tool_names)
     : api_table_{table} {
   LOG_DETAIL("Saving current APIs.");
   save_hsa_api();
@@ -49,58 +49,58 @@ tracer::tracer(HsaApiTable* table,
   }
 
   // Create the FIFO
-  static const char* pipe_name = std::getenv("TRACER_PIPE_NAME");
+  static const char* pipe_name = std::getenv("ACCORDO_PIPE_NAME");
   if (pipe_name) {
     if (mkfifo(pipe_name, 0666) == -1 && errno != EEXIST) {
       LOG_DETAIL("mkfifo failed");
     }
   } else {
-    LOG_ERROR("Set TRACER_PIPE_NAME to communicate with driver script.");
+    LOG_ERROR("Set ACCORDO_PIPE_NAME to communicate with driver script.");
     std::terminate();
   }
 
   HsaAgent::get_all_agents(agents_);
-  for (const auto& agent : agents_){
+  for (const auto& agent : agents_) {
     agent.print_info();
   }
-
 }
 
-static void* memcpy_d2h(const void* device_ptr, size_t size, const std::vector<HsaAgent>& agents_) {
+static void* memcpy_d2h(const void* device_ptr,
+                        size_t size,
+                        const std::vector<HsaAgent>& agents_) {
   // Find a CPU agent with a fine-grained memory region
   for (const auto& agent : agents_) {
-      if (!agent.is_gpu) { // Find a CPU agent
-          for (const auto& region : agent.memory_regions) {
-              if (region.is_global) { // Fine-grained memory for CPU
-                  void* host_ptr = nullptr;
-                  hsa_status_t status = hsa_memory_allocate(region.region, size, &host_ptr);
-                  
-                  LOG_DETAIL("Allocated CPU pointer {} ({} bytes).", host_ptr, size);
-                  if (status != HSA_STATUS_SUCCESS || host_ptr == nullptr) {
-                      LOG_DETAIL("Failed to allocate fine-grained host memory of size {}", size);
-                      return nullptr;
-                  }
+    if (!agent.is_gpu) {  // Find a CPU agent
+      for (const auto& region : agent.memory_regions) {
+        if (region.is_global) {  // Fine-grained memory for CPU
+          void* host_ptr = nullptr;
+          hsa_status_t status = hsa_memory_allocate(region.region, size, &host_ptr);
 
-                  // Copy memory from device to host
-                  LOG_DETAIL("D2H copying to {} from ({} bytes).", host_ptr, device_ptr, size);
-                  
-                  status = hsa_memory_copy(host_ptr, device_ptr, size);
-                  if (status != HSA_STATUS_SUCCESS) {
-                      LOG_DETAIL("Failed to copy device memory to host");
-                      hsa_amd_memory_pool_free(host_ptr);
-                      return nullptr;
-                  }
-
-                  return host_ptr;
-              }
+          LOG_DETAIL("Allocated CPU pointer {} ({} bytes).", host_ptr, size);
+          if (status != HSA_STATUS_SUCCESS || host_ptr == nullptr) {
+            LOG_DETAIL("Failed to allocate fine-grained host memory of size {}", size);
+            return nullptr;
           }
+
+          // Copy memory from device to host
+          LOG_DETAIL("D2H copying to {} from ({} bytes).", host_ptr, device_ptr, size);
+
+          status = hsa_memory_copy(host_ptr, device_ptr, size);
+          if (status != HSA_STATUS_SUCCESS) {
+            LOG_DETAIL("Failed to copy device memory to host");
+            hsa_amd_memory_pool_free(host_ptr);
+            return nullptr;
+          }
+
+          return host_ptr;
+        }
       }
+    }
   }
 
   LOG_DETAIL("No suitable CPU agent with fine-grained memory found.");
   return nullptr;
 }
-
 
 template <typename T, typename Func, std::size_t... Is>
 inline void for_each_field_impl(const T& obj, Func func, std::index_sequence<Is...>) {
@@ -128,11 +128,10 @@ void printHipIpcMemHandle(const hipIpcMemHandle_t& handle, const std::string& me
   }
 }
 
-
 void writeIpcHandleToFile(const hipIpcMemHandle_t& handle, size_t ptr_size) {
-  static const char* file_name = std::getenv("TRACER_IPC_OUTPUT_FILE");
+  static const char* file_name = std::getenv("ACCORDO_IPC_OUTPUT_FILE");
   if (!file_name) {
-    LOG_ERROR("Set TRACER_IPC_OUTPUT_FILE to communicate with driver script.");
+    LOG_ERROR("Set ACCORDO_IPC_OUTPUT_FILE to communicate with driver script.");
     std::terminate();
   }
   std::ofstream file(file_name, std::ios::binary | std::ios::app);
@@ -150,7 +149,7 @@ void writeIpcHandleToFile(const hipIpcMemHandle_t& handle, size_t ptr_size) {
 
   LOG_DETAIL("Appended IPC handle and size ({} bytes) to file: {}", ptr_size, file_name);
 }
-void tracer::send_message_and_wait(void* args) {
+void accordo::send_message_and_wait(void* args) {
   const auto args_struct = reinterpret_cast<KernelArguments*>(args);
 
   for_each_field(args_struct, [](const auto& field) {
@@ -162,16 +161,16 @@ void tracer::send_message_and_wait(void* args) {
   });
 
   // Export IPC handles
-  static const char* pipe_name = std::getenv("TRACER_PIPE_NAME");
+  static const char* pipe_name = std::getenv("ACCORDO_PIPE_NAME");
   int fd = open(pipe_name, O_WRONLY);
   if (fd < 0) {
     LOG_ERROR("Failed to open FIFO for writing");
     return;
   }
   for_each_field(args_struct, [&](const auto& field) {
-    if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> && 
-                  !std::is_const_v<std::remove_pointer_t<std::decay_t<decltype(field)>>>) {
-      
+    if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> &&
+                  !std::is_const_v<
+                      std::remove_pointer_t<std::decay_t<decltype(field)>>>) {
       size_t ptr_size = 0;
       {
         auto instance = get_instance();
@@ -185,8 +184,10 @@ void tracer::send_message_and_wait(void* args) {
       }
 
       auto cpu_ptr = memcpy_d2h(field, ptr_size, agents_);
-      LOG_DETAIL("Sending the handle for the CPU pointer {} ({} bytes).", reinterpret_cast<void*>(cpu_ptr), ptr_size);
-      
+      LOG_DETAIL("Sending the handle for the CPU pointer {} ({} bytes).",
+                 reinterpret_cast<void*>(cpu_ptr),
+                 ptr_size);
+
       hipIpcMemHandle_t handle;
       hipError_t ipc_result = hipIpcGetMemHandle(&handle, field);
       if (ipc_result != hipSuccess) {
@@ -196,10 +197,11 @@ void tracer::send_message_and_wait(void* args) {
       }
       printHipIpcMemHandle(handle, "handle");
 
-
       const auto float_ptr = reinterpret_cast<const float*>(field);
-      LOG_DETAIL("Sending the handle for the pointer {} ({} bytes).", reinterpret_cast<void*>(field), ptr_size);
-       writeIpcHandleToFile(handle, ptr_size);
+      LOG_DETAIL("Sending the handle for the pointer {} ({} bytes).",
+                 reinterpret_cast<void*>(field),
+                 ptr_size);
+      writeIpcHandleToFile(handle, ptr_size);
     }
   });
 
@@ -215,7 +217,7 @@ void tracer::send_message_and_wait(void* args) {
   LOG_INFO("Python response received. Continuing execution...");
 }
 
-void tracer::discover_agents() {
+void accordo::discover_agents() {
   auto agent_callback = [](hsa_agent_t agent, void* data) -> hsa_status_t {
     auto* agents_map =
         static_cast<std::map<hsa_agent_t, std::string, hsa_agent_compare>*>(data);
@@ -238,7 +240,7 @@ std::string demangle_name(const char* mangled_name) {
   return (status == 0) ? result.get() : mangled_name;
 }
 
-std::string tracer::get_kernel_name(const std::uint64_t kernel_object) {
+std::string accordo::get_kernel_name(const std::uint64_t kernel_object) {
   auto handle_find_result = handles_symbols_.find(kernel_object);
   if (handle_find_result == handles_symbols_.end()) {
     return "Object not found.";
@@ -250,7 +252,7 @@ std::string tracer::get_kernel_name(const std::uint64_t kernel_object) {
   return demangle_name(symbol_find_result->second.c_str());
 }
 
-std::string tracer::packet_to_text(const hsa_ext_amd_aql_pm4_packet_t* packet) {
+std::string accordo::packet_to_text(const hsa_ext_amd_aql_pm4_packet_t* packet) {
   std::ostringstream buff;
   uint32_t type = get_header_type(packet);
 
@@ -331,7 +333,7 @@ std::string tracer::packet_to_text(const hsa_ext_amd_aql_pm4_packet_t* packet) {
   return buff.str();
 }
 
-std::optional<void*> tracer::is_traceable_packet(
+std::optional<void*> accordo::is_traceable_packet(
     const hsa_ext_amd_aql_pm4_packet_t* packet) {
   uint32_t type = get_header_type(packet);
   switch (type) {
@@ -351,32 +353,32 @@ std::optional<void*> tracer::is_traceable_packet(
   return {};
 }
 
-tracer* tracer::get_instance(HsaApiTable* table,
-                             uint64_t runtime_version,
-                             uint64_t failed_tool_count,
-                             const char* const* failed_tool_names) {
+accordo* accordo::get_instance(HsaApiTable* table,
+                               uint64_t runtime_version,
+                               uint64_t failed_tool_count,
+                               const char* const* failed_tool_names) {
   const std::lock_guard<std::mutex> lock(mutex_);
   if (!singleton_) {
     if (table != NULL) {
       singleton_ =
-          new tracer(table, runtime_version, failed_tool_count, failed_tool_names);
+          new accordo(table, runtime_version, failed_tool_count, failed_tool_names);
     } else {
     }
   }
   return singleton_;
 }
 
-tracer::~tracer() {
+accordo::~accordo() {
   delete rocr_api_table_.core_;
   delete rocr_api_table_.amd_ext_;
   delete rocr_api_table_.finalizer_ext_;
   delete rocr_api_table_.image_ext_;
 }
 
-hsa_status_t tracer::hsa_executable_get_symbol_by_name(hsa_executable_t executable,
-                                                       const char* symbol_name,
-                                                       const hsa_agent_t* agent,
-                                                       hsa_executable_symbol_t* symbol) {
+hsa_status_t accordo::hsa_executable_get_symbol_by_name(hsa_executable_t executable,
+                                                        const char* symbol_name,
+                                                        const hsa_agent_t* agent,
+                                                        hsa_executable_symbol_t* symbol) {
   LOG_DETAIL(
       "Looking up the kernel {} \n\t ({})", symbol_name, demangle_name(symbol_name));
 
@@ -398,7 +400,7 @@ hsa_status_t tracer::hsa_executable_get_symbol_by_name(hsa_executable_t executab
   return result;
 }
 
-hsa_status_t tracer::hsa_executable_symbol_get_info(
+hsa_status_t accordo::hsa_executable_symbol_get_info(
     hsa_executable_symbol_t executable_symbol,
     hsa_executable_symbol_info_t attribute,
     void* value) {
@@ -416,7 +418,7 @@ hsa_status_t tracer::hsa_executable_symbol_get_info(
   return result;
 }
 
-void tracer::save_hsa_api() {
+void accordo::save_hsa_api() {
   rocr_api_table_.core_ = new CoreApiTable();
   rocr_api_table_.amd_ext_ = new AmdExtTable();
   rocr_api_table_.finalizer_ext_ = new FinalizerExtTable();
@@ -429,25 +431,25 @@ void tracer::save_hsa_api() {
               sizeof(FinalizerExtTable));
   std::memcpy(rocr_api_table_.image_ext_, api_table_->image_ext_, sizeof(ImageExtTable));
 }
-void tracer::restore_hsa_api() {
+void accordo::restore_hsa_api() {
   copyTables(&rocr_api_table_, api_table_);
 }
-void tracer::hook_api() {
-  api_table_->core_->hsa_queue_create_fn = tracer::hsa_queue_create;
-  api_table_->core_->hsa_queue_destroy_fn = tracer::hsa_queue_destroy;
+void accordo::hook_api() {
+  api_table_->core_->hsa_queue_create_fn = accordo::hsa_queue_create;
+  api_table_->core_->hsa_queue_destroy_fn = accordo::hsa_queue_destroy;
 
   api_table_->amd_ext_->hsa_amd_memory_pool_allocate_fn =
-      tracer::hsa_amd_memory_pool_allocate;
-  api_table_->core_->hsa_memory_allocate_fn = tracer::hsa_memory_allocate;
+      accordo::hsa_amd_memory_pool_allocate;
+  api_table_->core_->hsa_memory_allocate_fn = accordo::hsa_memory_allocate;
 
   api_table_->core_->hsa_executable_get_symbol_by_name_fn =
-      tracer::hsa_executable_get_symbol_by_name;
+      accordo::hsa_executable_get_symbol_by_name;
 
   api_table_->core_->hsa_executable_symbol_get_info_fn =
-      tracer::hsa_executable_symbol_get_info;
+      accordo::hsa_executable_symbol_get_info;
 }
 
-hsa_status_t tracer::add_queue(hsa_queue_t* queue, hsa_agent_t agent) {
+hsa_status_t accordo::add_queue(hsa_queue_t* queue, hsa_agent_t agent) {
   std::lock_guard<std::mutex> lock(mm_mutex_);
   auto instance = get_instance();
   auto result =
@@ -455,11 +457,11 @@ hsa_status_t tracer::add_queue(hsa_queue_t* queue, hsa_agent_t agent) {
   return result;
 }
 
-void tracer::on_submit_packet(const void* in_packets,
-                              uint64_t count,
-                              uint64_t user_que_idx,
-                              void* data,
-                              hsa_amd_queue_intercept_packet_writer writer) {
+void accordo::on_submit_packet(const void* in_packets,
+                               uint64_t count,
+                               uint64_t user_que_idx,
+                               void* data,
+                               hsa_amd_queue_intercept_packet_writer writer) {
   auto instance = get_instance();
   if (instance) {
     hsa_queue_t* queue = reinterpret_cast<hsa_queue_t*>(data);
@@ -470,10 +472,10 @@ void tracer::on_submit_packet(const void* in_packets,
   }
 }
 
-void tracer::write_packets(hsa_queue_t* queue,
-                           const hsa_ext_amd_aql_pm4_packet_t* packet,
-                           uint64_t count,
-                           hsa_amd_queue_intercept_packet_writer writer) {
+void accordo::write_packets(hsa_queue_t* queue,
+                            const hsa_ext_amd_aql_pm4_packet_t* packet,
+                            uint64_t count,
+                            hsa_amd_queue_intercept_packet_writer writer) {
   try {
     LOG_DETAIL("Executing packet: {}", packet_to_text(packet));
     auto instance = get_instance();
@@ -487,6 +489,7 @@ void tracer::write_packets(hsa_queue_t* queue,
     }
 
     hsa_ext_amd_aql_pm4_packet_t modified_packet = *packet;
+
     hsa_signal_t old_signal = modified_packet.completion_signal;
     modified_packet.completion_signal = new_signal;
 
@@ -509,10 +512,10 @@ void tracer::write_packets(hsa_queue_t* queue,
   }
 }
 
-hsa_status_t tracer::hsa_amd_memory_pool_allocate(hsa_amd_memory_pool_t pool,
-                                                  size_t size,
-                                                  uint32_t flags,
-                                                  void** ptr) {
+hsa_status_t accordo::hsa_amd_memory_pool_allocate(hsa_amd_memory_pool_t pool,
+                                                   size_t size,
+                                                   uint32_t flags,
+                                                   void** ptr) {
   auto instance = get_instance();
   const auto result =
       hsa_ext_call(instance, hsa_amd_memory_pool_allocate, pool, size, flags, ptr);
@@ -523,7 +526,7 @@ hsa_status_t tracer::hsa_amd_memory_pool_allocate(hsa_amd_memory_pool_t pool,
   }
   return result;
 }
-hsa_status_t tracer::hsa_memory_allocate(hsa_region_t region, size_t size, void** ptr) {
+hsa_status_t accordo::hsa_memory_allocate(hsa_region_t region, size_t size, void** ptr) {
   auto instance = get_instance();
   const auto result = hsa_core_call(instance, hsa_memory_allocate, region, size, ptr);
   if (result == HSA_STATUS_SUCCESS && *ptr) {
@@ -534,16 +537,16 @@ hsa_status_t tracer::hsa_memory_allocate(hsa_region_t region, size_t size, void*
   return result;
 }
 
-hsa_status_t tracer::hsa_queue_create(hsa_agent_t agent,
-                                      uint32_t size,
-                                      hsa_queue_type32_t type,
-                                      void (*callback)(hsa_status_t status,
-                                                       hsa_queue_t* source,
-                                                       void* data),
-                                      void* data,
-                                      uint32_t private_segment_size,
-                                      uint32_t group_segment_size,
-                                      hsa_queue_t** queue) {
+hsa_status_t accordo::hsa_queue_create(hsa_agent_t agent,
+                                       uint32_t size,
+                                       hsa_queue_type32_t type,
+                                       void (*callback)(hsa_status_t status,
+                                                        hsa_queue_t* source,
+                                                        void* data),
+                                       void* data,
+                                       uint32_t private_segment_size,
+                                       uint32_t group_segment_size,
+                                       hsa_queue_t** queue) {
   LOG_DETAIL("Creating maestro-rt queue");
 
   hsa_status_t result = HSA_STATUS_SUCCESS;
@@ -568,7 +571,7 @@ hsa_status_t tracer::hsa_queue_create(hsa_agent_t agent,
       result = hsa_ext_call(instance,
                             hsa_amd_queue_intercept_register,
                             *queue,
-                            tracer::on_submit_packet,
+                            accordo::on_submit_packet,
                             reinterpret_cast<void*>(*queue));
       if (result != HSA_STATUS_SUCCESS) {
         LOG_ERROR("Failed to register intercept callback with result of ",
@@ -580,7 +583,7 @@ hsa_status_t tracer::hsa_queue_create(hsa_agent_t agent,
   }
   return result;
 }
-hsa_status_t tracer::hsa_queue_destroy(hsa_queue_t* queue) {
+hsa_status_t accordo::hsa_queue_destroy(hsa_queue_t* queue) {
   LOG_DETAIL("Destroying maestro-rt queue");
   return hsa_core_call(singleton_, hsa_queue_destroy, queue);
 }
@@ -594,7 +597,7 @@ PUBLIC_API bool OnLoad(HsaApiTable* table,
                        const char* const* failed_tool_names) {
   LOG_DETAIL("Creating maestro-rt singleton");
 
-  maestro::tracer* hook = maestro::tracer::get_instance(
+  maestro::accordo* hook = maestro::accordo::get_instance(
       table, runtime_version, failed_tool_count, failed_tool_names);
 
   LOG_DETAIL("Creating maestro-rt singleton completed");
