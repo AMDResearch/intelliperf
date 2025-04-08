@@ -3,7 +3,9 @@ import logging
 import os
 import sys
 import shutil
-
+import pandas as pd
+import json
+from pprint import pformat
 from utils.process import capture_subprocess_output, exit_on_fail
 
 
@@ -23,8 +25,12 @@ class Result:
             logging.info(self.log)
             if self.asset is not None:
                 for asset in self.asset:
-                    logging.info(self.asset)
-
+                    if isinstance(asset, pd.DataFrame):
+                        logging.info("\n%s", asset.to_string(index=False))
+                    elif isinstance(asset, dict):
+                        logging.info("\n%s", json.dumps(asset, indent=2))
+                    else:
+                        logging.info("\n%s", pformat(asset))
         else:
             logging.error(f"Error: {self.error_report}")
             sys.exit(1)
@@ -93,13 +99,7 @@ class Formula_Base:
         """
         Extract any required performance data from the application using the specified profiler.
         """
-        # Validate profiler
-        if self.profiler == "guided-tuning":
-            if 'GT_TUNING' not in os.environ:
-                logging.error(f"Cannot resolve profiler {self.profiler}: GT_TUNING environment variable must be set to install dir.")
-        else:
-            logging.error(f"Profiler {self.profiler} not supported.")
-
+        pass
 
     @abstractmethod
     def instrument_pass(self):
@@ -126,5 +126,11 @@ class Formula_Base:
     def validation_pass(self):
         """
         Validates the the application.
+        """
+        pass
+    @abstractmethod
+    def source_code_pass(self):
+        """
+        Finds the source code.
         """
         pass

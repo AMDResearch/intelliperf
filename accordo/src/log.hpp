@@ -56,7 +56,7 @@ inline void log_message(const LogLevel level,
                         int line,
                         const char* msg,
                         Args... args) {
-  static const char* log_env = std::getenv("TRACER_LOG_LEVEL");
+  static const char* log_env = std::getenv("ACCORDO_LOG_LEVEL");
   if (log_env) {
     static auto log_level_env = std::atoi(log_env);
 
@@ -82,7 +82,7 @@ inline void log_message(const LogLevel level,
                   formatted_message.c_str(),
                   color_reset);
 
-      static const char* log_file = std::getenv("TRACER_LOG_FILE");
+      static const char* log_file = std::getenv("ACCORDO_LOG_FILE");
       if (log_file) {
         static std::ofstream log_stream(log_file, std::ios::app);
         if (log_stream) {
