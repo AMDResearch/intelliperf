@@ -33,10 +33,27 @@ def maestro_parser():
 
     # Optional arguments group
     optional_args = parser.add_argument_group('optional arguments')
-    optional_args.add_argument('-s', '--script', type=str, help='A script to build your application.')
-    optional_args.add_argument('-f', '--formula', choices=['bankConflict', 'diagnoseOnly'], default='diagnoseOnly', type=str, help='Specify the formula to use for optimization (default: diagnoseOnly).')
-    optional_args.add_argument("-o", "--output_file", type=str, help="Path to the output file (optional)")
-    optional_args.add_argument("-c", "--ci_output_file", type=str, help="Path to the output file for CI integration (optional)")
+    optional_args.add_argument('-s', '--script', 
+                               type=str, 
+                               metavar='',
+                               help='A script to build your application')
+    optional_args.add_argument('-f', 
+                               '--formula', 
+                               choices=['bankConflict', 'diagnoseOnly'], 
+                               default='diagnoseOnly', 
+                               metavar='',
+                               type=str, 
+                               help='Specify the formula to use for optimization (default: diagnoseOnly)')
+    optional_args.add_argument("-o", 
+                               "--output_file", 
+                               type=str, 
+                               metavar='',
+                               help="Path to the output file")
+    optional_args.add_argument("-c", 
+                               "--ci_output_file", 
+                               type=str, 
+                               metavar='',
+                               help="Path to the output file for CI integration")
 
     args = parser.parse_args()
     return args
@@ -45,7 +62,7 @@ def main():
     logging.raiseExceptions = True
     args = maestro_parser()
     # Generate a name for the Maestro run using timestamp
-    generated_name = datetime.now().strftime("%Y_%m_%d~%H_%M_%S")
+    generated_name = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
     # Set logging level based on verbosity
     if args.verbose == 1:
         logging.basicConfig(level=logging.INFO, format="[MAESTRO] %(levelname)s: %(message)s")
