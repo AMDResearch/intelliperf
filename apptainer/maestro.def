@@ -14,6 +14,7 @@ From: ubuntu:22.04
     export GT_TUNING=/root/guided-tuning
     export PATH=/opt/logduration/bin/logDuration:$PATH
     export PATH=/root/rocprofiler-compute/src:$PATH
+    export GT_COLOR=0 #Suppress verbose logger
 
 %files
     examples/bank_conflict/llm.c/requirements.txt /examples/bank_conflict/llm.c/requirements.txt
@@ -29,7 +30,7 @@ From: ubuntu:22.04
     apt-get -y update
     apt-get install -y software-properties-common
     apt-get upgrade -y
-    apt-get install -y build-essential python3 python3-pip git wget clang lld libzstd-dev libomp-dev vim
+    apt-get install -y build-essential python3 python3-pip python3-setuptools python3-wheel git wget clang lld libzstd-dev libomp-dev vim libdwarf-dev
     apt-get install -y locales
     locale-gen en_US.UTF-8
     python3 -m pip install --upgrade pip
@@ -80,7 +81,7 @@ From: ubuntu:22.04
     cd /root
     git clone -v git@github.com:AARInternal/logduration.git
     cd logduration
-    git checkout colramos/hackathon
+    git checkout colramos/dev
     git submodule update --init --recursive
     mkdir -p build 
     cmake -DCMAKE_INSTALL_PREFIX=/opt/logduration\
@@ -95,7 +96,6 @@ From: ubuntu:22.04
     cd /root
     git clone -v git@github.com:AARInternal/guided-tuning.git
     cd guided-tuning
-    git checkout colramos/omniperf-for-gt
     python3 -m pip install -r requirements.txt
 
     # Install agents dependencies
