@@ -9,12 +9,11 @@ from utils.env import get_guided_tuning_path
 import re
 import tempfile
 
-TOP_N = 10
-
 class diagnose_only(Formula_Base):
-    def __init__(self, name, build_script, app_cmd):
+    def __init__(self, name, build_script, app_cmd, top_n):
         super().__init__(name, build_script, app_cmd)
         self.profiler = "guided-tuning"
+        self.top_n = top_n
 
     def profile_pass(self):
         super().profile_pass()
@@ -25,7 +24,7 @@ class diagnose_only(Formula_Base):
             [
                 f"{get_guided_tuning_path()}/bin/gt", "profile", 
                 "-n", self.get_app_name(),
-                "--top-n", str(TOP_N),
+                "--top-n", str(self.top_n),
                 "--",
             ] + self.get_app_cmd()
         )
@@ -65,7 +64,7 @@ class diagnose_only(Formula_Base):
                      log = output)
         df_results = pd.read_csv(f"{get_guided_tuning_path()}/maestro_summary.csv")
         # Create a targeted report card
-        top_n_kernels = list(df_results.head(TOP_N)["Kernel"])
+        top_n_kernels = list(df_results.head(self.top_n)["Kernel"])
         logging.debug(f"top_n_kernels: {top_n_kernels}")
         success, output = capture_subprocess_output(
             [

@@ -54,6 +54,11 @@ def maestro_parser():
                                type=str, 
                                metavar='',
                                help="Path to the output file for CI integration")
+    optional_args.add_argument('--top-n',
+                               type=int, 
+                               default=10,
+                               metavar='',
+                               help='Control the top-n kernels collected in diagnoseOnly mode (default: 10)')
 
     args = parser.parse_args()
     return args
@@ -85,7 +90,8 @@ def main():
         optimizer = diagnose_only(
             name=generated_name,
             build_script=args.script,
-            app_cmd=args.remaining
+            app_cmd=args.remaining,
+            top_n=args.top_n,
         )
     else:
         logging.error(f"Invalid formula specified. {args.formula} is not supported.")
