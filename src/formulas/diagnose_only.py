@@ -9,33 +9,35 @@ from utils.env import get_guided_tuning_path
 import re
 import tempfile
 
-TOP_N = 10
-
 class diagnose_only(Formula_Base):
-    def __init__(self, name, build_script, app_cmd):
+    def __init__(self, name, build_script, app_cmd, top_n):
         super().__init__(name, build_script, app_cmd)
         self.profiler = "guided-tuning"
+        self.top_n = top_n
 
     def profile_pass(self):
         super().profile_pass()
         logging.debug(f"Profiling app with name {self.get_app_name()}")
         logging.debug(f"Profiling app with command {self.get_app_cmd()}")
-        # Call guided-tuning to profile the application
+        # Profile the app using GT
         success, output = capture_subprocess_output(
-            [f"{get_guided_tuning_path()}/bin/profile_and_load.sh", self.get_app_name()]
-            + self.get_app_cmd()
+            [
+                f"{get_guided_tuning_path()}/bin/gt", "profile", 
+                "-n", self.get_app_name(),
+                "--top-n", str(self.top_n),
+                "--",
+            ] + self.get_app_cmd()
         )
         
         exit_on_fail(success = success,
                      message = "Failed to profile the binary",
                      log = output)
                 
-        # Load report card with --save flag
+        # Load workload summary with GT. Save list of top-n kernels for regex
         success, output = capture_subprocess_output(
             [
-                f"{get_guided_tuning_path()}/bin/show_data.sh",
-                "-n",
-                self.get_app_name(),
+                f"{get_guided_tuning_path()}/bin/gt", "db",
+                "-n", self.get_app_name(),
             ]
         )
         exit_on_fail(success = success,
@@ -45,17 +47,15 @@ class diagnose_only(Formula_Base):
         matching_db_workloads = {}
         for line in output.splitlines():
             parts = line.split(maxsplit=1)
-            if len(parts) == 2:
+            if len(parts) == 2 and not parts[0].startswith("GT"):
                 key, value = parts
                 matching_db_workloads[key] = value
         logging.debug(f"Matching DB Workloads: {matching_db_workloads}")
         success, output = capture_subprocess_output(
             [
-                f"{get_guided_tuning_path()}/bin/show_data.sh",
-                "-w",
-                list(matching_db_workloads.keys())[-1],
-                "--save",
-                f"{get_guided_tuning_path()}/maestro_summary.csv",
+                f"{get_guided_tuning_path()}/bin/gt", "db",
+                "-w", list(matching_db_workloads.keys())[-1],
+                "--save", f"{get_guided_tuning_path()}/maestro_summary.csv",
             ]
         )
         # Handle critical error
@@ -64,15 +64,13 @@ class diagnose_only(Formula_Base):
                      log = output)
         df_results = pd.read_csv(f"{get_guided_tuning_path()}/maestro_summary.csv")
         # Create a targeted report card
-        top_n_kernels = list(df_results.head(TOP_N)["Kernel"])
+        top_n_kernels = list(df_results.head(self.top_n)["Kernel"])
         logging.debug(f"top_n_kernels: {top_n_kernels}")
         success, output = capture_subprocess_output(
             [
-                f"{get_guided_tuning_path()}/bin/show_data.sh",
-                "-w",
-                list(matching_db_workloads.keys())[-1],
-                "-k",
-                *top_n_kernels,
+                f"{get_guided_tuning_path()}/bin/gt", "db",
+                "-w", list(matching_db_workloads.keys())[-1],
+                "-k", f'{"|".join(top_n_kernels)}',
                 "--separate",
                 "--save",
                 f"{get_guided_tuning_path()}/maestro_report_card.json",
@@ -80,9 +78,6 @@ class diagnose_only(Formula_Base):
         )
         df_results = json.loads(open(f"{get_guided_tuning_path()}/maestro_report_card.json").read())
 
-        for entry in df_results:
-            kernel = entry.get("workload", {}).get("kernel", "")
-            entry["workload"]["kernel"] = re.sub(r"\s*\[clone\s+\.kd\]", "", kernel)
 
 
         return Result(
