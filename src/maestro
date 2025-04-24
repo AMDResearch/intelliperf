@@ -115,7 +115,7 @@ def main():
 
         # In-place append of source info
         for entry in profiler_data:
-            kernel_name = entry["workload"]["kernel"]
+            kernel_name = entry["kernel"]
             entry["source"] = source_kernels.get(kernel_name, None)
 
     if args.formula != 'diagnoseOnly':
