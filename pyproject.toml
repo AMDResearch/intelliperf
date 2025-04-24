@@ -32,7 +32,7 @@ python3 -m pip install -r requirements.txt
 
 [tool.guided-tuning]
 git = "git@github.com:AARInternal/guided-tuning.git"
-branch = "4aef17f150012cd60908f725ded2eb117a279ef7"
+branch = "7a2f4d06de6ecedceaec83a44ea010988ec5ff28"
 build_command = """
 python3 -m pip install -r requirements.txt
 """
