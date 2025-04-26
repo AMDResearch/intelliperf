@@ -112,12 +112,17 @@ class diagnose_only(Formula_Base):
             env["NEXUS_LOG_LEVEL"] = "2"
             env["NEXUS_OUTPUT_FILE"] = json_result_file
             success, log = capture_subprocess_output(self.get_app_cmd(), new_env=env)
-            df_results = json.loads(open(json_result_file).read())
+            
+            if os.path.exists(json_result_file):
+                df_results = json.loads(open(json_result_file).read())
+            else:
+                df_results = {}
 
         if not success:
             return Result(
                 success=False,
-                asset=log
+                asset=log,
+                error_report="Failed to collect the source code."
             )
 
         return Result(

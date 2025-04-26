@@ -116,7 +116,13 @@ def main():
         # In-place append of source info
         for entry in profiler_data:
             kernel_name = entry["kernel"]
-            entry["source"] = source_kernels.get(kernel_name, None)
+            empty = {
+                "assembly": [],
+                "files": [],
+                "hip": [],
+                "lines": [],
+                "signature": ""}
+            entry["source"] = source_kernels.get(kernel_name, empty)
 
     if args.formula != 'diagnoseOnly':
         # Instrument the application based on the results.
