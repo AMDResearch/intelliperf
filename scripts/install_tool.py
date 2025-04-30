@@ -6,7 +6,7 @@ try:
     import tomllib
 except ModuleNotFoundError:
     import tomli as tomllib
-    
+
 from pathlib import Path
 
 def run_command(cmd: str, cwd: Path):
@@ -25,14 +25,17 @@ def install_tool(tool: str, config: dict, clean: bool):
     if repo:
         tool_dir = Path("external") / tool
         tool_dir.parent.mkdir(exist_ok=True)
-    
+
         if clean:
             print(f"🧹 Deleting existing {tool} from {tool_dir}.")
             run_command(f"rm -rf {tool}", cwd="external")
 
         if not tool_dir.exists():
-            print(f"Cloning {tool} from {repo} (branch: {branch})")
-            run_command(f"git clone --recurse-submodules --branch {branch} {repo} {tool}", cwd="external")
+            print(f"Cloning {tool} from {repo}")
+            run_command(f"git clone --recurse-submodules {repo} {tool}", cwd="external")
+            print(f"Checking out {branch}")
+            run_command(f"git checkout {branch}", cwd=tool_dir)
+            run_command(f"git submodule update --init --recursive", cwd=tool_dir)
         else:
             print(f"Found existing checkout at {tool_dir}, skipping clone")
     else:

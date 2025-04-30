@@ -33,10 +33,32 @@ def maestro_parser():
 
     # Optional arguments group
     optional_args = parser.add_argument_group('optional arguments')
-    optional_args.add_argument('-s', '--script', type=str, help='A script to build your application.')
-    optional_args.add_argument('-f', '--formula', choices=['bankConflict', 'diagnoseOnly'], default='diagnoseOnly', type=str, help='Specify the formula to use for optimization (default: diagnoseOnly).')
-    optional_args.add_argument("-o", "--output_file", type=str, help="Path to the output file (optional)")
-    optional_args.add_argument("-c", "--ci_output_file", type=str, help="Path to the output file for CI integration (optional)")
+    optional_args.add_argument('-s', '--script', 
+                               type=str, 
+                               metavar='',
+                               help='A script to build your application')
+    optional_args.add_argument('-f', 
+                               '--formula', 
+                               choices=['bankConflict', 'diagnoseOnly'], 
+                               default='diagnoseOnly', 
+                               metavar='',
+                               type=str, 
+                               help='Specify the formula to use for optimization (default: diagnoseOnly)')
+    optional_args.add_argument("-o", 
+                               "--output_file", 
+                               type=str, 
+                               metavar='',
+                               help="Path to the output file")
+    optional_args.add_argument("-c", 
+                               "--ci_output_file", 
+                               type=str, 
+                               metavar='',
+                               help="Path to the output file for CI integration")
+    optional_args.add_argument('--top-n',
+                               type=int, 
+                               default=10,
+                               metavar='',
+                               help='Control the top-n kernels collected in diagnoseOnly mode (default: 10)')
 
     args = parser.parse_args()
     return args
@@ -45,7 +67,7 @@ def main():
     logging.raiseExceptions = True
     args = maestro_parser()
     # Generate a name for the Maestro run using timestamp
-    generated_name = datetime.now().strftime("%Y_%m_%d~%H_%M_%S")
+    generated_name = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
     # Set logging level based on verbosity
     if args.verbose == 1:
         logging.basicConfig(level=logging.INFO, format="[MAESTRO] %(levelname)s: %(message)s")
@@ -68,7 +90,8 @@ def main():
         optimizer = diagnose_only(
             name=generated_name,
             build_script=args.script,
-            app_cmd=args.remaining
+            app_cmd=args.remaining,
+            top_n=args.top_n,
         )
     else:
         logging.error(f"Invalid formula specified. {args.formula} is not supported.")
@@ -92,8 +115,14 @@ def main():
 
         # In-place append of source info
         for entry in profiler_data:
-            kernel_name = entry["workload"]["kernel"]
-            entry["source"] = source_kernels.get(kernel_name, None)
+            kernel_name = entry["kernel"]
+            empty = {
+                "assembly": [],
+                "files": [],
+                "hip": [],
+                "lines": [],
+                "signature": ""}
+            entry["source"] = source_kernels.get(kernel_name, empty)
 
     if args.formula != 'diagnoseOnly':
         # Instrument the application based on the results.
