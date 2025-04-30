@@ -39,21 +39,24 @@ class bank_conflict(Formula_Base):
         super().profile_pass()
         logging.debug(f"Profiling app with name {self.get_app_name()}")
         logging.debug(f"Profiling app with command {self.get_app_cmd()}")
-        # Call guided-tuning to profile the application
-        success, output = capture_subprocess_output(
-            [f"{get_guided_tuning_path()}/bin/profile_and_load.sh", self.get_app_name()]
-            + self.get_app_cmd()
-        )
-        exit_on_fail(success = success,
-                     message = "Failed to profile the binary",
-                     log = output)
-                    
-        # Load report card with --save flag
+        # Profile the app using GT
         success, output = capture_subprocess_output(
             [
-                f"{get_guided_tuning_path()}/bin/show_data.sh",
-                "-n",
-                self.get_app_name(),
+                f"{get_guided_tuning_path()}/bin/gt", "profile", 
+                "-n", self.get_app_name(),
+                "--",
+            ] + self.get_app_cmd()
+        )
+        
+        exit_on_fail(success = success,
+                    message = "Failed to profile the binary",
+                    log = output)
+                    
+        # Load workload summary with GT. Save list of top-n kernels for regex
+        success, output = capture_subprocess_output(
+            [
+                f"{get_guided_tuning_path()}/bin/gt", "db",
+                "-n", self.get_app_name(),
             ]
         )
         exit_on_fail(success = success,
@@ -63,19 +66,18 @@ class bank_conflict(Formula_Base):
         matching_db_workloads = {}
         for line in output.splitlines():
             parts = line.split(maxsplit=1)
-            if len(parts) == 2:
+            if len(parts) == 2 and not parts[0].startswith("GT"):
                 key, value = parts
                 matching_db_workloads[key] = value
         logging.debug(f"Matching DB Workloads: {matching_db_workloads}")
         success, output = capture_subprocess_output(
             [
-                f"{get_guided_tuning_path()}/bin/show_data.sh",
-                "-w",
-                list(matching_db_workloads.keys())[-1],
-                "--save",
-                f"{get_guided_tuning_path()}/maestro_summary.csv",
+                f"{get_guided_tuning_path()}/bin/gt", "db",
+                "-w", list(matching_db_workloads.keys())[-1],
+                "--save", f"{get_guided_tuning_path()}/maestro_summary.csv",
             ]
         )
+        # Handle critical error
         exit_on_fail(success = success,
                      message = "Failed to generate the performance report card.",
                      log = output)

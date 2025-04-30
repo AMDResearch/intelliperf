@@ -14,6 +14,7 @@ From: ubuntu:22.04
     export GT_TUNING=/root/guided-tuning
     export PATH=/opt/logduration/bin/logDuration:$PATH
     export PATH=/root/rocprofiler-compute/src:$PATH
+    export GT_COLOR=0 #Suppress verbose logger
 
 %files
     examples/bank_conflict/llm.c/requirements.txt /examples/bank_conflict/llm.c/requirements.txt
@@ -29,7 +30,7 @@ From: ubuntu:22.04
     apt-get -y update
     apt-get install -y software-properties-common
     apt-get upgrade -y
-    apt-get install -y build-essential python3 python3-pip git wget clang lld libzstd-dev libomp-dev vim
+    apt-get install -y build-essential python3 python3-pip python3-setuptools python3-wheel git wget clang lld libzstd-dev libomp-dev vim libdwarf-dev
     apt-get install -y locales
     locale-gen en_US.UTF-8
     python3 -m pip install --upgrade pip
@@ -43,27 +44,11 @@ From: ubuntu:22.04
     chmod 644 ~/.ssh/known_hosts
 
     # Install ROCm
-    mkdir --parents --mode=0755 /etc/apt/keyrings
-    wget --no-check-certificate https://repo.radeon.com/rocm/rocm.gpg.key -O - | \
-        gpg --dearmor | tee /etc/apt/keyrings/rocm.gpg > /dev/null
-
-    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/rocm.gpg] https://repo.radeon.com/rocm/apt/6.3.2 jammy main" \
-        | tee --append /etc/apt/sources.list.d/rocm.list
-
-    printf "Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600\n" | tee /etc/apt/preferences.d/rocm-pin-600
-
     apt-get -y update
-    ROCM_VERSION=$(apt-cache search rocm-dev[0-9] | awk '{print $1}' | sed 's/rocm-dev//g')
-    apt-get install -y rocm-dev6.3.2\
-                        rocm-llvm-dev6.3.2\
-                        rocm-hip-runtime-dev6.3.2\
-                        rocm-smi-lib6.3.2 rocminfo6.3.2\
-                        rocthrust-dev6.3.2\
-                        rocprofiler-compute6.3.2\
-                        rocblas6.3.2\
-                        rocm-gdb6.3.2\
-                        gdb\
-                        tmux
+    wget https://repo.radeon.com/amdgpu-install/6.3.3/ubuntu/jammy/amdgpu-install_6.3.60303-1_all.deb
+    apt-get -y install ./amdgpu-install_6.3.60303-1_all.deb
+    apt-get -y update
+    apt-get install -y rocm-dev rocm-llvm-dev rocm-hip-runtime-dev rocm-smi-lib rocminfo rocthrust-dev rocprofiler-compute rocblas rocm-gdb gdb tmux
     export PATH=/opt/rocm/bin:$PATH
     export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
     export ROCM_PATH=/opt/rocm
@@ -96,7 +81,7 @@ From: ubuntu:22.04
     cd /root
     git clone -v git@github.com:AARInternal/logduration.git
     cd logduration
-    git checkout colramos/hackathon
+    git checkout colramos/dev
     git submodule update --init --recursive
     mkdir -p build 
     cmake -DCMAKE_INSTALL_PREFIX=/opt/logduration\
@@ -107,11 +92,11 @@ From: ubuntu:22.04
     cmake --build build --target install
     export PATH=/opt/logduration/bin/logDuration:$PATH
 
-    # Install guided-tuning (JBs tool)
+    # Install guided-tuning (version pinned)
     cd /root
     git clone -v git@github.com:AARInternal/guided-tuning.git
     cd guided-tuning
-    git checkout colramos/omniperf-for-gt
+    git checkout 7a2f4d06de6ecedceaec83a44ea010988ec5ff28
     python3 -m pip install -r requirements.txt
 
     # Install agents dependencies
