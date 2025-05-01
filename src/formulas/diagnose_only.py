@@ -140,7 +140,7 @@ class diagnose_only(Formula_Base):
             if os.path.exists(json_result_file):
                 df_results = json.loads(open(json_result_file).read())
             else:
-                df_results = {}
+                df_results = {"kernels": {}}
 
         if not success:
             return Result(
