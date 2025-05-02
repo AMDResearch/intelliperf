@@ -31,7 +31,7 @@ python3 -m pip install -r requirements.txt
 """
 
 [tool.guided-tuning]
-git = "git@github.com:AARInternal/guided-tuning.git"
+git = "git@github.com:AMDResearch/guided-tuning.git"
 branch = "7a2f4d06de6ecedceaec83a44ea010988ec5ff28"
 build_command = """
 python3 -m pip install -r requirements.txt
@@ -39,8 +39,8 @@ python3 -m pip install -r requirements.txt
 
 
 [tool.logduration]
-git = "git@github.com:AARInternal/logduration.git"
-branch = "colramos/dev"
+git = "git@github.com:AMDResearch/logduration.git"
+branch = "5caa4a4c4beefda6f357a72579b428d0dd152679"
 build_command = """
 git submodule update --init --recursive
 #TODO: search for a Triton LLVM.
@@ -58,7 +58,7 @@ cmake --build build --parallel 1
 
 
 [tool.nexus]
-git = "git@github.com:AARInternal/nexus.git"
+git = "git@github.com:AMDResearch/nexus.git"
 branch = "main"
 build_command = """
 cmake -B build -DCMAKE_PREFIX_PATH=/opt/rocm\
