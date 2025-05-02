@@ -23,8 +23,8 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.rocprofiler-compute]
-git = "git@github.com:coleramos425/rocprofiler-compute.git"
-branch = "colramos/omniperf-for-gt"
+git = "git@github.com:ROCm/rocprofiler-compute.git"
+branch = "41e73650d5cfc3dbd98e007d6279235578f8529a"
 build_command = """
 python3 -m pip install --ignore-installed blinker &&
 python3 -m pip install -r requirements.txt
