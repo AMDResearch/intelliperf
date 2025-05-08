@@ -67,7 +67,10 @@ python3 scripts/install_tool.py --all
 # For ROCm
 apt-get install -y rocm-llvm-dev libzstd-dev
 
-# For omniperf
+# For KernelDB
+apt-get install -y libdwarf-dev
+
+# For Omniperf
 apt-get install -y locales
 locale-gen en_US.UTF-8 
 ```
