@@ -8,11 +8,14 @@ ARG MAESTRO_HOME=/maestro
 ENV LANG=en_US.UTF-8 \
     ROCM_PATH=/opt/rocm \
     GT_COLOR=0
-
+ENV GT_PATH=/opt/logduration/bin/logDuration
+ENV ROCM_PATH=/opt/rocm
 ENV PATH=/opt/rocm/bin:$PATH
 ENV LD_LIBRARY_PATH=""
 ENV LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
 ENV HIP_DEVICE_LIB_PATH=/opt/rocm/lib/llvm/amdgcn/bitcode
+ENV CXX=$ROCM_PATH/bin/hipcc
+ENV CC=$ROCM_PATH/bin/hipcc
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \
