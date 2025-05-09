@@ -23,6 +23,8 @@ SOFTWARE.
 ****************************************************************************/
 
 #include <hip/hip_runtime.h>
+#include <vector>
+
 
 #define TILE_DIM 16
 
