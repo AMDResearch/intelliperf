@@ -23,7 +23,6 @@ SOFTWARE.
 ****************************************************************************/
 
 #include <hip/hip_runtime.h>
-#include "dh_comms_dev.h"
 
 #define TILE_DIM 16
 
