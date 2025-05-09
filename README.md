@@ -48,7 +48,7 @@ To start the Apptainer container, run:
 1. Clone:
 
 ```shell
-git clone git@github.com:AARInternal/maestro.git
+git clone git@github.com:AMDResearch/maestro.git
 cd maestro
 ```
 
