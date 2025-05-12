@@ -72,11 +72,11 @@ class Formula_Base:
 
           
         # Validate app command
-        if self.__app_cmd:
+        if self.__app_cmd and "--" in self.__app_cmd:
             self.__app_cmd = self.__app_cmd[1:]
         else:
             logging.error("Profiling command required. Pass application executable after -- at the end of options.")
-        
+            sys.exit(1)
 
     def backup(self, suffix: str):
         """Creates a backup of the application by appending the given suffix."""
