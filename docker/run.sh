@@ -7,4 +7,5 @@ docker run -it --rm \
     --device=/dev/kfd \
     --device=/dev/dri \
     --group-add video \
+    --mount type=bind,source=$HOME/.ssh,target=/root/.ssh,readonly\
     "$name"
