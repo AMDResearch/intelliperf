@@ -151,7 +151,8 @@ void printHipIpcMemHandle(const hipIpcMemHandle_t& handle, const std::string& me
   }
 }
 
-void writeIpcHandleToFile(const hipIpcMemHandle_t& handle, size_t ptr_size) {
+template <typename T>
+void writeValueToFile(const T& value, std::size_t ptr_size) {
   static const char* file_name = std::getenv("ACCORDO_IPC_OUTPUT_FILE");
   if (!file_name) {
     LOG_ERROR("Set ACCORDO_IPC_OUTPUT_FILE to communicate with driver script.");
@@ -172,6 +173,7 @@ void writeIpcHandleToFile(const hipIpcMemHandle_t& handle, size_t ptr_size) {
 
   LOG_DETAIL("Appended IPC handle and size ({} bytes) to file: {}", ptr_size, file_name);
 }
+
 void accordo::send_message_and_wait(void* args) {
   const auto args_struct = reinterpret_cast<KernelArguments*>(args);
 
@@ -185,46 +187,64 @@ void accordo::send_message_and_wait(void* args) {
 
   // Export IPC handles
   static const char* pipe_name = std::getenv("ACCORDO_PIPE_NAME");
+  static const char* trace_mode = std::getenv("ACCORDO_TRACE_MODE");
+
+  const auto is_trace_mode = trace_mode && std::strcmp(trace_mode, "1") == 0;
+
   int fd = open(pipe_name, O_WRONLY);
   if (fd < 0) {
     LOG_ERROR("Failed to open FIFO for writing");
     return;
   }
+
+  auto dump_ipc_handle = [&](const auto& field) {
+    size_t ptr_size = 0;
+    {
+      auto instance = get_instance();
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto it = instance->pointer_sizes_.find(field);
+      if (it != instance->pointer_sizes_.end()) {
+        ptr_size = it->second;
+      } else {
+        LOG_ERROR("Pointer size not found for {}", static_cast<void*>(field));
+      }
+    }
+
+    auto cpu_ptr = memcpy_d2h(field, ptr_size, agents_);
+    LOG_DETAIL("Sending the handle for the CPU pointer {} ({} bytes).",
+               reinterpret_cast<void*>(cpu_ptr),
+               ptr_size);
+
+    hipIpcMemHandle_t handle;
+    hipError_t ipc_result = hipIpcGetMemHandle(&handle, field);
+    if (ipc_result != hipSuccess) {
+      LOG_ERROR("Failed to get IPC handle for pointer {} : {}",
+                static_cast<void*>(field),
+                ipc_result);
+    }
+    printHipIpcMemHandle(handle, "handle");
+
+    const auto float_ptr = reinterpret_cast<const float*>(field);
+    LOG_DETAIL("Sending the handle for the pointer {} ({} bytes).",
+               reinterpret_cast<void*>(field),
+               ptr_size);
+    writeIpcHandleToFile(handle, ptr_size);
+  };
+
   for_each_field(args_struct, [&](const auto& field) {
-    if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> &&
-                  !std::is_const_v<
-                      std::remove_pointer_t<std::decay_t<decltype(field)>>>) {
-      size_t ptr_size = 0;
-      {
-        auto instance = get_instance();
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = instance->pointer_sizes_.find(field);
-        if (it != instance->pointer_sizes_.end()) {
-          ptr_size = it->second;
-        } else {
-          LOG_ERROR("Pointer size not found for {}", static_cast<void*>(field));
-        }
+    if (is_trace_mode) {
+      if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> &&
+                    !std::is_const_v<
+                        std::remove_pointer_t<std::decay_t<decltype(field)>>>) {
+        dump_ipc_handle(field);
       }
-
-      auto cpu_ptr = memcpy_d2h(field, ptr_size, agents_);
-      LOG_DETAIL("Sending the handle for the CPU pointer {} ({} bytes).",
-                 reinterpret_cast<void*>(cpu_ptr),
-                 ptr_size);
-
-      hipIpcMemHandle_t handle;
-      hipError_t ipc_result = hipIpcGetMemHandle(&handle, field);
-      if (ipc_result != hipSuccess) {
-        LOG_ERROR("Failed to get IPC handle for pointer {} : {}",
-                  static_cast<void*>(field),
-                  ipc_result);
+    } else {
+      if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>>) {
+        dump_ipc_handle(field);
+      } else {
+        LOG_DETAIL("Field: {}", field);
+        writeValueToFile(field, sizeof(field));
       }
-      printHipIpcMemHandle(handle, "handle");
-
-      const auto float_ptr = reinterpret_cast<const float*>(field);
-      LOG_DETAIL("Sending the handle for the pointer {} ({} bytes).",
-                 reinterpret_cast<void*>(field),
-                 ptr_size);
-      writeIpcHandleToFile(handle, ptr_size);
     }
   });
 

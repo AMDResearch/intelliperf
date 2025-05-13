@@ -38,7 +38,7 @@ from openai import OpenAIError
 
 from formulas.formula_base import Formula_Base, Result
 from utils.process import capture_subprocess_output, exit_on_fail
-from utils.env import get_guided_tuning_path, get_omniprobe_path
+from utils.env import get_guided_tuning_path, get_omniprobe_path, get_accordo_path
 from formulas.code_gen.code_gen import generate_recovered_kernel
 
 sys.path.append(
@@ -55,6 +55,12 @@ class bank_conflict(Formula_Base):
         # This temp option allows us to toggle if we want a full or partial instrumentation report
         self.only_consider_top_kernel = only_consider_top_kernel
         self.top_n = top_n
+        
+        
+        self.instrumented_applet = None
+        self.uninstrumented_applet = None
+        self.applet_args = None
+        
         
     def profile_pass(self) -> Result:
         """
@@ -242,7 +248,7 @@ class bank_conflict(Formula_Base):
         print(f"Recovered kernel source written to {fixed_kernel_path}")
         
         # Compile the recovered kernel
-        success, message, uninstrumented_binary = self.compile_source_file(fixed_kernel_path, suffix = "uninstrumented")
+        success, message, self.uninstrumented_applet = self.compile_source_file(fixed_kernel_path, suffix = "uninstrumented")
         if not success:
             return Result(
                 success=False,
@@ -250,18 +256,47 @@ class bank_conflict(Formula_Base):
             )
         omniprobe_lib_path = os.path.join(get_omniprobe_path(), "build")
         trace_args = [f"-L{omniprobe_lib_path}", "-lMemAnalysis64"]
-        success, message, instrumented_binary = self.compile_source_file(fixed_kernel_path, suffix = "instrumented", args = trace_args)
+        success, message, self.instrumented_applet = self.compile_source_file(fixed_kernel_path, suffix = "instrumented", args = trace_args)
+        
+        
+        # Find command line arguments
+        accordo_directory = get_accordo_path()
+        
+        
+        timestamp = int(time.time())
+        pipe_name = f"/tmp/kernel_pipe_{timestamp}"
+        ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
+                    
+        for file in [ipc_file_name, ipc_file_name]:
+            if os.path.exists(file):
+                os.remove(file)
+        generate_header(args)
+                    
+        run_subprocess(["cmake", "-B", "build"], accordo_directory)
+        run_subprocess(["cmake", "--build", "build", "--parallel", "16"], accordo_directory)
+        lib = os.path.join(accordo_directory, "build", "lib", "libaccordo.so")
+        env = os.environ.copy()
+        env = os.environ.copy()
+        env["HSA_TOOLS_LIB"] = lib
+        env["KERNEL_TO_TRACE"] = kernel_name
+        env["ACCORDO_LOG_LEVEL"] = "0"
+        env["ACCORDO_PIPE_NAME"] = pipe_name
+        env["ACCORDO_IPC_OUTPUT_FILE"] = ipc_file_name
+        env["ACCORDO_TRACE_MODE"] = "1"
+        
+        pid = os.posix_spawn(self.get_app_cmd(), [self.get_app_cmd()], env)
+        results = get_kern_arg_data(pipe_name, args, ipc_file_name)
             
 
-        print(f"instrumented_binary: {instrumented_binary}")
-        print(f"uninstrumented_binary: {uninstrumented_binary}")
+        print(f"instrumented_applet: {self.instrumented_applet}")
+        print(f"uninstrumented_applet: {self.uninstrumented_applet}")
         return Result(
             success=True,
             asset={
                 "recovered_kernel_path": fixed_kernel_path,
                 "recovered_kernel_source": file_content,
-                "instrumented_binary": instrumented_binary,
-                "uninstrumented_binary": uninstrumented_binary
+                "instrumented_applet": self.instrumented_applet,
+                "uninstrumented_applet": self.uninstrumented_applet
             }
         )
         
@@ -303,7 +338,7 @@ class bank_conflict(Formula_Base):
             "--instrumented",
             "--analyzers", "MemoryAnalysis",
             "--kernels", ecma_regex,
-            "--", " ".join(self.get_app_cmd())
+            "--", " ".join(self.instrumented_applet) + " " + " ".join(self.applet_args)
         ])
         if not success:
             logging.error(f"Critical Error: {output}")
@@ -452,7 +487,7 @@ class bank_conflict(Formula_Base):
         """
         super().validation_pass()
 
-        accordo_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "accordo"))
+        accordo_directory = get_accordo_path()
 
         results = {}
         for binary, label in zip([unoptimized_binary, optimized_binary], ["unoptimized", "optimized"]):
