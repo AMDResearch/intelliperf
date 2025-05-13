@@ -38,7 +38,7 @@ from openai import OpenAIError
 
 from formulas.formula_base import Formula_Base, Result
 from utils.process import capture_subprocess_output, exit_on_fail
-from utils.env import get_guided_tuning_path
+from utils.env import get_guided_tuning_path, get_omniprobe_path
 from formulas.code_gen.code_gen import generate_recovered_kernel
 
 sys.path.append(
@@ -205,7 +205,7 @@ class bank_conflict(Formula_Base):
         system_prompt += " Do not attempt to optimize the kernel. Faithfully complete the kernel."
         system_prompt += " Do not include any other text or markdown code blocks other than the code."
         
-        user_prompt = f"Please fix the errors in this code: {kernel_source}"
+        user_prompt = f"Do not change the kernel launch code. Please fix the errors in this code: {kernel_source}"
         
         body = {
             "messages": [
@@ -242,29 +242,39 @@ class bank_conflict(Formula_Base):
         print(f"Recovered kernel source written to {fixed_kernel_path}")
         
         # Compile the recovered kernel
-        success, message = self.compile_source_file(fixed_kernel_path)
+        success, message, uninstrumented_binary = self.compile_source_file(fixed_kernel_path, suffix = "uninstrumented")
         if not success:
             return Result(
                 success=False,
                 error_report=message
             )
+        omniprobe_lib_path = os.path.join(get_omniprobe_path(), "build")
+        trace_args = [f"-L{omniprobe_lib_path}", "-lMemAnalysis64"]
+        success, message, instrumented_binary = self.compile_source_file(fixed_kernel_path, suffix = "instrumented", args = trace_args)
+            
+
+        print(f"instrumented_binary: {instrumented_binary}")
+        print(f"uninstrumented_binary: {uninstrumented_binary}")
         return Result(
             success=True,
             asset={
                 "recovered_kernel_path": fixed_kernel_path,
-                "recovered_kernel_source": file_content
+                "recovered_kernel_source": file_content,
+                "instrumented_binary": instrumented_binary,
+                "uninstrumented_binary": uninstrumented_binary
             }
         )
         
-    def compile_source_file(self, source_file: str, args: list = []) -> Result:
+    def compile_source_file(self, source_file: str, suffix: str = "", args: list = []) -> Result:
         """
         Compile the source file using hipcc
         """
-        compile_cmd = ["hipcc", source_file, "-std=c++20", "-lhsa-runtime64", "-o", source_file.replace(".hip", ".out")]
+        output_file = source_file.replace(".hip", suffix)
+        compile_cmd = ["hipcc", source_file, "-std=c++20", "-lhsa-runtime64", "-o", output_file]
         if args:
             compile_cmd.extend(args)
         success, message = capture_subprocess_output(compile_cmd)
-        return success, message
+        return success, message, output_file
 
     def instrument_pass(self, perf_report_card: pd.DataFrame) -> Result:
         """
