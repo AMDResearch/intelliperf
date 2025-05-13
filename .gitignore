@@ -2,7 +2,7 @@
 __pycache__/
 .vscode/
 build/
-
+external/
 
 matrix_transpose
 !matrix_transpose/

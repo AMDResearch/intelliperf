@@ -27,7 +27,6 @@ project(Examples LANGUAGES HIP)
 
 add_library(maestro_examples INTERFACE)
 
-target_compile_options(maestro_examples INTERFACE -Wno-unused-result -O3 -g)
 option(INSTRUMENT "Instrument the code with Omniprobe" OFF)
 
 function(add_example name source_file)

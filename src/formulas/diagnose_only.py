@@ -31,7 +31,6 @@ from formulas.formula_base import Formula_Base, Result
 from utils.process import capture_subprocess_output, exit_on_fail
 from utils.env import get_guided_tuning_path
 import re
-import tempfile
 
 class diagnose_only(Formula_Base):
     def __init__(self, name, build_script, app_cmd, top_n):
@@ -122,34 +121,4 @@ class diagnose_only(Formula_Base):
         super().validation_pass()
     
     def source_code_pass(self):
-        super().source_code_pass()
-        nexus_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../external/nexus"))
-        lib = os.path.join(nexus_directory, "build", "lib", "libnexus.so")
-        env = os.environ.copy()
-
-
-        with tempfile.TemporaryDirectory() as tmp:
-            json_result_file = os.path.join(tmp, 'nexus_output.json')
-
-
-            env["HSA_TOOLS_LIB"] = lib
-            env["NEXUS_LOG_LEVEL"] = "2"
-            env["NEXUS_OUTPUT_FILE"] = json_result_file
-            success, log = capture_subprocess_output(self.get_app_cmd(), new_env=env)
-            
-            if os.path.exists(json_result_file):
-                df_results = json.loads(open(json_result_file).read())
-            else:
-                df_results = {"kernels": {}}
-
-        if not success:
-            return Result(
-                success=False,
-                asset=log,
-                error_report="Failed to collect the source code."
-            )
-
-        return Result(
-            success=True,
-            asset=df_results
-        )        
+        return super().source_code_pass()
