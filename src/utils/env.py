@@ -30,3 +30,6 @@ def get_guided_tuning_path():
         return Path(os.environ["GT_TUNING"]).resolve()
     return (Path(__file__).resolve().parent / "../../external/guided-tuning").resolve()
 
+def get_omniprobe_path():
+    return (Path(__file__).resolve().parent / "../../external/logduration/").resolve()
+
