@@ -149,11 +149,13 @@ def main():
     if args.formula == 'bankConflict':
         results_with_source = optimizer.recover_kernel_source_pass(perf_report_card=profiler_data)
         results_with_source.report_out()
-        
-        return
+
         # Instrument the application based on the results.
         instrument_results = optimizer.instrument_pass(perf_report_card=profiler_data)
         instrument_results.report_out()
+
+        
+        return
 
         # Optimize the application based on insights from instrumentation.
         optimizer_results = optimizer.optimize_pass(file = instrument_results.asset["file"],

@@ -33,3 +33,5 @@ def get_guided_tuning_path():
 def get_omniprobe_path():
     return (Path(__file__).resolve().parent / "../../external/logduration/").resolve()
 
+def get_accordo_path():
+    return (Path(__file__).resolve().parent / "../../accordo/").resolve()
