@@ -31,6 +31,7 @@ import sys
 import numpy as np
 import re
 import json
+import requests
 
 import openai
 from openai import OpenAIError
@@ -38,6 +39,7 @@ from openai import OpenAIError
 from formulas.formula_base import Formula_Base, Result
 from utils.process import capture_subprocess_output, exit_on_fail
 from utils.env import get_guided_tuning_path
+from formulas.code_gen.code_gen import generate_recovered_kernel
 
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
@@ -47,12 +49,13 @@ from accordo.python.code_gen import generate_header
 from accordo.python.utils import run_subprocess
 
 class bank_conflict(Formula_Base):
-    def __init__(self, name, build_script, app_cmd, only_consider_top_kernel=False):
+    def __init__(self, name, build_script, app_cmd, top_n, only_consider_top_kernel=False):
         super().__init__(name, build_script, app_cmd)
         self.profiler = "guided-tuning"
         # This temp option allows us to toggle if we want a full or partial instrumentation report
         self.only_consider_top_kernel = only_consider_top_kernel
-
+        self.top_n = top_n
+        
     def profile_pass(self) -> Result:
         """
         Profile the application using guided-tuning and collect bank conflict data
@@ -68,14 +71,15 @@ class bank_conflict(Formula_Base):
             [
                 f"{get_guided_tuning_path()}/bin/gt", "profile", 
                 "-n", self.get_app_name(),
+                "--top-n", str(self.top_n),
                 "--",
             ] + self.get_app_cmd()
         )
         
         exit_on_fail(success = success,
-                    message = "Failed to profile the binary",
-                    log = output)
-                    
+                     message = "Failed to profile the binary",
+                     log = output)
+                
         # Load workload summary with GT. Save list of top-n kernels for regex
         success, output = capture_subprocess_output(
             [
@@ -105,13 +109,162 @@ class bank_conflict(Formula_Base):
         exit_on_fail(success = success,
                      message = "Failed to generate the performance report card.",
                      log = output)
-
         df_results = pd.read_csv(f"{get_guided_tuning_path()}/maestro_summary.csv")
+        # Create a targeted report card
+        top_n_kernels = list(df_results.head(self.top_n)["Kernel"])
+        logging.debug(f"top_n_kernels: {top_n_kernels}")
+        success, output = capture_subprocess_output(
+            [
+                f"{get_guided_tuning_path()}/bin/gt", "db",
+                "-w", list(matching_db_workloads.keys())[-1],
+                "-k", f'{"|".join(top_n_kernels)}',
+                "--separate",
+                "--save",
+                f"{get_guided_tuning_path()}/maestro_report_card.json",
+            ]
+        )
+        df_results = json.loads(open(f"{get_guided_tuning_path()}/maestro_report_card.json").read())
+
+
 
         return Result(
             success=True,
             asset=df_results
         )
+
+
+    def recover_kernel_source_pass(self, perf_report_card: pd.DataFrame) -> Result:
+        """
+        Recover the kernel name from the application.
+        """
+        super().recover_kernel_source_pass()
+
+        # First filter: get kernels with bank conflicts
+        bank_conflict_kernels = [entry for entry in perf_report_card if entry.get("lds", {}).get("bc", 0) > 0]
+        
+        # Second filter: get kernels that also have source code
+        kernels_with_source = [entry for entry in bank_conflict_kernels if entry.get("source", {}).get("hip")]
+        
+        # Pretty print json kernels_with_source
+        print(f"kernels_with_source: {json.dumps(kernels_with_source, indent=4)}")
+        
+        if len(kernels_with_source) == 0:
+            return Result(
+                success=False,
+                error_report="No kernels with bank conflicts and source code found. Please compile your application with debug information."
+            )
+        
+        print("\nKernels with bank conflicts and source code:")
+        source_code = []
+        args = []
+        kernel_name = None
+        for entry in kernels_with_source:
+            name = entry["kernel"]
+            bc_value = entry.get("lds", {}).get("bc", 0)
+            args = entry["kernel"].split('(')[1].split(')')[0].split(',')
+            kernel_name = entry["kernel"].split('(')[0]
+            print(f"\nKernel: {name}")
+            print(f"Bank Conflicts: {bc_value}")
+            source = entry["source"]["hip"]
+            file_path = entry["source"]["files"]
+            print("Source code:")
+            for line, file in zip(source, file_path):
+                if line.strip(): 
+                    print(f"  {line}")
+                    # Skip the source code from the ROCM path
+                    if '/opt/rocm' in file:
+                        continue
+                    source_code.append(line)
+            
+            break
+
+        print(f"source_code: {source_code}")
+        print(f"args: {args}")
+        kernel_path  = generate_recovered_kernel('\n'.join(source_code), kernel_name, args)
+        
+        # Read the kernel path
+        with open(kernel_path, "r") as f:
+            kernel_source = f.read()
+            
+        LLM_GATEWAY_KEY = os.getenv("LLM_GATEWAY_KEY")
+                
+        if not LLM_GATEWAY_KEY:
+            return Result(
+                success=False,
+                error_report="Missing OpenAI API key."
+            )
+            
+        SERVER = "https://llm-api.amd.com/azure"
+        HEADERS = {"Ocp-Apim-Subscription-Key": LLM_GATEWAY_KEY}
+        deployment_id = "dvue-aoai-001-o4-mini"
+
+        system_prompt = "You are an expert HIP programmer."
+        system_prompt += " Given a partially recoverd kernel source, your task is to complete the kernel."
+        system_prompt += " The goal is to faithfully complete the kernel without any unnecessary changes."
+        system_prompt += " Do not include any markdown code blocks or text other than the code."
+        system_prompt += " Do not attempt to optimize the kernel. Faithfully complete the kernel."
+        system_prompt += " Do not include any other text or markdown code blocks other than the code."
+        
+        user_prompt = f"Please fix the errors in this code: {kernel_source}"
+        
+        body = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt
+                }
+            ],
+            "max_Tokens": 4096,
+            "max_Completion_Tokens": 4096
+        }
+
+        response = requests.post(url=f"{SERVER}/engines/{deployment_id}/chat/completions", 
+                                json=body,
+                                headers=HEADERS).json()
+        file_content = response['choices'][0]['message']['content']
+
+        print(f"response: {response}")
+        print(f"system prompt: {system_prompt}")
+        print(f"user prompt: {user_prompt}")
+        print(f"first choice: {response['choices'][0]}")
+        print(f"first choice message: {response['choices'][0]['message']}")
+        print(f"Recovered kernel source: \n{file_content}")
+        
+        fixed_kernel_path = kernel_path.replace(".hip", "_fixed.hip")
+        
+        with open(fixed_kernel_path, "w") as f:
+            f.write(file_content)
+        print(f"Original kernel source written to {kernel_path}")
+        print(f"Recovered kernel source written to {fixed_kernel_path}")
+        
+        # Compile the recovered kernel
+        success, message = self.compile_source_file(fixed_kernel_path)
+        if not success:
+            return Result(
+                success=False,
+                error_report=message
+            )
+        return Result(
+            success=True,
+            asset={
+                "recovered_kernel_path": fixed_kernel_path,
+                "recovered_kernel_source": file_content
+            }
+        )
+        
+    def compile_source_file(self, source_file: str, args: list = []) -> Result:
+        """
+        Compile the source file using hipcc
+        """
+        compile_cmd = ["hipcc", source_file, "-std=c++20", "-lhsa-runtime64", "-o", source_file.replace(".hip", ".out")]
+        if args:
+            compile_cmd.extend(args)
+        success, message = capture_subprocess_output(compile_cmd)
+        return success, message
 
     def instrument_pass(self, perf_report_card: pd.DataFrame) -> Result:
         """

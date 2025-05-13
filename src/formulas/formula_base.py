@@ -31,7 +31,8 @@ import pandas as pd
 import json
 from pprint import pformat
 from utils.process import capture_subprocess_output, exit_on_fail
-
+from utils.env import get_guided_tuning_path
+import tempfile
 
 class Result:
     def __init__(self, success:bool, error_report:str="", asset=None):
@@ -123,6 +124,19 @@ class Formula_Base:
         """
         Extract any required performance data from the application using the specified profiler.
         """
+        capture_subprocess_output(
+            [
+                "rm", "-rf", f"{get_guided_tuning_path()}/workloads",
+            ]
+        )
+                
+        pass
+
+    @abstractmethod
+    def recover_kernel_source_pass(self):
+        """
+        Recover the kernel source code from the application.
+        """
         pass
 
     @abstractmethod
@@ -152,9 +166,39 @@ class Formula_Base:
         Validates the the application.
         """
         pass
+    
     @abstractmethod
     def source_code_pass(self):
         """
         Finds the source code.
         """
-        pass
+        nexus_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../external/nexus"))
+        lib = os.path.join(nexus_directory, "build", "lib", "libnexus.so")
+        env = os.environ.copy()
+
+
+        with tempfile.TemporaryDirectory() as tmp:
+            json_result_file = os.path.join(tmp, 'nexus_output.json')
+
+
+            env["HSA_TOOLS_LIB"] = lib
+            env["NEXUS_LOG_LEVEL"] = "2"
+            env["NEXUS_OUTPUT_FILE"] = json_result_file
+            success, log = capture_subprocess_output(self.get_app_cmd(), new_env=env)
+            
+            if os.path.exists(json_result_file):
+                df_results = json.loads(open(json_result_file).read())
+            else:
+                df_results = {"kernels": {}}        
+
+        if not success:
+            return Result(
+                success=False,
+                asset=log,
+                error_report="Failed to collect the source code."
+            )
+
+        return Result(
+            success=True,
+            asset=df_results
+        )        

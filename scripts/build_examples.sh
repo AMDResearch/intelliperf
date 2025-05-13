@@ -31,13 +31,15 @@ clean=false
 parallel=8
 build_dir=build
 verbose=false
+build_type=RelWithDebInfo
 
 print_usage() {
     echo "Usage: $0 [options]"
     echo "Options:"
-    echo "  -c, --clean       Clean build directory"
-    echo "  -v, --verbose     Print verbose output"
-    echo "  -j, --jobs <num>  Set number of parallel jobs"
+    echo "  -c, --clean         Clean build directory"
+    echo "  -v, --verbose       Print verbose output"
+    echo "  -b, --build <type>  CMake build type (Release, Debug, RelWithDebInfo, MinSizeRel)"
+    echo "  -j, --jobs <num>    Set number of parallel jobs"
 }
 
 # Parse arguments
@@ -50,6 +52,16 @@ while [[ $# -gt 0 ]]; do
         -v|--verbose)
             verbose=true
             shift
+            ;;
+        -b|--build)
+            if [[ -n "$2" && "$2" =~ ^(Release|Debug|RelWithDebInfo|MinSizeRel)$ ]]; then
+                build_type="$2"
+                shift 2
+            else
+                echo "Error: --build requires a valid build type (Release, Debug, RelWithDebInfo, MinSizeRel)"
+                print_usage
+                exit 1
+            fi
             ;;
         -j|--jobs)
             if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
@@ -76,7 +88,7 @@ if [ "$clean" = true ]; then
     rm -rf "$build_dir"
 fi
 
-cmake -B "$build_dir"
+cmake -B "$build_dir" -DCMAKE_BUILD_TYPE="$build_type"
 
 cmake_args=()
 if [ "$verbose" = true ]; then

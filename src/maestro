@@ -108,6 +108,7 @@ def main():
             name=generated_name,
             build_script=args.script,
             app_cmd=args.remaining,
+            top_n=args.top_n,
             only_consider_top_kernel=True
         )
     elif args.formula == 'diagnoseOnly':
@@ -130,27 +131,28 @@ def main():
     unoptimized_binary_profiler_results.report_out()
 
     # Get source code mappings
-    if args.formula == 'diagnoseOnly':
-        source_code_collection = optimizer.source_code_pass()
-        source_code_collection.report_out()
+    source_code_collection = optimizer.source_code_pass()
+    source_code_collection.report_out()
+    profiler_data = unoptimized_binary_profiler_results.asset
+    source_kernels = source_code_collection.asset["kernels"]
+    # In-place append of source info
+    for entry in profiler_data:
+        kernel_name = entry["kernel"]
+        empty = {
+            "assembly": [],
+            "files": [],
+            "hip": [],
+            "lines": [],
+            "signature": ""}
+        entry["source"] = source_kernels.get(kernel_name, empty)
 
-        profiler_data = unoptimized_binary_profiler_results.asset
-        source_kernels = source_code_collection.asset["kernels"]
-
-        # In-place append of source info
-        for entry in profiler_data:
-            kernel_name = entry["kernel"]
-            empty = {
-                "assembly": [],
-                "files": [],
-                "hip": [],
-                "lines": [],
-                "signature": ""}
-            entry["source"] = source_kernels.get(kernel_name, empty)
-
-    if args.formula != 'diagnoseOnly':
+    if args.formula == 'bankConflict':
+        results_with_source = optimizer.recover_kernel_source_pass(perf_report_card=profiler_data)
+        results_with_source.report_out()
+        
+        return
         # Instrument the application based on the results.
-        instrument_results = optimizer.instrument_pass(perf_report_card=unoptimized_binary_profiler_results.asset)
+        instrument_results = optimizer.instrument_pass(perf_report_card=profiler_data)
         instrument_results.report_out()
 
         # Optimize the application based on insights from instrumentation.
