@@ -165,7 +165,7 @@ void writeValueToFile(const T& value, std::size_t ptr_size) {
   }
 
   file << "BEGIN\n";
-  file.write(reinterpret_cast<const char*>(&handle), sizeof(handle));
+  file.write(reinterpret_cast<const char*>(&value), sizeof(value));
   file.write(reinterpret_cast<const char*>(&ptr_size), sizeof(ptr_size));
   file << "END\n";
   file.flush();
@@ -179,7 +179,8 @@ void accordo::send_message_and_wait(void* args) {
 
   for_each_field(args_struct, [](const auto& field) {
     if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>>) {
-      LOG_DETAIL("Field (pointer): {}", static_cast<const void*>(field));
+      using base_type = std::remove_cv_t<std::remove_pointer_t<std::decay_t<decltype(field)>>>;
+      LOG_DETAIL("Field (pointer): {}", reinterpret_cast<void*>(const_cast<base_type*>(field)));
     } else {
       LOG_DETAIL("Field: {}", field);
     }
@@ -228,7 +229,7 @@ void accordo::send_message_and_wait(void* args) {
     LOG_DETAIL("Sending the handle for the pointer {} ({} bytes).",
                reinterpret_cast<void*>(field),
                ptr_size);
-    writeIpcHandleToFile(handle, ptr_size);
+    writeValueToFile(handle, ptr_size);
   };
 
   for_each_field(args_struct, [&](const auto& field) {
@@ -240,7 +241,8 @@ void accordo::send_message_and_wait(void* args) {
       }
     } else {
       if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>>) {
-        dump_ipc_handle(field);
+        using clean_ptr_t = std::remove_cv_t<std::remove_pointer_t<std::decay_t<decltype(field)>>>;
+        dump_ipc_handle(const_cast<clean_ptr_t*>(field));
       } else {
         LOG_DETAIL("Field: {}", field);
         writeValueToFile(field, sizeof(field));
