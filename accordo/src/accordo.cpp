@@ -164,10 +164,10 @@ void writeValueToFile(const T& value, std::size_t ptr_size) {
     return;
   }
 
-  file << "BEGIN\n";
+  file << "BEGIN" << "\n";
   file.write(reinterpret_cast<const char*>(&value), sizeof(value));
   file.write(reinterpret_cast<const char*>(&ptr_size), sizeof(ptr_size));
-  file << "END\n";
+  file << "END" << "\n";
   file.flush();
   file.close();
 
@@ -234,18 +234,20 @@ void accordo::send_message_and_wait(void* args) {
 
   for_each_field(args_struct, [&](const auto& field) {
     if (is_trace_mode) {
-      if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> &&
-                    !std::is_const_v<
-                        std::remove_pointer_t<std::decay_t<decltype(field)>>>) {
-        dump_ipc_handle(field);
-      }
-    } else {
       if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>>) {
         using clean_ptr_t = std::remove_cv_t<std::remove_pointer_t<std::decay_t<decltype(field)>>>;
+        LOG_DETAIL("Pointer field: {}", static_cast<void*>(const_cast<clean_ptr_t*>(field)));
         dump_ipc_handle(const_cast<clean_ptr_t*>(field));
       } else {
-        LOG_DETAIL("Field: {}", field);
+        LOG_DETAIL("Non-pointer field: {}", field);
         writeValueToFile(field, sizeof(field));
+      }
+    } else {
+            if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> &&
+                    !std::is_const_v<
+                        std::remove_pointer_t<std::decay_t<decltype(field)>>>) {
+        LOG_DETAIL("Pointer field: {}", static_cast<void*>(field));
+        dump_ipc_handle(field);
       }
     }
   });

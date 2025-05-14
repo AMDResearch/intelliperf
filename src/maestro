@@ -151,7 +151,7 @@ def main():
         results_with_source.report_out()
 
         # Instrument the application based on the results.
-        instrument_results = optimizer.instrument_pass(perf_report_card=profiler_data)
+        instrument_results = optimizer.instrument_pass(results_with_source=results_with_source)
         instrument_results.report_out()
 
         
