@@ -164,9 +164,11 @@ class bank_conflict(Formula_Base):
         source_code = []
         args = []
         kernel_name = None
+        kernel_signature = None
         for entry in kernels_with_source:
             name = entry["kernel"]
             bc_value = entry.get("lds", {}).get("bc", 0)
+            kernel_signature = entry["kernel"]
             args = entry["kernel"].split('(')[1].split(')')[0].split(',')
             kernel_name = entry["kernel"].split('(')[0]
             print(f"\nKernel: {name}")
@@ -248,7 +250,7 @@ class bank_conflict(Formula_Base):
         print(f"Recovered kernel source written to {fixed_kernel_path}")
         
         # Compile the recovered kernel
-        success, message, self.uninstrumented_applet = self.compile_source_file(fixed_kernel_path, suffix = "uninstrumented")
+        success, message, self.uninstrumented_applet = self.compile_source_file(fixed_kernel_path, suffix = "_uninstrumented")
         if not success:
             return Result(
                 success=False,
@@ -256,7 +258,7 @@ class bank_conflict(Formula_Base):
             )
         omniprobe_lib_path = os.path.join(get_omniprobe_path(), "build")
         trace_args = [f"-L{omniprobe_lib_path}", "-lMemAnalysis64"]
-        success, message, self.instrumented_applet = self.compile_source_file(fixed_kernel_path, suffix = "instrumented", args = trace_args)
+        success, message, self.instrumented_applet = self.compile_source_file(fixed_kernel_path, suffix = "_instrumented", args = trace_args)
         
         
         # Find command line arguments
@@ -279,24 +281,30 @@ class bank_conflict(Formula_Base):
         env = os.environ.copy()
         env["HSA_TOOLS_LIB"] = lib
         env["KERNEL_TO_TRACE"] = kernel_name
-        env["ACCORDO_LOG_LEVEL"] = "0"
+        env["ACCORDO_LOG_LEVEL"] = "3"
         env["ACCORDO_PIPE_NAME"] = pipe_name
         env["ACCORDO_IPC_OUTPUT_FILE"] = ipc_file_name
         env["ACCORDO_TRACE_MODE"] = "1"
-        
-        pid = os.posix_spawn(self.get_app_cmd(), [self.get_app_cmd()], env)
+
+        argv = [self.get_app_binary()] + self.get_app_args()
+        pid = os.posix_spawn(self.get_app_binary(), argv, env)
         results = get_kern_arg_data(pipe_name, args, ipc_file_name)
-            
+        send_response(pipe_name) 
 
         print(f"instrumented_applet: {self.instrumented_applet}")
         print(f"uninstrumented_applet: {self.uninstrumented_applet}")
+        print(f"pipe name: {pipe_name}")
+        print(f"ipc file name: {ipc_file_name}")
+        print(f"results: {results}")
+        
         return Result(
             success=True,
             asset={
                 "recovered_kernel_path": fixed_kernel_path,
                 "recovered_kernel_source": file_content,
                 "instrumented_applet": self.instrumented_applet,
-                "uninstrumented_applet": self.uninstrumented_applet
+                "uninstrumented_applet": self.uninstrumented_applet,
+                "kernel_signature": kernel_signature
             }
         )
         
@@ -311,23 +319,20 @@ class bank_conflict(Formula_Base):
         success, message = capture_subprocess_output(compile_cmd)
         return success, message, output_file
 
-    def instrument_pass(self, perf_report_card: pd.DataFrame) -> Result:
+    def instrument_pass(self, results_with_source: Result) -> Result:
         """
         Instrument the application, targeting the kernels with the highest bank conflict data
 
         Args:
-            perf_report_card (pd.DataFrame): DataFrame containing kernel report card with bank conflict data
+            results_with_source (Result): Result containing the recovered kernel source
 
         Returns:
             Result: Instrumentation data containing the kernel name, arguments, lines, and file path as dict
         """
         super().instrument_pass()
-        # Get the kernel names with the highest bank conflict data and filter
-        filtered_report_card = perf_report_card[perf_report_card["LDS Bank Conflicts"] > 0]
-        filtered_report_card = filtered_report_card[~filtered_report_card["Kernel"].str.contains("Cijk")]
-        logging.debug(f"Filtered Report Card:\n{filtered_report_card}")
-        kernel_names = filtered_report_card["Kernel"].tolist()
 
+        kernel_names = [results_with_source.asset["kernel_signature"]]
+        
         # Generate ECMA regex from the list of kernel names
         ecma_regex = generate_ecma_regex_from_list(kernel_names)
         logging.debug(f"ECMA Regex for kernel names: {ecma_regex}")
@@ -338,8 +343,8 @@ class bank_conflict(Formula_Base):
             "--instrumented",
             "--analyzers", "MemoryAnalysis",
             "--kernels", ecma_regex,
-            "--", " ".join(self.instrumented_applet) + " " + " ".join(self.applet_args)
-        ])
+            "--",
+        ] + self.instrumented_applet + self.applet_args)
         if not success:
             logging.error(f"Critical Error: {output}")
             logging.error("Failed to instrument the application.")

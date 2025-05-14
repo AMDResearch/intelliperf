@@ -89,9 +89,10 @@ class Formula_Base:
 
     def get_app_cmd(self):
         return self.__app_cmd
+    def get_app_binary(self):
+        return self.__app_cmd[0]
     def get_app_args(self):
-        parts = self.__app_cmd[1:]
-        return parts[1] if len(parts) > 1 else ""
+        return self.__app_cmd[1:]
     def get_app_name(self):
         return self.__name
     def build(self):
