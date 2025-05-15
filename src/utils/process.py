@@ -28,6 +28,8 @@ import selectors
 import logging
 import sys
 import json
+import tempfile
+import os
 
 def exit_on_fail(success: bool, message: str, log: str = ""):
     if not success:
@@ -43,6 +45,32 @@ def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
     if new_env != None:
         logging.debug("Inside the environment:\n%s", json.dumps(new_env, indent=2))
     
+    # Dump to a tmp shell script for debugging
+    tmp_dir = tempfile.mkdtemp()
+    tmp_script = os.path.join(tmp_dir, "subprocess_args.sh")
+    
+    # Wirte the env to the tmp script
+    with open(tmp_script, "w") as f:
+        new_env = new_env if new_env != None else os.environ
+        f.write("#!/bin/bash\n")
+        for key, value in new_env.items():
+            f.write(f"{key}=\"{value}\"\n")
+    
+    # Write the command to the tmp script
+    with open(tmp_script, "a") as f:
+        for arg in subprocess_args:
+            if " " in arg:
+                f.write(f'"{arg}" ')
+            else:
+                f.write(f"{arg} ")
+        f.write("\n")
+    f.close()
+    
+    # Chmod +x the tmp script
+    os.chmod(tmp_script, 0o755)
+    
+    logging.debug(f"Dumped script to: {tmp_script}")
+
     process = (
         subprocess.Popen(
             subprocess_args,
