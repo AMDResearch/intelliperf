@@ -250,17 +250,21 @@ class bank_conflict(Formula_Base):
         print(f"Recovered kernel source written to {fixed_kernel_path}")
         
         # Compile the recovered kernel
-        success, message, self.uninstrumented_applet = self.compile_source_file(fixed_kernel_path, suffix = "_uninstrumented")
-        if not success:
+        for _ in range(3):
+            success0, message, self.uninstrumented_applet = self.compile_source_file(fixed_kernel_path, suffix = "_uninstrumented")
+
+            omniprobe_lib_path = os.path.join(get_omniprobe_path(), "build")
+            trace_args = [f"-L{omniprobe_lib_path}", "-lMemAnalysis64"]
+            success1, message, self.instrumented_applet = self.compile_source_file(fixed_kernel_path, suffix = "_instrumented", args = trace_args)
+            if success0 and success1:
+                break
+
+        if not success0:
             return Result(
                 success=False,
                 error_report=message
             )
-        omniprobe_lib_path = os.path.join(get_omniprobe_path(), "build")
-        trace_args = [f"-L{omniprobe_lib_path}", "-lMemAnalysis64"]
-        success, message, self.instrumented_applet = self.compile_source_file(fixed_kernel_path, suffix = "_instrumented", args = trace_args)
-        
-        
+                        
         # Find command line arguments
         accordo_directory = get_accordo_path()
         
@@ -269,7 +273,7 @@ class bank_conflict(Formula_Base):
         pipe_name = f"/tmp/kernel_pipe_{timestamp}"
         ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
                     
-        for file in [ipc_file_name, ipc_file_name]:
+        for file in [ipc_file_name, pipe_name]:
             if os.path.exists(file):
                 os.remove(file)
         generate_header(args)
@@ -277,7 +281,6 @@ class bank_conflict(Formula_Base):
         run_subprocess(["cmake", "-B", "build"], accordo_directory)
         run_subprocess(["cmake", "--build", "build", "--parallel", "16"], accordo_directory)
         lib = os.path.join(accordo_directory, "build", "lib", "libaccordo.so")
-        env = os.environ.copy()
         env = os.environ.copy()
         env["HSA_TOOLS_LIB"] = lib
         env["KERNEL_TO_TRACE"] = kernel_name
@@ -288,15 +291,16 @@ class bank_conflict(Formula_Base):
 
         argv = [self.get_app_binary()] + self.get_app_args()
         pid = os.posix_spawn(self.get_app_binary(), argv, env)
-        results = get_kern_arg_data(pipe_name, args, ipc_file_name)
+        get_kern_arg_data(pipe_name, args, ipc_file_name, trace_mode=True)
         send_response(pipe_name) 
 
         print(f"instrumented_applet: {self.instrumented_applet}")
         print(f"uninstrumented_applet: {self.uninstrumented_applet}")
         print(f"pipe name: {pipe_name}")
         print(f"ipc file name: {ipc_file_name}")
-        print(f"results: {results}")
+        # print(f"results: {results}")
         
+        self.applet_args = [ipc_file_name]
         return Result(
             success=True,
             asset={
@@ -336,15 +340,17 @@ class bank_conflict(Formula_Base):
         # Generate ECMA regex from the list of kernel names
         ecma_regex = generate_ecma_regex_from_list(kernel_names)
         logging.debug(f"ECMA Regex for kernel names: {ecma_regex}")
-        cmd=' '.join(self.get_app_cmd())
+        cmd = ' '.join(self.get_app_cmd())
         logging.debug(f"Omniprobe profiling command is: {cmd}")
+
+        # Ensure self.instrumented_applet and self.applet_args are lists
         success, output = capture_subprocess_output([
             "omniprobe",
             "--instrumented",
             "--analyzers", "MemoryAnalysis",
             "--kernels", ecma_regex,
             "--",
-        ] + self.instrumented_applet + self.applet_args)
+            self.instrumented_applet,  ' '.join(self.applet_args)])
         if not success:
             logging.error(f"Critical Error: {output}")
             logging.error("Failed to instrument the application.")
