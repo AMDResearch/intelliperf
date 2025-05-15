@@ -43,7 +43,7 @@ def generate_recovered_kernel(kernel_source: str, kernel_name: str, args: list[s
         arg = ' '.join(arg.split())
         
         argname = f"arg_{i}"
-        arg_loading_lines += f"\tauto h_{argname} = load_arg<{arg}>(argv[{i + 1}]);\n"
+        arg_loading_lines += f"\tauto h_{argname} = load_arg<{arg}>(argv[1], {i});\n"
         if is_pointer:
             arg_loading_lines += f"\tauto d_{argname} = thrust::device_vector<{arg}>(h_{argname});\n"
         else:
@@ -82,26 +82,55 @@ def generate_recovered_kernel(kernel_source: str, kernel_name: str, args: list[s
 {kernel_source}
 
 template <typename T>
-std::vector<T> load_arg(const char* path) {{
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {{
-        throw std::runtime_error(std::string("Failed to open file: ") + path);
+std::vector<T> load_arg(const char* path, int index) {{
+  std::ifstream file(path, std::ios::binary);
+  if (!file) {{
+    throw std::runtime_error(std::string("Failed to open file: ") + path);
+  }}
+
+  const std::string begin_marker = "BEGIN";
+  const std::string end_marker = "END";
+
+  std::string line;
+  std::vector<T> results;
+  int current_index = 0;
+
+  while (std::getline(file, line)) {{
+    if (line == begin_marker) {{    
+      std::size_t ptr_size = 0;
+      file.read(reinterpret_cast<char*>(&ptr_size), sizeof(std::size_t));
+
+      if (ptr_size % sizeof(T) != 0) {{
+        throw std::runtime_error("ptr_size is not a multiple of sizeof(T)");
+      }}
+
+      std::size_t num_elements = ptr_size / sizeof(T);
+      std::vector<T> temp(num_elements);
+      file.read(reinterpret_cast<char*>(temp.data()), ptr_size);
+
+      std::getline(file, line);
+      if (line != end_marker) {{
+        throw std::runtime_error("Expected END marker after value block");
+      }}
+
+      if (current_index == index) {{
+        return temp;
+      }}
+
+      ++current_index;
     }}
-    
-    std::size_t file_size = std::filesystem::file_size(path);
-    const auto num_elements = file_size / sizeof(T);
-    std::vector<T> values(num_elements);
-    
-    file.read(reinterpret_cast<char*>(values.data()), file_size);
-    if (!file) {{
-        throw std::runtime_error(std::string("Failed to read file: ") + path);
-    }}
-    
-    return values;
+  }}
+
+  if (index != -1 && index >= current_index) {{
+    throw std::out_of_range("Requested index exceeds number of values in file");
+  }}
+
+  return results;
 }}
 
+
 int main(int argc, char** argv) {{
-    if (argc != {len(args) + 1}) {{
+    if (argc != 2) {{
         printf("Usage: %s <path-to-args-to-load>\\n", argv[0]);
         return 1;
     }}

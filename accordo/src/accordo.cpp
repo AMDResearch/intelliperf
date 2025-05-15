@@ -152,7 +152,7 @@ void printHipIpcMemHandle(const hipIpcMemHandle_t& handle, const std::string& me
 }
 
 template <typename T>
-void writeValueToFile(const T& value, std::size_t ptr_size) {
+void writeValueToFile(const T& value, std::size_t ptr_size, const bool dump_data) {
   static const char* file_name = std::getenv("ACCORDO_IPC_OUTPUT_FILE");
   if (!file_name) {
     LOG_ERROR("Set ACCORDO_IPC_OUTPUT_FILE to communicate with driver script.");
@@ -165,8 +165,15 @@ void writeValueToFile(const T& value, std::size_t ptr_size) {
   }
 
   file << "BEGIN" << "\n";
-  file.write(reinterpret_cast<const char*>(&value), sizeof(value));
+
   file.write(reinterpret_cast<const char*>(&ptr_size), sizeof(ptr_size));
+
+  if (dump_data) {
+    file.write(reinterpret_cast<const char*>(&value), ptr_size);
+  } else {
+    file.write(reinterpret_cast<const char*>(&value), sizeof(value));
+  }
+
   file << "END" << "\n";
   file.flush();
   file.close();
@@ -179,8 +186,10 @@ void accordo::send_message_and_wait(void* args) {
 
   for_each_field(args_struct, [](const auto& field) {
     if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>>) {
-      using base_type = std::remove_cv_t<std::remove_pointer_t<std::decay_t<decltype(field)>>>;
-      LOG_DETAIL("Field (pointer): {}", reinterpret_cast<void*>(const_cast<base_type*>(field)));
+      using base_type =
+          std::remove_cv_t<std::remove_pointer_t<std::decay_t<decltype(field)>>>;
+      LOG_DETAIL("Field (pointer): {}",
+                 reinterpret_cast<void*>(const_cast<base_type*>(field)));
     } else {
       LOG_DETAIL("Field: {}", field);
     }
@@ -192,13 +201,14 @@ void accordo::send_message_and_wait(void* args) {
 
   const auto is_trace_mode = trace_mode && std::strcmp(trace_mode, "1") == 0;
 
-  int fd = open(pipe_name, O_WRONLY);
-  if (fd < 0) {
-    LOG_ERROR("Failed to open FIFO for writing");
-    return;
+  {
+    int fd = open(pipe_name, O_WRONLY);
+    if (fd < 0) {
+      LOG_ERROR("Failed to open FIFO for writing");
+      return;
+    }
   }
-
-  auto dump_ipc_handle = [&](const auto& field) {
+  auto dump_ipc_handle = [&](const auto& field, const bool dump_data = false) {
     size_t ptr_size = 0;
     {
       auto instance = get_instance();
@@ -229,21 +239,27 @@ void accordo::send_message_and_wait(void* args) {
     LOG_DETAIL("Sending the handle for the pointer {} ({} bytes).",
                reinterpret_cast<void*>(field),
                ptr_size);
-    writeValueToFile(handle, ptr_size);
+    if (dump_data) {
+      writeValueToFile(static_cast<const char*>(cpu_ptr), ptr_size, dump_data);
+    } else {
+      writeValueToFile(handle, ptr_size, dump_data);
+    }
   };
 
   for_each_field(args_struct, [&](const auto& field) {
     if (is_trace_mode) {
       if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>>) {
-        using clean_ptr_t = std::remove_cv_t<std::remove_pointer_t<std::decay_t<decltype(field)>>>;
-        LOG_DETAIL("Pointer field: {}", static_cast<void*>(const_cast<clean_ptr_t*>(field)));
-        dump_ipc_handle(const_cast<clean_ptr_t*>(field));
+        using clean_ptr_t =
+            std::remove_cv_t<std::remove_pointer_t<std::decay_t<decltype(field)>>>;
+        LOG_DETAIL("Pointer field: {}",
+                   static_cast<void*>(const_cast<clean_ptr_t*>(field)));
+        dump_ipc_handle(const_cast<clean_ptr_t*>(field), true);
       } else {
         LOG_DETAIL("Non-pointer field: {}", field);
-        writeValueToFile(field, sizeof(field));
+        writeValueToFile(field, sizeof(field), true);
       }
     } else {
-            if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> &&
+      if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> &&
                     !std::is_const_v<
                         std::remove_pointer_t<std::decay_t<decltype(field)>>>) {
         LOG_DETAIL("Pointer field: {}", static_cast<void*>(field));
@@ -252,14 +268,16 @@ void accordo::send_message_and_wait(void* args) {
     }
   });
 
-  fd = open(pipe_name, O_RDONLY);
-  if (fd < 0) {
-    LOG_ERROR("Failed to open FIFO for reading");
-    return;
+  {
+    int fd = open(pipe_name, O_RDONLY);
+    if (fd < 0) {
+      LOG_ERROR("Failed to open FIFO for reading");
+      return;
+    }
+    char buffer[10];
+    [[maybe_unused]] auto result = read(fd, buffer, sizeof(buffer));
+    close(fd);
   }
-  char buffer[10];
-  read(fd, buffer, sizeof(buffer));
-  close(fd);
 
   LOG_INFO("Python response received. Continuing execution...");
 }

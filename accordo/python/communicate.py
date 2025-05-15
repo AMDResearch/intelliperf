@@ -98,6 +98,8 @@ def get_kern_arg_data(pipe_name, args, ipc_file_name, trace_mode = False):
         os.chmod(pipe_name, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
 
     with open(pipe_name, "rb") as fifo:
+        if trace_mode:
+            return
         ipc_handles, ptr_sizes = read_ipc_handles(args, ipc_file_name, trace_mode)
 
     type_map = {
