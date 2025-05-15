@@ -57,29 +57,29 @@ def maestro_parser():
 
     # Optional arguments group
     optional_args = parser.add_argument_group('optional arguments')
-    optional_args.add_argument('-s', '--script', 
-                               type=str, 
+    optional_args.add_argument('-s', '--script',
+                               type=str,
                                metavar='',
                                help='A script to build your application')
-    optional_args.add_argument('-f', 
-                               '--formula', 
-                               choices=['bankConflict', 'diagnoseOnly'], 
-                               default='diagnoseOnly', 
+    optional_args.add_argument('-f',
+                               '--formula',
+                               choices=['bankConflict', 'diagnoseOnly'],
+                               default='bankConflict',
                                metavar='',
-                               type=str, 
-                               help='Specify the formula to use for optimization (default: diagnoseOnly)')
-    optional_args.add_argument("-o", 
-                               "--output_file", 
-                               type=str, 
+                               type=str,
+                               help='Specify the formula to use for optimization (default: bankConflict)')
+    optional_args.add_argument("-o",
+                               "--output_file",
+                               type=str,
                                metavar='',
                                help="Path to the output file")
-    optional_args.add_argument("-c", 
-                               "--ci_output_file", 
-                               type=str, 
+    optional_args.add_argument("-c",
+                               "--ci_output_file",
+                               type=str,
                                metavar='',
                                help="Path to the output file for CI integration")
     optional_args.add_argument('--top-n',
-                               type=int, 
+                               type=int,
                                default=10,
                                metavar='',
                                help='Control the top-n kernels collected in diagnoseOnly mode (default: 10)')
@@ -154,7 +154,7 @@ def main():
         instrument_results = optimizer.instrument_pass(results_with_source=results_with_source)
         instrument_results.report_out()
 
-        
+
         return
 
         # Optimize the application based on insights from instrumentation.
@@ -180,11 +180,11 @@ def main():
         validation_results.report_out()
 
         # Find the performance results
-        # We updated and built the optimized code, now we can just run the 
-        # profiling pass 
+        # We updated and built the optimized code, now we can just run the
+        # profiling pass
         optimized_binary_profiler_results = optimizer.profile_pass()
         optimized_binary_profiler_results.report_out()
-        
+
         logging.info("Optimized code:")
         logging.info(tabulate(optimized_binary_profiler_results.asset, headers='keys', tablefmt='psql'))
         logging.info("Unoptimized code:")
@@ -202,16 +202,16 @@ def main():
             f.write(log)
     else:
         print(log)
-        
+
     if args.ci_output_file and args.formula != "diagnoseOnly":
         kernel = instrument_results.asset['kernel']
         lines = instrument_results.asset['lines']
-        
-        message = (f"Maestro detected bank conflicts in the kernel `{kernel}` at line(s) {lines}." 
+
+        message = (f"Maestro detected bank conflicts in the kernel `{kernel}` at line(s) {lines}."
                    f" This PR contains an optimized and validated implementation. See log below for complete output.")
         with open(args.ci_output_file, 'w') as f:
             f.write(message)
-        
+
 
 if __name__ == '__main__':
     main()

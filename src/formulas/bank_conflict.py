@@ -55,13 +55,13 @@ class bank_conflict(Formula_Base):
         # This temp option allows us to toggle if we want a full or partial instrumentation report
         self.only_consider_top_kernel = only_consider_top_kernel
         self.top_n = top_n
-        
-        
+
+
         self.instrumented_applet = None
         self.uninstrumented_applet = None
         self.applet_args = None
-        
-        
+
+
     def profile_pass(self) -> Result:
         """
         Profile the application using guided-tuning and collect bank conflict data
@@ -75,17 +75,17 @@ class bank_conflict(Formula_Base):
         # Profile the app using GT
         success, output = capture_subprocess_output(
             [
-                f"{get_guided_tuning_path()}/bin/gt", "profile", 
+                f"{get_guided_tuning_path()}/bin/gt", "profile",
                 "-n", self.get_app_name(),
                 "--top-n", str(self.top_n),
                 "--",
             ] + self.get_app_cmd()
         )
-        
+
         exit_on_fail(success = success,
                      message = "Failed to profile the binary",
                      log = output)
-                
+
         # Load workload summary with GT. Save list of top-n kernels for regex
         success, output = capture_subprocess_output(
             [
@@ -96,7 +96,7 @@ class bank_conflict(Formula_Base):
         exit_on_fail(success = success,
                      message = "Failed to generate the performance report card.",
                      log = output)
-                
+
         matching_db_workloads = {}
         for line in output.splitlines():
             parts = line.split(maxsplit=1)
@@ -147,19 +147,19 @@ class bank_conflict(Formula_Base):
 
         # First filter: get kernels with bank conflicts
         bank_conflict_kernels = [entry for entry in perf_report_card if entry.get("lds", {}).get("bc", 0) > 0]
-        
+
         # Second filter: get kernels that also have source code
         kernels_with_source = [entry for entry in bank_conflict_kernels if entry.get("source", {}).get("hip")]
-        
+
         # Pretty print json kernels_with_source
         print(f"kernels_with_source: {json.dumps(kernels_with_source, indent=4)}")
-        
+
         if len(kernels_with_source) == 0:
             return Result(
                 success=False,
                 error_report="No kernels with bank conflicts and source code found. Please compile your application with debug information."
             )
-        
+
         print("\nKernels with bank conflicts and source code:")
         source_code = []
         args = []
@@ -177,31 +177,31 @@ class bank_conflict(Formula_Base):
             file_path = entry["source"]["files"]
             print("Source code:")
             for line, file in zip(source, file_path):
-                if line.strip(): 
+                if line.strip():
                     print(f"  {line}")
                     # Skip the source code from the ROCM path
                     if '/opt/rocm' in file:
                         continue
                     source_code.append(line)
-            
+
             break
 
         print(f"source_code: {source_code}")
         print(f"args: {args}")
         kernel_path  = generate_recovered_kernel('\n'.join(source_code), kernel_name, args)
-        
+
         # Read the kernel path
         with open(kernel_path, "r") as f:
             kernel_source = f.read()
-            
+
         LLM_GATEWAY_KEY = os.getenv("LLM_GATEWAY_KEY")
-                
+
         if not LLM_GATEWAY_KEY:
             return Result(
                 success=False,
-                error_report="Missing OpenAI API key."
+                error_report="Missing LLM Gateway API key."
             )
-            
+
         SERVER = "https://llm-api.amd.com/azure"
         HEADERS = {"Ocp-Apim-Subscription-Key": LLM_GATEWAY_KEY}
         deployment_id = "dvue-aoai-001-o4-mini"
@@ -212,9 +212,9 @@ class bank_conflict(Formula_Base):
         system_prompt += " Do not include any markdown code blocks or text other than the code."
         system_prompt += " Do not attempt to optimize the kernel. Faithfully complete the kernel."
         system_prompt += " Do not include any other text or markdown code blocks other than the code."
-        
+
         user_prompt = f"Do not change the kernel launch code. Please fix the errors in this code: {kernel_source}"
-        
+
         body = {
             "messages": [
                 {
@@ -230,7 +230,7 @@ class bank_conflict(Formula_Base):
             "max_Completion_Tokens": 4096
         }
 
-        response = requests.post(url=f"{SERVER}/engines/{deployment_id}/chat/completions", 
+        response = requests.post(url=f"{SERVER}/engines/{deployment_id}/chat/completions",
                                 json=body,
                                 headers=HEADERS).json()
         file_content = response['choices'][0]['message']['content']
@@ -241,14 +241,14 @@ class bank_conflict(Formula_Base):
         print(f"first choice: {response['choices'][0]}")
         print(f"first choice message: {response['choices'][0]['message']}")
         print(f"Recovered kernel source: \n{file_content}")
-        
+
         fixed_kernel_path = kernel_path.replace(".hip", "_fixed.hip")
-        
+
         with open(fixed_kernel_path, "w") as f:
             f.write(file_content)
         print(f"Original kernel source written to {kernel_path}")
         print(f"Recovered kernel source written to {fixed_kernel_path}")
-        
+
         # Compile the recovered kernel
         for _ in range(3):
             success0, message, self.uninstrumented_applet = self.compile_source_file(fixed_kernel_path, suffix = "_uninstrumented")
@@ -264,20 +264,20 @@ class bank_conflict(Formula_Base):
                 success=False,
                 error_report=message
             )
-                        
+
         # Find command line arguments
         accordo_directory = get_accordo_path()
-        
-        
+
+
         timestamp = int(time.time())
         pipe_name = f"/tmp/kernel_pipe_{timestamp}"
         ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
-                    
+
         for file in [ipc_file_name, pipe_name]:
             if os.path.exists(file):
                 os.remove(file)
         generate_header(args)
-                    
+
         run_subprocess(["cmake", "-B", "build"], accordo_directory)
         run_subprocess(["cmake", "--build", "build", "--parallel", "16"], accordo_directory)
         lib = os.path.join(accordo_directory, "build", "lib", "libaccordo.so")
@@ -292,14 +292,14 @@ class bank_conflict(Formula_Base):
         argv = [self.get_app_binary()] + self.get_app_args()
         pid = os.posix_spawn(self.get_app_binary(), argv, env)
         get_kern_arg_data(pipe_name, args, ipc_file_name, trace_mode=True)
-        send_response(pipe_name) 
+        send_response(pipe_name)
 
         print(f"instrumented_applet: {self.instrumented_applet}")
         print(f"uninstrumented_applet: {self.uninstrumented_applet}")
         print(f"pipe name: {pipe_name}")
         print(f"ipc file name: {ipc_file_name}")
         # print(f"results: {results}")
-        
+
         self.applet_args = [ipc_file_name]
         return Result(
             success=True,
@@ -311,7 +311,7 @@ class bank_conflict(Formula_Base):
                 "kernel_signature": kernel_signature
             }
         )
-        
+
     def compile_source_file(self, source_file: str, suffix: str = "", args: list = []) -> Result:
         """
         Compile the source file using hipcc
@@ -336,7 +336,7 @@ class bank_conflict(Formula_Base):
         super().instrument_pass()
 
         kernel_names = [results_with_source.asset["kernel_signature"]]
-        
+
         # Generate ECMA regex from the list of kernel names
         ecma_regex = generate_ecma_regex_from_list(kernel_names)
         logging.debug(f"ECMA Regex for kernel names: {ecma_regex}")

@@ -91,6 +91,13 @@ accordo::accordo(HsaApiTable* table,
 static void* memcpy_d2h(const void* device_ptr,
                         size_t size,
                         const std::vector<HsaAgent>& agents_) {
+  // std::byte* data = new std::byte[size];
+  // const auto status = hipMemcpy(data, device_ptr, size, hipMemcpyDeviceToHost);
+  // if (status != hipSuccess) {
+  //   LOG_ERROR("Error copying back data to host");
+  // }
+  // return data;
+
   // Find a CPU agent with a fine-grained memory region
   for (const auto& agent : agents_) {
     if (!agent.is_gpu) {  // Find a CPU agent
@@ -152,33 +159,55 @@ void printHipIpcMemHandle(const hipIpcMemHandle_t& handle, const std::string& me
 }
 
 template <typename T>
-void writeValueToFile(const T& value, std::size_t ptr_size, const bool dump_data) {
-  static const char* file_name = std::getenv("ACCORDO_IPC_OUTPUT_FILE");
-  if (!file_name) {
+void writeValueToFile(const T& value,
+                      std::size_t ptr_size,
+                      const bool dump_data,
+                      int ptr_index) {
+  static const char* base_file_name = std::getenv("ACCORDO_IPC_OUTPUT_FILE");
+  if (!base_file_name) {
     LOG_ERROR("Set ACCORDO_IPC_OUTPUT_FILE to communicate with driver script.");
     std::terminate();
   }
+
+  // std::string file_name = std::string(base_file_name);
+  std::string file_name = std::string(base_file_name) + "_" + std::to_string(ptr_index);
   std::ofstream file(file_name, std::ios::binary | std::ios::app);
   if (!file) {
     LOG_ERROR("Failed to open file for writing:  {}", file_name);
     return;
   }
 
-  file << "BEGIN" << "\n";
-
+  file.write("BEGIN\n", 6);
   file.write(reinterpret_cast<const char*>(&ptr_size), sizeof(ptr_size));
 
-  if (dump_data) {
-    file.write(reinterpret_cast<const char*>(&value), ptr_size);
+  if constexpr (std::is_same_v<T, hipIpcMemHandle_t>) {
+    std::size_t size = sizeof(value);
+    file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+    LOG_DETAIL("Writing hipIpcMemHandle_t: {} bytes to file {}", size, file_name);
+    file.write(reinterpret_cast<const char*>(&value), size);
+  } else if constexpr (std::is_pointer_v<T>) {
+    file.write(reinterpret_cast<const char*>(&ptr_size), sizeof(ptr_size));
+
+    std::cout << "First 10 values\n";
+    for (std::size_t i = 0; i < 10; i++) {
+      auto p = reinterpret_cast<const float*>(value);
+      std::cout << i << " " << p[i] << std::endl;
+    }
+    LOG_DETAIL("Dumping buffer: writing {} bytes to file {}", ptr_size, file_name);
+    file.write(reinterpret_cast<const char*>(value), ptr_size);
   } else {
-    file.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    std::size_t size = sizeof(value);
+    file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+    LOG_DETAIL("Writing scalar: {} bytes to file {}", size, file_name);
+    file.write(reinterpret_cast<const char*>(&value), size);
   }
 
-  file << "END" << "\n";
+  file.write("END\n", 4);
   file.flush();
   file.close();
 
-  LOG_DETAIL("Appended IPC handle and size ({} bytes) to file: {}", ptr_size, file_name);
+  // LOG_DETAIL("Appended IPC handle and size ({} bytes) to file: {}", ptr_size,
+  // file_name);
 }
 
 void accordo::send_message_and_wait(void* args) {
@@ -198,7 +227,6 @@ void accordo::send_message_and_wait(void* args) {
   // Export IPC handles
   static const char* pipe_name = std::getenv("ACCORDO_PIPE_NAME");
   static const char* trace_mode = std::getenv("ACCORDO_TRACE_MODE");
-
   const auto is_trace_mode = trace_mode && std::strcmp(trace_mode, "1") == 0;
 
   {
@@ -208,6 +236,9 @@ void accordo::send_message_and_wait(void* args) {
       return;
     }
   }
+
+  int ptr_index = 0;
+
   auto dump_ipc_handle = [&](const auto& field, const bool dump_data = false) {
     size_t ptr_size = 0;
     {
@@ -240,10 +271,11 @@ void accordo::send_message_and_wait(void* args) {
                reinterpret_cast<void*>(field),
                ptr_size);
     if (dump_data) {
-      writeValueToFile(static_cast<const char*>(cpu_ptr), ptr_size, dump_data);
+      writeValueToFile(static_cast<const char*>(cpu_ptr), ptr_size, dump_data, ptr_index);
     } else {
-      writeValueToFile(handle, ptr_size, dump_data);
+      writeValueToFile(handle, ptr_size, dump_data, ptr_index);
     }
+    ptr_index++;
   };
 
   for_each_field(args_struct, [&](const auto& field) {
@@ -251,18 +283,19 @@ void accordo::send_message_and_wait(void* args) {
       if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>>) {
         using clean_ptr_t =
             std::remove_cv_t<std::remove_pointer_t<std::decay_t<decltype(field)>>>;
-        LOG_DETAIL("Pointer field: {}",
+        LOG_DETAIL("Trace Mode: Pointer field: {}",
                    static_cast<void*>(const_cast<clean_ptr_t*>(field)));
         dump_ipc_handle(const_cast<clean_ptr_t*>(field), true);
       } else {
-        LOG_DETAIL("Non-pointer field: {}", field);
-        writeValueToFile(field, sizeof(field), true);
+        LOG_DETAIL("Trace Mode: Non-pointer field: {}", field);
+        writeValueToFile(field, sizeof(field), true, ptr_index);
+        ptr_index++;
       }
     } else {
       if constexpr (std::is_pointer_v<std::decay_t<decltype(field)>> &&
                     !std::is_const_v<
                         std::remove_pointer_t<std::decay_t<decltype(field)>>>) {
-        LOG_DETAIL("Pointer field: {}", static_cast<void*>(field));
+        LOG_DETAIL("Non-trace mode: Pointer field: {}", static_cast<void*>(field));
         dump_ipc_handle(field);
       }
     }
@@ -558,6 +591,16 @@ void accordo::write_packets(hsa_queue_t* queue,
     hsa_signal_t old_signal = modified_packet.completion_signal;
     modified_packet.completion_signal = new_signal;
 
+    static const char* trace_mode = std::getenv("ACCORDO_TRACE_MODE");
+    const auto is_trace_mode = trace_mode && std::strcmp(trace_mode, "1") == 0;
+
+    if (is_trace_mode) {
+      auto args = is_traceable_packet(packet);
+      if (args.has_value()) {
+        send_message_and_wait(args.value());
+      }
+    }
+
     writer(&modified_packet, count);
 
     hsa_signal_wait_scacquire(
@@ -568,9 +611,11 @@ void accordo::write_packets(hsa_queue_t* queue,
     }
     hsa_core_call(instance, hsa_signal_destroy, new_signal);
 
-    auto args = is_traceable_packet(packet);
-    if (args.has_value()) {
-      send_message_and_wait(args.value());
+    if (!is_trace_mode) {
+      auto args = is_traceable_packet(packet);
+      if (args.has_value()) {
+        send_message_and_wait(args.value());
+      }
     }
   } catch (const std::exception& e) {
     LOG_ERROR("Write object threw ", e.what());

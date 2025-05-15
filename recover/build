@@ -1,0 +1,3 @@
+#!/bin/bash
+
+hipcc -O3 recovered_kernel_fixed.hip -o recovered_kernel_fixed -lhsa-runtime64
