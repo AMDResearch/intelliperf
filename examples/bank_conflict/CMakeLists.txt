@@ -1,4 +1,3 @@
-#!/bin/bash
 ################################################################################
 # MIT License
 
@@ -23,7 +22,14 @@
 # SOFTWARE.
 ################################################################################
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR" || exit 1
-make clean
-make
+set(EXAMPLES
+    "matrix_transpose"
+    "reduce"
+    "synthetic"
+    "transpose_scale_add"
+    "transpose_scale_add_templated"
+)
+
+foreach(example IN LISTS EXAMPLES)
+    add_example(${example} ${example}/${example}.hip)
+endforeach()

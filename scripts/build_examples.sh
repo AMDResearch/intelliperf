@@ -23,15 +23,66 @@
 # SOFTWARE.
 ################################################################################
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR" || exit 1
+set -eo pipefail
 
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
-INST_BASE=/opt/logduration
-INCLUDE="-I ${INST_BASE}/include/kerneldb -I ${INST_BASE}/include/dh_comms -I /opt/rocm/include/hsa"
-NO_WARN=-Wno-unused-result
+clean=false
+parallel=8
+build_dir=build
+verbose=false
 
+print_usage() {
+    echo "Usage: $0 [options]"
+    echo "Options:"
+    echo "  -c, --clean       Clean build directory"
+    echo "  -v, --verbose     Print verbose output"
+    echo "  -j, --jobs <num>  Set number of parallel jobs"
+}
 
-INST_LIB=${INST_BASE}/lib/libAMDGCNSubmitAddressMessages-rocm.so
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -c|--clean)
+            clean=true
+            shift
+            ;;
+        -v|--verbose)
+            verbose=true
+            shift
+            ;;
+        -j|--jobs)
+            if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
+                parallel="$2"
+                shift 2
+            else
+                echo "Error: --jobs requires a numeric argument"
+                print_usage
+                exit 1
+            fi
+            ;;
+        *)
+            echo "Invalid option: $1"
+            print_usage
+            exit 1
+            ;;
+    esac
+done
 
-hipcc ${NO_WARN} ${INCLUDE} -fgpu-rdc -fpass-plugin=${INST_LIB} -O3 -g -o transpose_scale_add_templated transpose_scale_add_templated.hip
+pushd "$script_dir/../examples" > /dev/null
+
+if [ "$clean" = true ]; then
+    echo "Cleaning build directory..."
+    rm -rf "$build_dir"
+fi
+
+cmake -B "$build_dir"
+
+cmake_args=()
+if [ "$verbose" = true ]; then
+    cmake_args+=(--verbose)
+fi
+
+cmake --build "$build_dir" --parallel "$parallel" "${cmake_args[@]}"
+
+popd > /dev/null

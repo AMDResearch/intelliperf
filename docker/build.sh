@@ -1,3 +1,4 @@
+#!/bin/bash
 ################################################################################
 # MIT License
 
@@ -22,30 +23,34 @@
 # SOFTWARE.
 ################################################################################
 
-APPS=bnk_conflict bnk_conflict_inst
-ISA=bnk_conflict.isa bnk_conflict_inst.isa
+# Container name
+name="maestro"
 
-INST_BASE=/opt/logduration
-INCLUDE=-I ${INST_BASE}/include/kerneldb -I ${INST_BASE}/include/dh_comms -I /opt/rocm/include/hsa
-NO_WARN=-Wno-unused-result
+# Script directories
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+parent_dir="$(dirname "$script_dir")"
+cur_dir=$(pwd)
 
+pushd "$script_dir"
 
-INST_LIB=${INST_BASE}/lib/libAMDGCNSubmitAddressMessages-rocm.so
+# Auto-configure SSH agent
+if [ ! -S ~/.ssh/ssh_auth_sock ]; then
+    eval "$(ssh-agent)" > /dev/null
+    ln -sf "$SSH_AUTH_SOCK" ~/.ssh/ssh_auth_sock
+fi
+export SSH_AUTH_SOCK=~/.ssh/ssh_auth_sock
 
-%: %.cpp
-	hipcc ${NO_WARN} ${INCLUDE} -O3 -g -o $@ $<
+# Add default keys if they exist
+[ -f ~/.ssh/id_rsa ] && ssh-add ~/.ssh/id_rsa
+[ -f ~/.ssh/id_ed25519 ] && ssh-add ~/.ssh/id_ed25519
+[ -f ~/.ssh/id_github ] && ssh-add ~/.ssh/id_github
 
-%_inst: %.cpp
-	hipcc ${NO_WARN} ${INCLUDE} -fgpu-rdc -fpass-plugin=${INST_LIB} -O3 -g -o $@ $<
+# Enable BuildKit and build the Docker image
+export DOCKER_BUILDKIT=1
+docker build \
+    --ssh default \
+    -t "$name" \
+    -f "$script_dir/maestro.Dockerfile" \
+    .
 
-%.isa: %
-	/opt/rocm/bin/roc-obj-ls -v $< 2> /dev/null | \
-	grep "gfx906" | awk '{print $$3}' | \
-	/opt/rocm/bin/roc-obj-extract -o - | \
-	/opt/rocm/llvm/bin/llvm-objdump --line-numbers - > $@
-
-apps: ${APPS}
-isa: ${ISA}
-
-clean:
-	rm -f ${APPS} ${ISA}
+popd
