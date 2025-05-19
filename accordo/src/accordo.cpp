@@ -267,6 +267,10 @@ void accordo::send_message_and_wait(void* args) {
     printHipIpcMemHandle(handle, "handle");
 
     const auto float_ptr = reinterpret_cast<const float*>(field);
+    // std::cout << "First 10 values\n";
+    // for (std::size_t i = 0; i < 10; i++) {
+    //   std::cout << i << " " << float_ptr[i] << std::endl;
+    // }
     LOG_DETAIL("Sending the handle for the pointer {} ({} bytes).",
                reinterpret_cast<void*>(field),
                ptr_size);
@@ -555,6 +559,11 @@ hsa_status_t accordo::add_queue(hsa_queue_t* queue, hsa_agent_t agent) {
   return result;
 }
 
+static bool is_kernel_dispatch_packet(const hsa_ext_amd_aql_pm4_packet_t* packet) {
+  uint32_t type = accordo::get_header_type(packet);
+  return type == HSA_PACKET_TYPE_KERNEL_DISPATCH;
+}
+
 void accordo::on_submit_packet(const void* in_packets,
                                uint64_t count,
                                uint64_t user_que_idx,
@@ -577,45 +586,51 @@ void accordo::write_packets(hsa_queue_t* queue,
   try {
     LOG_DETAIL("Executing packet: {}", packet_to_text(packet));
     auto instance = get_instance();
+    const auto is_traceable = is_traceable_packet(packet);
+    if (is_traceable.has_value()) {
+      hsa_signal_t new_signal;
+      auto status =
+          hsa_core_call(instance, hsa_signal_create, 1, 0, nullptr, &new_signal);
 
-    hsa_signal_t new_signal;
-    auto status = hsa_core_call(instance, hsa_signal_create, 1, 0, nullptr, &new_signal);
-
-    if (status != HSA_STATUS_SUCCESS) {
-      LOG_ERROR("Failed to create signal");
-      return;
-    }
-
-    hsa_ext_amd_aql_pm4_packet_t modified_packet = *packet;
-
-    hsa_signal_t old_signal = modified_packet.completion_signal;
-    modified_packet.completion_signal = new_signal;
-
-    static const char* trace_mode = std::getenv("ACCORDO_TRACE_MODE");
-    const auto is_trace_mode = trace_mode && std::strcmp(trace_mode, "1") == 0;
-
-    if (is_trace_mode) {
-      auto args = is_traceable_packet(packet);
-      if (args.has_value()) {
-        send_message_and_wait(args.value());
+      if (status != HSA_STATUS_SUCCESS) {
+        LOG_ERROR("Failed to create signal");
+        return;
       }
-    }
 
-    writer(&modified_packet, count);
+      hsa_ext_amd_aql_pm4_packet_t modified_packet = *packet;
 
-    hsa_signal_wait_scacquire(
-        new_signal, HSA_SIGNAL_CONDITION_EQ, 0, UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
+      hsa_signal_t old_signal = modified_packet.completion_signal;
+      modified_packet.completion_signal = new_signal;
 
-    if (old_signal.handle != 0) {
-      hsa_core_call(instance, hsa_signal_subtract_relaxed, old_signal, 1);
-    }
-    hsa_core_call(instance, hsa_signal_destroy, new_signal);
-
-    if (!is_trace_mode) {
-      auto args = is_traceable_packet(packet);
-      if (args.has_value()) {
-        send_message_and_wait(args.value());
+      if (is_kernel_dispatch_packet(&modified_packet)) {
+        auto header = packet->header;
+        header |= (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_SCACQUIRE_FENCE_SCOPE);
+        header |= (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_SCRELEASE_FENCE_SCOPE);
+        modified_packet.header = header;
       }
+
+      static const char* trace_mode = std::getenv("ACCORDO_TRACE_MODE");
+      const auto is_trace_mode = trace_mode && std::strcmp(trace_mode, "1") == 0;
+
+      if (is_trace_mode) {
+        send_message_and_wait(is_traceable.value());
+      }
+
+      writer(&modified_packet, count);
+
+      hsa_signal_wait_scacquire(
+          new_signal, HSA_SIGNAL_CONDITION_EQ, 0, UINT64_MAX, HSA_WAIT_STATE_BLOCKED);
+
+      if (old_signal.handle != 0) {
+        hsa_core_call(instance, hsa_signal_subtract_relaxed, old_signal, 1);
+      }
+      hsa_core_call(instance, hsa_signal_destroy, new_signal);
+
+      if (is_trace_mode) {
+        send_message_and_wait(is_traceable.value());
+      }
+    } else {
+      writer(packet, count);
     }
   } catch (const std::exception& e) {
     LOG_ERROR("Write object threw ", e.what());
