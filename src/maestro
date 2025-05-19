@@ -23,19 +23,8 @@
 # SOFTWARE.
 ################################################################################
 
-
-import sys
-import argparse
-import logging
-import json
-from datetime import datetime
-from formulas.bank_conflict import bank_conflict
-from formulas.diagnose_only import diagnose_only
-from formulas.memory_access import memory_access
-from formulas.atomic_contention import atomic_contention
-from tabulate import tabulate
-
 def maestro_parser():
+    import argparse
     parser = argparse.ArgumentParser(
         description='Optimize and analyze the given application based on available Maestro formulas.',
         prog="tool",
@@ -95,11 +84,15 @@ def maestro_parser():
     return args
 
 def main():
-    logging.raiseExceptions = True
     args = maestro_parser()
+    
     # Generate a name for the Maestro run using timestamp
+    from datetime import datetime
     generated_name = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
+    
     # Set logging level based on verbosity
+    import logging
+    logging.raiseExceptions = True
     if args.verbose == 1:
         logging.basicConfig(level=logging.INFO, format="[MAESTRO] %(levelname)s: %(message)s")
     elif args.verbose == 2:
@@ -111,15 +104,20 @@ def main():
 
     # Create an optimizer based on available Maestro formulas.
     if args.formula == 'bankConflict':
+        from formulas.bank_conflict import bank_conflict
         formula = bank_conflict
     elif args.formula == 'diagnoseOnly':
+        from formulas.diagnose_only import diagnose_only
         formula = diagnose_only
     elif args.formula == 'memoryAccess':
+        from formulas.memory_access import memory_access
         formula = memory_access
     elif args.formula == 'atomicContention':
+        from formulas.atomic_contention import atomic_contention
         formula = atomic_contention
     else:
         logging.error(f"Invalid formula specified. {args.formula} is not supported.")
+        import sys
         sys.exit(1)
 
     
