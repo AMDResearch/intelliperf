@@ -32,23 +32,33 @@ SOFTWARE.
 
 ## Quick start
 
-We provide an Apptainer image containing all the dependencies. To get started, run:
+We provide both Apptainer and Docker images containing all the dependencies. To get started, run:
 ```
 ./apptainer/build.sh
 ```
+or,
+```
+./docker/build.sh
+```
 
-To start the Apptainer container, run:
+
+To start the container, run:
 
 ```
 ./apptainer/run.sh
 ```
+or,
+```
+./docker/run.sh
+```
+
 
 ## Install from source
 
 1. Clone:
 
 ```shell
-git clone git@github.com:AARInternal/maestro.git
+git clone git@github.com:AMDResearch/maestro.git
 cd maestro
 ```
 
@@ -83,6 +93,12 @@ export PATH=$(pwd)/external/rocprofiler-compute/src:$PATH
 export PATH=$(pwd)/$maestro/src:$PATH
 ```
 
+
+6. Build the examples (optional):
+
+```shell
+./scripts/build_examples.sh
+```
 
 
 ## Usage:

@@ -24,7 +24,6 @@ SOFTWARE.
 
 #include <cstdio>
 #include <hip/hip_runtime.h>
-#include "dh_comms_dev.h"
 
 #define BLOCK_SIZE 256
 

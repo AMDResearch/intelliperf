@@ -1,3 +1,4 @@
+#!/bin/bash
 ################################################################################
 # MIT License
 
@@ -22,8 +23,12 @@
 # SOFTWARE.
 ################################################################################
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-pushd $script_dir
-hipcc initial_code.hip -o reduction.unoptimized
-hipcc optimized_code.hip -o reduction.optimized
-popd
+name="maestro"
+
+docker run -it --rm \
+    --name "$name" \
+    --device=/dev/kfd \
+    --device=/dev/dri \
+    --group-add video \
+    --mount type=bind,source=$HOME/.ssh,target=/root/.ssh,readonly\
+    "$name"
