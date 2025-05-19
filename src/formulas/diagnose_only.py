@@ -34,122 +34,37 @@ import re
 import tempfile
 
 class diagnose_only(Formula_Base):
-    def __init__(self, name, build_script, app_cmd, top_n):
-        super().__init__(name, build_script, app_cmd)
+    def __init__(self, name, build_command, instrument_command, app_cmd, top_n):
+        super().__init__(name, build_command, instrument_command, app_cmd)
         self.profiler = "guided-tuning"
         self.top_n = top_n
 
     def profile_pass(self):
-        super().profile_pass()
-        logging.debug(f"Profiling app with name {self.get_app_name()}")
-        logging.debug(f"Profiling app with command {self.get_app_cmd()}")
-        # Profile the app using GT
-        success, output = capture_subprocess_output(
-            [
-                f"{get_guided_tuning_path()}/bin/gt", "profile", 
-                "-n", self.get_app_name(),
-                "--top-n", str(self.top_n),
-                "--",
-            ] + self.get_app_cmd()
-        )
-        
-        exit_on_fail(success = success,
-                     message = "Failed to profile the binary",
-                     log = output)
-                
-        # Load workload summary with GT. Save list of top-n kernels for regex
-        success, output = capture_subprocess_output(
-            [
-                f"{get_guided_tuning_path()}/bin/gt", "db",
-                "-n", self.get_app_name(),
-            ]
-        )
-        exit_on_fail(success = success,
-                     message = "Failed to generate the performance report card.",
-                     log = output)
-                
-        matching_db_workloads = {}
-        for line in output.splitlines():
-            parts = line.split(maxsplit=1)
-            if len(parts) == 2 and not parts[0].startswith("GT"):
-                key, value = parts
-                matching_db_workloads[key] = value
-        logging.debug(f"Matching DB Workloads: {matching_db_workloads}")
-        success, output = capture_subprocess_output(
-            [
-                f"{get_guided_tuning_path()}/bin/gt", "db",
-                "-w", list(matching_db_workloads.keys())[-1],
-                "--save", f"{get_guided_tuning_path()}/maestro_summary.csv",
-            ]
-        )
-        # Handle critical error
-        exit_on_fail(success = success,
-                     message = "Failed to generate the performance report card.",
-                     log = output)
-        df_results = pd.read_csv(f"{get_guided_tuning_path()}/maestro_summary.csv")
-        # Create a targeted report card
-        top_n_kernels = list(df_results.head(self.top_n)["Kernel"])
-        logging.debug(f"top_n_kernels: {top_n_kernels}")
-        success, output = capture_subprocess_output(
-            [
-                f"{get_guided_tuning_path()}/bin/gt", "db",
-                "-w", list(matching_db_workloads.keys())[-1],
-                "-k", f'{"|".join(top_n_kernels)}',
-                "--separate",
-                "--save",
-                f"{get_guided_tuning_path()}/maestro_report_card.json",
-            ]
-        )
-        df_results = json.loads(open(f"{get_guided_tuning_path()}/maestro_report_card.json").read())
+        """
+        Profile the application using guided-tuning and collect bank conflict data
 
-
-
-        return Result(
-            success=True,
-            asset=df_results
-        )
+        Returns:
+            Result: DataFrame containing the performance report card
+        """        
+        return super().profile_pass()
 
     def instrument_pass(self):
-        super().instrument_pass()
+        return super().instrument_pass()
 
     def optimize_pass(self):
-        super().optimize_pass()
+        return super().optimize_pass()
 
-    def compiler_pass(self):
-        super().compiler_pass()
+    def compile_pass(self):
+        return super().compile_pass()
 
     def validation_pass(self):
-        super().validation_pass()
+        """
+        Validate the optimized kernel by comparing the output with the reference kernel
+
+        Returns:
+            Result: Validation status
+        """
+        return super().validation_pass()
     
     def source_code_pass(self):
-        super().source_code_pass()
-        nexus_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../external/nexus"))
-        lib = os.path.join(nexus_directory, "build", "lib", "libnexus.so")
-        env = os.environ.copy()
-
-
-        with tempfile.TemporaryDirectory() as tmp:
-            json_result_file = os.path.join(tmp, 'nexus_output.json')
-
-
-            env["HSA_TOOLS_LIB"] = lib
-            env["NEXUS_LOG_LEVEL"] = "2"
-            env["NEXUS_OUTPUT_FILE"] = json_result_file
-            success, log = capture_subprocess_output(self.get_app_cmd(), new_env=env)
-            
-            if os.path.exists(json_result_file):
-                df_results = json.loads(open(json_result_file).read())
-            else:
-                df_results = {"kernels": {}}
-
-        if not success:
-            return Result(
-                success=False,
-                asset=log,
-                error_report="Failed to collect the source code."
-            )
-
-        return Result(
-            success=True,
-            asset=df_results
-        )        
+        return super().source_code_pass()
