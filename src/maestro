@@ -31,6 +31,8 @@ import json
 from datetime import datetime
 from formulas.bank_conflict import bank_conflict
 from formulas.diagnose_only import diagnose_only
+from formulas.memory_access import memory_access
+from formulas.atomic_contention import atomic_contention
 from tabulate import tabulate
 
 def maestro_parser():
@@ -68,7 +70,7 @@ def maestro_parser():
     
     optional_args.add_argument('-f', 
                                '--formula', 
-                               choices=['bankConflict', 'diagnoseOnly'], 
+                               choices=['bankConflict', 'memoryAccess', 'atomicContention', 'diagnoseOnly'], 
                                default='diagnoseOnly', 
                                metavar='',
                                type=str, 
@@ -112,6 +114,10 @@ def main():
         formula = bank_conflict
     elif args.formula == 'diagnoseOnly':
         formula = diagnose_only
+    elif args.formula == 'memoryAccess':
+        formula = memory_access
+    elif args.formula == 'atomicContention':
+        formula = atomic_contention
     else:
         logging.error(f"Invalid formula specified. {args.formula} is not supported.")
         sys.exit(1)

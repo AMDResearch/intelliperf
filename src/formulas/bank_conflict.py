@@ -42,8 +42,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"
 
 
 class bank_conflict(Formula_Base):
-    def __init__(self, name, build_script, app_cmd, only_consider_top_kernel=False):
-        super().__init__(name, build_script, app_cmd)
+    def __init__(self, name: str, build_script: list, app_cmd: list, top_n: int, only_consider_top_kernel=False):
+        super().__init__(name, build_script, app_cmd, top_n=top_n)
         self.profiler = "guided-tuning"
         # This temp option allows us to toggle if we want a full or partial instrumentation report
         self.only_consider_top_kernel = only_consider_top_kernel

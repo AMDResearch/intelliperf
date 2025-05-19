@@ -67,7 +67,7 @@ class Result:
 
 
 class Formula_Base:
-    def __init__(self, name: str, build_command: list, instrument_command: list, app_cmd: list):
+    def __init__(self, name: str, build_command: list, instrument_command: list, app_cmd: list, top_n: int):
         # Private
         self.__name = name # name of the run
         self.__build_command = build_command # script to build the application
@@ -80,7 +80,7 @@ class Formula_Base:
         
         # Public
         self.profiler:str = None
-        
+        self.top_n:int = top_n
           
         # Validate app command
         if self.__app_cmd and "--" in self.__app_cmd:

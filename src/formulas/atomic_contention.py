@@ -22,29 +22,13 @@
 # SOFTWARE.
 ################################################################################
 
-import os
-import sys
-import json
-import logging
-import pandas as pd
-from formulas.formula_base import Formula_Base, Result
-from utils.process import capture_subprocess_output, exit_on_fail
-from utils.env import get_guided_tuning_path
-import re
-import tempfile
+from formulas.formula_base import Formula_Base
 
-class diagnose_only(Formula_Base):
-    def __init__(self, name, build_command, instrument_command, app_cmd, top_n):
+class atomic_contention(Formula_Base):
+    def __init__(self, name: str, build_command: list, instrument_command: list, app_cmd: list, top_n: int):
         super().__init__(name, build_command, instrument_command, app_cmd, top_n)
-        self.profiler = "guided-tuning"
 
     def profile_pass(self):
-        """
-        Profile the application using guided-tuning and collect bank conflict data
-
-        Returns:
-            Result: DataFrame containing the performance report card
-        """        
         return super().profile_pass()
 
     def instrument_pass(self):
@@ -57,13 +41,7 @@ class diagnose_only(Formula_Base):
         return super().compile_pass()
 
     def validation_pass(self):
-        """
-        Validate the optimized kernel by comparing the output with the reference kernel
-
-        Returns:
-            Result: Validation status
-        """
         return super().validation_pass()
-    
+
     def source_code_pass(self):
         return super().source_code_pass()
