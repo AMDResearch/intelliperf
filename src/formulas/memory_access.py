@@ -45,3 +45,6 @@ class memory_access(Formula_Base):
 
     def source_code_pass(self):
         return super().source_code_pass()
+    
+    def summarize_pass(self):
+        return super().summarize_pass()    

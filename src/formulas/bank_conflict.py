@@ -38,9 +38,6 @@ from formulas.formula_base import Formula_Base, Result
 from utils.process import capture_subprocess_output, exit_on_fail
 from utils.regex import generate_ecma_regex_from_list
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-
-
 class bank_conflict(Formula_Base):
     def __init__(self, name: str, build_script: list, app_cmd: list, top_n: int, only_consider_top_kernel=False):
         super().__init__(name, build_script, app_cmd, top_n=top_n)
@@ -252,6 +249,11 @@ class bank_conflict(Formula_Base):
             )
         return Result(success=True, asset={"log": report_message})
 
+    def summarize_previous_passes(self):
+        """
+        Summarizes the results of the previous passes for future prompts.
+        """
+        pass
 
 def extract_bank_conflict_lines(output: str, kernel_names: list) -> dict:
     """

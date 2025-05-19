@@ -67,3 +67,12 @@ class diagnose_only(Formula_Base):
     
     def source_code_pass(self):
         return super().source_code_pass()
+    
+    def summarize_previous_passes(self):
+        return super().summarize_previous_passes()
+
+    def write_results(self, output_file: str = None):
+        """
+        Writes the results to the output file.
+        """
+        super().write_results(output_file)

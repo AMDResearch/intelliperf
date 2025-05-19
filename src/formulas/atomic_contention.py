@@ -45,3 +45,6 @@ class atomic_contention(Formula_Base):
 
     def source_code_pass(self):
         return super().source_code_pass()
+    
+    def summarize_previous_passes(self):
+        return super().summarize_previous_passes()

@@ -30,11 +30,14 @@ import shutil
 import pandas as pd
 import json
 from pprint import pformat
-import tempfile
-
+import time
+import numpy as np
 
 from utils.process import capture_subprocess_output, exit_on_fail
 from core.application import Application
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
+
 from accordo.python.communicate import get_kern_arg_data, send_response
 from accordo.python.code_gen import generate_header
 from accordo.python.utils import run_subprocess
@@ -70,35 +73,25 @@ class Formula_Base:
     def __init__(self, name: str, build_command: list, instrument_command: list, app_cmd: list, top_n: int):
         # Private
         self.__name = name # name of the run
-        self.__build_command = build_command # script to build the application
-        self.__instrument_command = instrument_command # command to execute application
         self.__application = Application(name, build_command, instrument_command, app_cmd)
 
-        self.__app_cmd:list = app_cmd # command to execute application
-        
         self._profiler_results = None
         
         # Public
         self.profiler:str = None
         self.top_n:int = top_n
           
-        # Validate app command
-        if self.__app_cmd and "--" in self.__app_cmd:
-            self.__app_cmd = self.__app_cmd[1:]
-        else:
-            logging.error("Profiling command required. Pass application executable after -- at the end of options.")
-            sys.exit(1)
 
     def backup(self, suffix: str):
         """Creates a backup of the application by appending the given suffix."""
-        binary = self.__app_cmd[0]
+        binary = self.__application.get_app_cmd()[0]
         backup_name = f"{binary}.{suffix}"
         logging.info(f"copying: {binary} to {backup_name}")
         shutil.copy2(binary, backup_name)
         return backup_name 
 
     def build(self):
-        if not self.__build_command:
+        if not self.__application.get_build_command():
             return Result(
                 success=True,
                 asset={
@@ -208,30 +201,7 @@ class Formula_Base:
         """
         Finds the source code.
         """
-        nexus_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../external/nexus"))
-        lib = os.path.join(nexus_directory, "build", "lib", "libnexus.so")
-        env = os.environ.copy()
-
-
-        with tempfile.TemporaryDirectory() as tmp:
-            json_result_file = os.path.join(tmp, 'nexus_output.json')
-
-            env["HSA_TOOLS_LIB"] = lib
-            env["NEXUS_LOG_LEVEL"] = "2"
-            env["NEXUS_OUTPUT_FILE"] = json_result_file
-            success, log = capture_subprocess_output(self.get_app_cmd(), new_env=env)
-            
-            if os.path.exists(json_result_file):
-                df_results = json.loads(open(json_result_file).read())
-            else:
-                df_results = {"kernels": {}}
-
-        if not success:
-            return Result(
-                success=False,
-                asset=log,
-                error_report="Failed to collect the source code."
-            )
+        df_results = self.__application.collect_source_code()
 
         # In-place append of source info
         for entry in self._profiler_results:
@@ -249,3 +219,40 @@ class Formula_Base:
             asset=self._profiler_results
         )        
 
+    @abstractmethod
+    def summarize_previous_passes(self):
+        """
+        Summarizes the results of the previous passes for future prompts.
+        """
+        pass
+
+    @abstractmethod
+    def write_results(self, output_file: str = None):
+        """
+        Writes the results to the output file.
+        """
+        if output_file is None:
+            print(json.dumps(self._profiler_results, indent=2))
+        elif output_file.endswith(".json"):
+            with open(output_file, "w") as f:
+                json.dump(self._profiler_results, f, indent=2)
+        elif output_file.endswith(".csv"):
+            flattened_results = [flatten_dict(entry) for entry in self._profiler_results]
+            df = pd.DataFrame(flattened_results)
+            df.to_csv(output_file, index=False)
+        elif output_file.endswith(".txt"):
+            with open(output_file, "w") as f:
+                f.write(json.dumps(self._profiler_results, indent=2))
+        else:
+            logging.error("Invalid output file extension. Must be .json, .csv, or .txt.")
+            sys.exit(1)
+
+def flatten_dict(d, parent_key='', sep='_'):
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)

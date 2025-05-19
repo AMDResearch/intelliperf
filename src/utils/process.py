@@ -35,12 +35,12 @@ def exit_on_fail(success: bool, message: str, log: str = ""):
         logging.error("Critical Error: %s", full_msg)
         sys.exit(1)
     
-def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
+def capture_subprocess_output(subprocess_args:list, new_env=None, verbose=True) -> tuple:
     # Start subprocess
     # bufsize = 1 means output is line buffered
     # universal_newlines = True is required for line buffering
     logging.debug(f"Running the command: {' '.join(subprocess_args)}")
-    if new_env != None:
+    if new_env is not None:
         logging.debug("Inside the environment:\n%s", json.dumps(new_env, indent=2))
     
     process = (
@@ -53,7 +53,7 @@ def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
             encoding="utf-8",
             errors="replace",
         )
-        if new_env == None
+        if new_env is None
         else subprocess.Popen(
             subprocess_args,
             bufsize=1,
@@ -75,7 +75,8 @@ def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
             # line to read when this function is called
             line = stream.readline()
             buf.write(line)
-            print(line.strip())
+            if verbose:
+                print(line.strip())
         except UnicodeDecodeError:
             # Skip this line
             pass
@@ -96,8 +97,9 @@ def capture_subprocess_output(subprocess_args:list, new_env=None) -> tuple:
     remaining = process.stdout.read()
     if remaining:
         buf.write(remaining)
-        for line in remaining.splitlines():
-            print(line.strip())
+        if verbose:
+            for line in remaining.splitlines():
+                print(line.strip())
              
     # Get process return code
     return_code = process.wait()

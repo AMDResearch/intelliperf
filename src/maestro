@@ -42,12 +42,14 @@ def maestro_parser():
         """,
     )
     parser.add_argument('-v', '--verbose', action='count', default=0, help='Increase verbosity level (e.g., -v, -vv, -vvv).')
+    
     # Required arguments group
     required_args = parser.add_argument_group('required arguments')
     required_args.add_argument('remaining', metavar="-- [ ...]", nargs=argparse.REMAINDER, help='Provide the command to launch the application.')
 
     # Optional arguments group
     optional_args = parser.add_argument_group('optional arguments')
+    # Input arguments
     optional_args.add_argument('-b', '--build_command', 
                                type=str, 
                                metavar='',
@@ -56,7 +58,6 @@ def maestro_parser():
                                type=str, 
                                metavar='',
                                help='A command to instrument your application')
-    
     optional_args.add_argument('-f', 
                                '--formula', 
                                choices=['bankConflict', 'memoryAccess', 'atomicContention', 'diagnoseOnly'], 
@@ -64,21 +65,24 @@ def maestro_parser():
                                metavar='',
                                type=str, 
                                help='Specify the formula to use for optimization (default: diagnoseOnly)')
+    optional_args.add_argument('--top_n',
+                               type=int, 
+                               default=10,
+                               metavar='',
+                               help='Control the top-n kernels collected in diagnoseOnly mode (default: 10)')
+    optional_args.add_argument('--num_attempts',
+                               type=int, 
+                               default=10,
+                               metavar='',
+                               help='Control the number of attempts in optimize mode (default: 10)')
+    
+    
+    # Output arguments
     optional_args.add_argument("-o", 
                                "--output_file", 
                                type=str, 
                                metavar='',
                                help="Path to the output file")
-    optional_args.add_argument("-c", 
-                               "--ci_output_file", 
-                               type=str, 
-                               metavar='',
-                               help="Path to the output file for CI integration")
-    optional_args.add_argument('--top-n',
-                               type=int, 
-                               default=10,
-                               metavar='',
-                               help='Control the top-n kernels collected in diagnoseOnly mode (default: 10)')
 
     args = parser.parse_args()
     return args
@@ -129,7 +133,7 @@ def main():
             top_n=args.top_n,
         )
 
-    num_attempts = 1 if args.formula == 'diagnoseOnly' else 10
+    num_attempts = 0 if args.formula == 'diagnoseOnly' else args.num_attempts
 
     # Build the application
     optimizer.build()
@@ -143,26 +147,30 @@ def main():
     # Instrument the application based on the results.
     optimizer.instrument_pass()
 
-    for _ in range(num_attempts):
+    for attempt in range(num_attempts):
+        logging.info(f"Executing pass {attempt + 1} of {num_attempts}.")
+        
         # Optimize the application based on insights from instrumentation.
         optimizer.optimize_pass()
         
         # Compile the new application
         success, _ = optimizer.compiler_pass()
         if not success:
-            optimizer.summarize_pass()
+            optimizer.summarize_previous_passes()
             continue
         
         # Validate the new application
         success, _ = optimizer.validation_pass()
         if not success:
-            optimizer.summarize_pass()
+            optimizer.summarize_previous_passes()
             continue
         
+        # If the optimization is successful, break out of the loop
         if success:
             break
 
-
+    # Write the results to the output file
+    optimizer.write_results(args.output_file)
 
 if __name__ == '__main__':
     main()

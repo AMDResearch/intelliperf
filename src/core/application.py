@@ -30,7 +30,9 @@ from utils.process import capture_subprocess_output, exit_on_fail
 from utils.env import get_guided_tuning_path
 import pandas as pd
 import json
-
+import sys
+import os
+import tempfile
 
 class Application:
     def __init__(self, name: str, build_command: list, instrument_command: list, app_cmd: list):
@@ -38,6 +40,13 @@ class Application:
         self.build_command = build_command
         self.instrument_command = instrument_command
         self.app_cmd = app_cmd
+        
+        # Validate app command
+        if self.app_cmd and "--" in self.app_cmd:
+            self.app_cmd = self.app_cmd[1:]
+        else:
+            logging.error("Profiling command required. Pass application executable after -- at the end of options.")
+            sys.exit(1)
         
 
     def build(self):
@@ -64,7 +73,7 @@ class Application:
         success, output = capture_subprocess_output(
             [
                 f"{get_guided_tuning_path()}/bin/gt", "db",
-                "-n", self.__application.get_name(),
+                "-n", self.get_name(),
             ]
         )
         exit_on_fail(success = success,
@@ -91,7 +100,7 @@ class Application:
                     log = output)
         df_results = pd.read_csv(f"{get_guided_tuning_path()}/maestro_summary.csv")
         # Create a targeted report card
-        top_n_kernels = list(df_results.head(self.top_n)["Kernel"])
+        top_n_kernels = list(df_results.head(top_n)["Kernel"])
         logging.debug(f"top_n_kernels: {top_n_kernels}")
         success, output = capture_subprocess_output(
             [
@@ -138,3 +147,24 @@ class Application:
         
         # A clone of the application can't be instrumented or built
         return Application(self.name, None, None, new_app_cmd)
+    
+    def collect_source_code(self):
+        nexus_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../external/nexus"))
+        lib = os.path.join(nexus_directory, "build", "lib", "libnexus.so")
+        env = os.environ.copy()
+
+
+        with tempfile.TemporaryDirectory() as tmp:
+            json_result_file = os.path.join(tmp, 'nexus_output.json')
+
+            env["HSA_TOOLS_LIB"] = lib
+            env["NEXUS_LOG_LEVEL"] = "2"
+            env["NEXUS_OUTPUT_FILE"] = json_result_file
+            capture_subprocess_output(self.get_app_cmd(), new_env=env)
+            
+            if os.path.exists(json_result_file):
+                df_results = json.loads(open(json_result_file).read())
+            else:
+                df_results = {"kernels": {}}
+
+            return df_results
