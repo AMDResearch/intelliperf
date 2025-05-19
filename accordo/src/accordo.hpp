@@ -23,7 +23,12 @@ SOFTWARE.
 ****************************************************************************/
 
 #include <hip/hip_runtime.h>
+#include <hsa/hsa.h>
+#include <hsa/hsa_api_trace.h>
+#include <hsa/hsa_ven_amd_aqlprofile.h>
+#include <hsa/hsa_ven_amd_loader.h>
 #include <cstdint>
+#include <iostream>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -31,12 +36,6 @@ SOFTWARE.
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <hsa/hsa.h>
-#include <vector>
-#include <iostream>
-#include <hsa/hsa_api_trace.h>
-#include <hsa/hsa_ven_amd_aqlprofile.h>
-#include <hsa/hsa_ven_amd_loader.h>
 #include "log.hpp"
 
 #define PUBLIC_API __attribute__((visibility("default")))
@@ -74,135 +73,147 @@ struct hsa_agent_compare {
 };
 
 struct HsaMemoryRegion {
-    hsa_region_t region;
-    size_t size;
-    bool is_global;
-    bool is_kernarg;
-    bool is_local;
+  hsa_region_t region;
+  size_t size;
+  bool is_global;
+  bool is_kernarg;
+  bool is_local;
 
-    HsaMemoryRegion(hsa_region_t r, size_t s, bool global, bool kernarg, bool local)
-        : region(r), size(s), is_global(global), is_kernarg(kernarg), is_local(local) {}
+  HsaMemoryRegion(hsa_region_t r, size_t s, bool global, bool kernarg, bool local)
+      : region(r), size(s), is_global(global), is_kernarg(kernarg), is_local(local) {}
 };
 
 struct HsaMemoryPool {
-    hsa_amd_memory_pool_t pool;
-    size_t size;
-    bool is_fine_grained;
-    bool is_coarse_grained;
+  hsa_amd_memory_pool_t pool;
+  size_t size;
+  bool is_fine_grained;
+  bool is_coarse_grained;
 
-    HsaMemoryPool(hsa_amd_memory_pool_t p, size_t s, bool fine, bool coarse)
-        : pool(p), size(s), is_fine_grained(fine), is_coarse_grained(coarse) {}
+  HsaMemoryPool(hsa_amd_memory_pool_t p, size_t s, bool fine, bool coarse)
+      : pool(p), size(s), is_fine_grained(fine), is_coarse_grained(coarse) {}
 };
 
 struct HsaAgent {
-    hsa_agent_t agent;
-    std::string name;
-    bool is_gpu;
-    std::vector<HsaMemoryPool> memory_pools;
-    std::vector<HsaMemoryRegion> memory_regions;
+  hsa_agent_t agent;
+  std::string name;
+  bool is_gpu;
+  std::vector<HsaMemoryPool> memory_pools;
+  std::vector<HsaMemoryRegion> memory_regions;
 
-    explicit HsaAgent(hsa_agent_t a) : agent(a), is_gpu(false) {}
+  explicit HsaAgent(hsa_agent_t a) : agent(a), is_gpu(false) {}
 
-    void add_memory_region(const hsa_region_t& region, size_t size, bool global, bool kernarg, bool local) {
-        memory_regions.emplace_back(region, size, global, kernarg, local);
+  void add_memory_region(const hsa_region_t& region,
+                         size_t size,
+                         bool global,
+                         bool kernarg,
+                         bool local) {
+    memory_regions.emplace_back(region, size, global, kernarg, local);
+  }
+
+  void add_memory_pool(const hsa_amd_memory_pool_t& pool,
+                       size_t size,
+                       bool fine,
+                       bool coarse) {
+    memory_pools.emplace_back(pool, size, fine, coarse);
+  }
+
+  void print_info() const {
+    LOG_DETAIL(
+        "Agent: 0x{:x}, Name: {}, Type: {}", agent.handle, name, is_gpu ? "GPU" : "CPU");
+
+    LOG_DETAIL("Memory Pools:");
+    for (const auto& pool : memory_pools) {
+      LOG_DETAIL("  - Pool Size: {}, Fine-Grained: {}, Coarse-Grained: {}",
+                 pool.size,
+                 pool.is_fine_grained,
+                 pool.is_coarse_grained);
     }
 
-    void add_memory_pool(const hsa_amd_memory_pool_t& pool, size_t size, bool fine, bool coarse) {
-        memory_pools.emplace_back(pool, size, fine, coarse);
+    LOG_DETAIL("Memory Regions:");
+    for (const auto& region : memory_regions) {
+      LOG_DETAIL("  - Region Size: {}, Global: {}, Kernarg: {}, Local: {}",
+                 region.size,
+                 region.is_global,
+                 region.is_kernarg,
+                 region.is_local);
     }
+  }
 
-    void print_info() const {
-        LOG_DETAIL("Agent: 0x{:x}, Name: {}, Type: {}", agent.handle, name, is_gpu ? "GPU" : "CPU");
+  static void get_all_agents(std::vector<HsaAgent>& agents) {
+    auto agent_callback = [](hsa_agent_t agent, void* data) -> hsa_status_t {
+      auto* agents_vector = static_cast<std::vector<HsaAgent>*>(data);
+      agents_vector->emplace_back(agent);
+      HsaAgent& hsa_agent = agents_vector->back();
 
-        LOG_DETAIL("Memory Pools:");
-        for (const auto& pool : memory_pools) {
-            LOG_DETAIL("  - Pool Size: {}, Fine-Grained: {}, Coarse-Grained: {}",
-                       pool.size, pool.is_fine_grained, pool.is_coarse_grained);
-        }
+      // Get agent name
+      char name[64] = {0};
+      hsa_agent_get_info(agent, HSA_AGENT_INFO_NAME, name);
+      hsa_agent.name = name;
 
-        LOG_DETAIL("Memory Regions:");
-        for (const auto& region : memory_regions) {
-            LOG_DETAIL("  - Region Size: {}, Global: {}, Kernarg: {}, Local: {}",
-                       region.size, region.is_global, region.is_kernarg, region.is_local);
-        }
-    }
+      // Get device type
+      hsa_device_type_t device_type;
+      hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &device_type);
+      hsa_agent.is_gpu = (device_type == HSA_DEVICE_TYPE_GPU);
 
-    static void get_all_agents(std::vector<HsaAgent>& agents) {
-        auto agent_callback = [](hsa_agent_t agent, void* data) -> hsa_status_t {
-            auto* agents_vector = static_cast<std::vector<HsaAgent>*>(data);
-            agents_vector->emplace_back(agent);
-            HsaAgent& hsa_agent = agents_vector->back();
+      // Iterate over memory regions
+      auto region_callback = [](hsa_region_t region, void* agent_ptr) -> hsa_status_t {
+        HsaAgent& hsa_agent = *static_cast<HsaAgent*>(agent_ptr);
 
-            // Get agent name
-            char name[64] = {0};
-            hsa_agent_get_info(agent, HSA_AGENT_INFO_NAME, name);
-            hsa_agent.name = name;
+        hsa_region_segment_t segment;
+        hsa_region_get_info(region, HSA_REGION_INFO_SEGMENT, &segment);
 
-            // Get device type
-            hsa_device_type_t device_type;
-            hsa_agent_get_info(agent, HSA_AGENT_INFO_DEVICE, &device_type);
-            hsa_agent.is_gpu = (device_type == HSA_DEVICE_TYPE_GPU);
+        size_t size;
+        hsa_region_get_info(region, HSA_REGION_INFO_SIZE, &size);
 
-            // Iterate over memory regions
-            auto region_callback = [](hsa_region_t region, void* agent_ptr) -> hsa_status_t {
-                HsaAgent& hsa_agent = *static_cast<HsaAgent*>(agent_ptr);
+        bool is_global = (segment == HSA_REGION_SEGMENT_GLOBAL);
+        bool is_kernarg = (segment == HSA_REGION_SEGMENT_KERNARG);
+        bool is_local = (segment == HSA_REGION_SEGMENT_GROUP);
 
-                hsa_region_segment_t segment;
-                hsa_region_get_info(region, HSA_REGION_INFO_SEGMENT, &segment);
-                
-                size_t size;
-                hsa_region_get_info(region, HSA_REGION_INFO_SIZE, &size);
-                
-                bool is_global = (segment == HSA_REGION_SEGMENT_GLOBAL);
-                bool is_kernarg = (segment == HSA_REGION_SEGMENT_KERNARG);
-                bool is_local = (segment == HSA_REGION_SEGMENT_GROUP);
-                
-                hsa_agent.add_memory_region(region, size, is_global, is_kernarg, is_local);
-                return HSA_STATUS_SUCCESS;
-            };
+        hsa_agent.add_memory_region(region, size, is_global, is_kernarg, is_local);
+        return HSA_STATUS_SUCCESS;
+      };
 
-            hsa_agent_iterate_regions(agent, region_callback, &hsa_agent);
+      hsa_agent_iterate_regions(agent, region_callback, &hsa_agent);
 
-            // Iterate over memory pools
-            auto pool_callback = [](hsa_amd_memory_pool_t pool, void* agent_ptr) -> hsa_status_t {
-                HsaAgent& hsa_agent = *static_cast<HsaAgent*>(agent_ptr);
-                
-                size_t size;
-                hsa_amd_memory_pool_get_info(pool, HSA_AMD_MEMORY_POOL_INFO_SIZE, &size);
+      // Iterate over memory pools
+      auto pool_callback = [](hsa_amd_memory_pool_t pool,
+                              void* agent_ptr) -> hsa_status_t {
+        HsaAgent& hsa_agent = *static_cast<HsaAgent*>(agent_ptr);
 
-                hsa_amd_segment_t segment;
-                hsa_amd_memory_pool_get_info(pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment);
-                
-                bool is_fine = (segment == HSA_AMD_SEGMENT_GLOBAL);
-                bool is_coarse = (segment == HSA_AMD_SEGMENT_GROUP);
-                
-                hsa_agent.add_memory_pool(pool, size, is_fine, is_coarse);
-                return HSA_STATUS_SUCCESS;
-            };
+        size_t size;
+        hsa_amd_memory_pool_get_info(pool, HSA_AMD_MEMORY_POOL_INFO_SIZE, &size);
 
-            hsa_amd_agent_iterate_memory_pools(agent, pool_callback, &hsa_agent);
+        hsa_amd_segment_t segment;
+        hsa_amd_memory_pool_get_info(pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, &segment);
 
-            return HSA_STATUS_SUCCESS;
-        };
+        bool is_fine = (segment == HSA_AMD_SEGMENT_GLOBAL);
+        bool is_coarse = (segment == HSA_AMD_SEGMENT_GROUP);
 
-        hsa_iterate_agents(agent_callback, &agents);
-    }
+        hsa_agent.add_memory_pool(pool, size, is_fine, is_coarse);
+        return HSA_STATUS_SUCCESS;
+      };
+
+      hsa_amd_agent_iterate_memory_pools(agent, pool_callback, &hsa_agent);
+
+      return HSA_STATUS_SUCCESS;
+    };
+
+    hsa_iterate_agents(agent_callback, &agents);
+  }
 };
-
-
 
 class accordo {
  public:
   static accordo* get_instance(HsaApiTable* table = nullptr,
-                              uint64_t runtime_version = 0,
-                              uint64_t failed_tool_count = 0,
-                              const char* const* failed_tool_names = nullptr);
+                               uint64_t runtime_version = 0,
+                               uint64_t failed_tool_count = 0,
+                               const char* const* failed_tool_names = nullptr);
 
  private:
   accordo(HsaApiTable* table,
-         std::uint64_t runtime_version,
-         std::uint64_t failed_tool_count,
-         const char* const* failed_tool_names);
+          std::uint64_t runtime_version,
+          std::uint64_t failed_tool_count,
+          const char* const* failed_tool_names);
   ~accordo();
   void save_hsa_api();
   void restore_hsa_api();
@@ -252,6 +263,8 @@ class accordo {
   static const packet_word_t header_type_mask = (1ul << HSA_PACKET_HEADER_WIDTH_TYPE) - 1;
   static const packet_word_t header_screlease_scope_mask = 0x3;
   static const packet_word_t header_scacquire_scope_mask = 0x3;
+
+ public:
   static hsa_packet_type_t get_header_type(const hsa_ext_amd_aql_pm4_packet_t* packet) {
     const packet_word_t* header = reinterpret_cast<const packet_word_t*>(packet);
     return static_cast<hsa_packet_type_t>((*header >> HSA_PACKET_HEADER_TYPE) &
@@ -272,9 +285,8 @@ class accordo {
         header_scacquire_scope_mask);
   }
 
-  std::string get_kernel_name(const std::uint64_t kernel_object);
-
  private:
+  std::string get_kernel_name(const std::uint64_t kernel_object);
   static std::mutex mutex_;
   static std::shared_mutex stop_mutex_;
   static accordo* singleton_;
