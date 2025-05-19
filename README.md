@@ -32,16 +32,26 @@ SOFTWARE.
 
 ## Quick start
 
-We provide an Apptainer image containing all the dependencies. To get started, run:
+We provide both Apptainer and Docker images containing all the dependencies. To get started, run:
 ```
 ./apptainer/build.sh
 ```
+or,
+```
+./docker/build.sh
+```
 
-To start the Apptainer container, run:
+
+To start the container, run:
 
 ```
 ./apptainer/run.sh
 ```
+or,
+```
+./docker/run.sh
+```
+
 
 ## Install from source
 
@@ -80,6 +90,12 @@ export PATH=$(pwd)/external/rocprofiler-compute/src:$PATH
 export PATH=$(pwd)/$maestro/src:$PATH
 ```
 
+
+6. Build the examples (optional):
+
+```shell
+./scripts/build_examples.sh
+```
 
 
 ## Usage:
