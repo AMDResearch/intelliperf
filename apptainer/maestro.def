@@ -96,7 +96,7 @@ From: ubuntu:22.04
     cd /root
     git clone -v git@github.com:AARInternal/guided-tuning.git
     cd guided-tuning
-    git checkout 7a2f4d06de6ecedceaec83a44ea010988ec5ff28
+    git checkout 629a237f90a8e1e7c21f4dabca14104cfb148614
     python3 -m pip install -r requirements.txt
 
     # Install agents dependencies
