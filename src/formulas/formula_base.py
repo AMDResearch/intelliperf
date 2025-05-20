@@ -75,7 +75,7 @@ class Formula_Base:
         self.__name = name # name of the run
         self.__application = Application(name, build_command, instrument_command, app_cmd)
 
-        self._profiler_results = None
+        self._initial_profiler_results = None
         
         # Public
         self.profiler:str = None
@@ -113,8 +113,7 @@ class Formula_Base:
         """
         Extract any required performance data from the application using the specified profiler.
         """
-        self._profiler_results = self.__application.profile(top_n=self.top_n)
-
+        self._initial_profiler_results = self.__application.profile(top_n=self.top_n)
     @abstractmethod
     def instrument_pass(self):
         """
@@ -204,7 +203,7 @@ class Formula_Base:
         df_results = self.__application.collect_source_code()
 
         # In-place append of source info
-        for entry in self._profiler_results:
+        for entry in self._initial_profiler_results:
             kernel_name = entry["kernel"]
             empty = {
                 "assembly": [],
@@ -216,7 +215,7 @@ class Formula_Base:
             
         return Result(
             success=True,
-            asset=self._profiler_results
+            asset=self._initial_profiler_results
         )        
 
     @abstractmethod
@@ -232,17 +231,17 @@ class Formula_Base:
         Writes the results to the output file.
         """
         if output_file is None:
-            print(json.dumps(self._profiler_results, indent=2))
+            print(json.dumps(self._initial_profiler_results, indent=2))
         elif output_file.endswith(".json"):
             with open(output_file, "w") as f:
-                json.dump(self._profiler_results, f, indent=2)
+                json.dump(self._initial_profiler_results, f, indent=2)
         elif output_file.endswith(".csv"):
-            flattened_results = [flatten_dict(entry) for entry in self._profiler_results]
+            flattened_results = [flatten_dict(entry) for entry in self._initial_profiler_results]
             df = pd.DataFrame(flattened_results)
             df.to_csv(output_file, index=False)
         elif output_file.endswith(".txt"):
             with open(output_file, "w") as f:
-                f.write(json.dumps(self._profiler_results, indent=2))
+                f.write(json.dumps(self._initial_profiler_results, indent=2))
         else:
             logging.error("Invalid output file extension. Must be .json, .csv, or .txt.")
             sys.exit(1)

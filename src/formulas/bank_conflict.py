@@ -44,6 +44,7 @@ class bank_conflict(Formula_Base):
         self.profiler = "guided-tuning"
         # This temp option allows us to toggle if we want a full or partial instrumentation report
         self.only_consider_top_kernel = only_consider_top_kernel
+        self.instrumentation_results = None
 
     def profile_pass(self) -> Result:
         """
@@ -62,15 +63,9 @@ class bank_conflict(Formula_Base):
             Result: Instrumentation data containing the kernel name, arguments, lines, and file path as dict
         """
         super().instrument_pass()
-        # Get the kernel names with the highest bank conflict data and filter
-        filtered_report_card = self._profiler_results[
-            self._profiler_results["LDS Bank Conflicts"] > 0
-        ]
-        filtered_report_card = filtered_report_card[
-            ~filtered_report_card["Kernel"].str.contains("Cijk")
-        ]
+        filtered_report_card = [entry for entry in self._initial_profiler_results if entry.get("lds", {}).get("bc", 0) > 0]
         logging.debug(f"Filtered Report Card:\n{filtered_report_card}")
-        kernel_names = filtered_report_card["Kernel"].tolist()
+        kernel_names = [entry["Kernel"] for entry in filtered_report_card]
 
         # Generate ECMA regex from the list of kernel names
         ecma_regex = generate_ecma_regex_from_list(kernel_names)
@@ -90,9 +85,8 @@ class bank_conflict(Formula_Base):
             ]
         )
         if not success:
-            logging.error(f"Critical Error: {output}")
-            logging.error("Failed to instrument the application.")
-            sys.exit(1)
+            logging.warning(f"Failed to instrument the application: {output}")
+            return Result(success=False, error_report=f"Failed to instrument the application: {output}")
 
         bnk_conflicts_map = extract_bank_conflict_lines(output, kernel_names)
 
@@ -118,6 +112,7 @@ class bank_conflict(Formula_Base):
         Returns:
             Result: Optimized kernel as a file path
         """
+
 
         kernel = self._instrumentation_results["kernel"]
         lines = self._instrumentation_results["lines"]
@@ -202,10 +197,7 @@ class bank_conflict(Formula_Base):
         return super().validation_pass()
 
     def performance_pass(
-        self,
-        optimized_binary_result: Result,
-        unoptimized_binary_result: Result,
-        kernel_signature: str,
+        self
     ) -> Result:
 
         unoptimized_df = unoptimized_binary_result.asset

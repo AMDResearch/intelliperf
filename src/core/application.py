@@ -49,12 +49,22 @@ class Application:
             sys.exit(1)
         
 
-    def build(self):
-        return process.capture_subprocess_output(self.build_command)
+    def build(self, instrumented=False):
+        """Builds the application, optionally with instrumentation."""
+        if instrumented:
+            return process.capture_subprocess_output(self.instrument_command)
+        else:
+            return process.capture_subprocess_output(self.build_command)
 
     def profile(self, top_n: int):
         logging.debug(f"Profiling app with name {self.get_name()}")
         logging.debug(f"Profiling app with command {self.get_app_cmd()}")
+        
+        # Clear the cache before running the profiler
+        capture_subprocess_output([
+            "rm", "-rf", f"{get_guided_tuning_path()}/workloads/"
+        ])
+        
         # Profile the app using GT
         success, output = capture_subprocess_output(
             [
@@ -115,16 +125,16 @@ class Application:
         df_results = json.loads(open(f"{get_guided_tuning_path()}/maestro_report_card.json").read())   
         return df_results        
         
-    def instrument(self):
-        return process.capture_subprocess_output(self.instrument_command)
-
+        
     def run(self):
+        """Runs the application."""
         return process.capture_subprocess_output(self.app_cmd)
 
     def get_name(self):
         return self.name
     
     def get_app_cmd(self):
+        """Returns the command for running the application."""
         return self.app_cmd
     
     def get_build_command(self):
