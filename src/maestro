@@ -154,8 +154,8 @@ def main():
         optimizer.optimize_pass()
         
         # Compile the new application
-        success, _ = optimizer.compiler_pass()
-        if not success:
+        optimizer_result = optimizer.build()
+        if not optimizer_result:
             optimizer.summarize_previous_passes()
             continue
         

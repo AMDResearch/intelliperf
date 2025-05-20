@@ -43,15 +43,18 @@ from accordo.python.code_gen import generate_header
 from accordo.python.utils import run_subprocess
 
 class Result:
-    def __init__(self, success:bool, error_report:str="", asset=None):
-        self.success:bool = success
+    def __init__(self, success: bool, error_report: str = "", asset=None):
+        self.success: bool = success
         # Only set error report if failure occurs
         if not self.success and error_report == "":
             logging.error("Invalid implementation of Report(). Must provide an error report if failure occurs.")
             sys.exit(1)
-        self.error_report:str = error_report
-        self.log:str = ""
+        self.error_report: str = error_report
+        self.log: str = ""
         self.asset = asset
+
+    def __bool__(self):
+        return self.success
 
     def report_out(self):
         if self.success:
@@ -68,12 +71,11 @@ class Result:
             logging.error(f"Error: {self.error_report}")
             sys.exit(1)
 
-
 class Formula_Base:
     def __init__(self, name: str, build_command: list, instrument_command: list, app_cmd: list, top_n: int):
         # Private
         self.__name = name # name of the run
-        self.__application = Application(name, build_command, instrument_command, app_cmd)
+        self._application = Application(name, build_command, instrument_command, app_cmd)
 
         self._initial_profiler_results = None
         
@@ -84,14 +86,14 @@ class Formula_Base:
 
     def backup(self, suffix: str):
         """Creates a backup of the application by appending the given suffix."""
-        binary = self.__application.get_app_cmd()[0]
+        binary = self._application.get_app_cmd()[0]
         backup_name = f"{binary}.{suffix}"
         logging.info(f"copying: {binary} to {backup_name}")
         shutil.copy2(binary, backup_name)
         return backup_name 
 
     def build(self):
-        if not self.__application.get_build_command():
+        if not self._application.get_build_command():
             return Result(
                 success=True,
                 asset={
@@ -99,11 +101,17 @@ class Formula_Base:
                 }
             )
         else:
-            success, result = self.__application.build()
+            success, result = self._application.build()
             # Handle critical error
             exit_on_fail(success = success,
                         message = f"Failed to build {self.__name} application.",
                         log = result)
+        return Result(
+            success=success,
+            asset={
+                "log": result
+            }
+        )
 
     # ----------------------------------------------------
     # Required methods to be implemented by child classes
@@ -113,7 +121,7 @@ class Formula_Base:
         """
         Extract any required performance data from the application using the specified profiler.
         """
-        self._initial_profiler_results = self.__application.profile(top_n=self.top_n)
+        self._initial_profiler_results = self._application.profile(top_n=self.top_n)
     @abstractmethod
     def instrument_pass(self):
         """
@@ -130,21 +138,17 @@ class Formula_Base:
 
 
     @abstractmethod
-    def validation_pass(self):
+    def validation_pass(self, kernel, args):
         """
         Validates the the application.
         """
 
-        cloned_app = self.__application.clone(prefix = "unoptimized")
+        cloned_app = self._application.clone(prefix = "unoptimized")
 
-        self.__application.build()
+        self._application.build()
 
-        unoptimized_binary = self.__application.get_app_cmd()[0]
+        unoptimized_binary = self._application.get_app_cmd()[0]
         optimized_binary = cloned_app.get_app_cmd()[0]
-        
-        
-        kernel = self._instrumentation_results["kernel"]
-        args = self._instrumentation_results["arguments"]
 
         accordo_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "accordo"))
 
@@ -200,7 +204,7 @@ class Formula_Base:
         """
         Finds the source code.
         """
-        df_results = self.__application.collect_source_code()
+        df_results = self._application.collect_source_code()
 
         # In-place append of source info
         for entry in self._initial_profiler_results:

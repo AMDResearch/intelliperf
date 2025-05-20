@@ -39,12 +39,15 @@ from utils.process import capture_subprocess_output, exit_on_fail
 from utils.regex import generate_ecma_regex_from_list
 
 class bank_conflict(Formula_Base):
-    def __init__(self, name: str, build_script: list, app_cmd: list, top_n: int, only_consider_top_kernel=False):
-        super().__init__(name, build_script, app_cmd, top_n=top_n)
+    def __init__(self, name: str, build_command: list, instrument_command: list, app_cmd: list, top_n: int, only_consider_top_kernel=False):
+        
+        super().__init__(name, build_command, instrument_command, app_cmd, top_n)
         self.profiler = "guided-tuning"
         # This temp option allows us to toggle if we want a full or partial instrumentation report
         self.only_consider_top_kernel = only_consider_top_kernel
-        self.instrumentation_results = None
+        self._instrumentation_results = None
+        self.current_kernel = None
+        self.current_args = None
 
     def profile_pass(self) -> Result:
         """
@@ -65,12 +68,12 @@ class bank_conflict(Formula_Base):
         super().instrument_pass()
         filtered_report_card = [entry for entry in self._initial_profiler_results if entry.get("lds", {}).get("bc", 0) > 0]
         logging.debug(f"Filtered Report Card:\n{filtered_report_card}")
-        kernel_names = [entry["Kernel"] for entry in filtered_report_card]
+        kernel_names = [entry["kernel"] for entry in filtered_report_card]
 
         # Generate ECMA regex from the list of kernel names
         ecma_regex = generate_ecma_regex_from_list(kernel_names)
         logging.debug(f"ECMA Regex for kernel names: {ecma_regex}")
-        cmd = " ".join(self.get_app_cmd())
+        cmd = " ".join(self._application.get_app_cmd())
         logging.debug(f"Omniprobe profiling command is: {cmd}")
         success, output = capture_subprocess_output(
             [
@@ -81,7 +84,7 @@ class bank_conflict(Formula_Base):
                 "--kernels",
                 ecma_regex,
                 "--",
-                " ".join(self.get_app_cmd()),
+                " ".join(self._application.get_app_cmd()),
             ]
         )
         if not success:
@@ -103,20 +106,12 @@ class bank_conflict(Formula_Base):
         Optimize the kernel to remove shared memory bank conflicts via OpenAI API
 
         Args:
-            file (str): File path of the kernel
-            kernel (str): Kernel name
-            lines (str): Line numbers causing the conflict
             temperature (float): Sampling temperature for OpenAI API
             max_tokens (int): Maximum tokens for OpenAI API
 
         Returns:
             Result: Optimized kernel as a file path
         """
-
-
-        kernel = self._instrumentation_results["kernel"]
-        lines = self._instrumentation_results["lines"]
-        file = self._instrumentation_results["file"]
 
         super().optimize_pass()
         model = "gpt-4o"
@@ -125,6 +120,16 @@ class bank_conflict(Formula_Base):
         if not llm_key:
             return Result(success=False, error_report="Missing OpenAI API key.")
                 
+        
+        system_prompt = (
+            "You are a skilled GPU HIP programmer. Given a kernel,"
+            " you will optimize it to remove shared memory bank conflicts"
+            " and provide a correct performant implementation. Do not modify"
+            " the kernel signature. Do not touch any other code, licenses, copyrights, or comments in the file." 
+            " If you remove the copyright, your solution will be rejected."
+            " Do not include any markdown code blocks or text other than the code."
+        )
+                        
         server = "https://llm-api.amd.com/azure"
         deployment_id = "dvue-aoai-001-o4-mini"
         llm = LLM(
@@ -134,33 +139,61 @@ class bank_conflict(Formula_Base):
             deployment_id=deployment_id,
             server=server,
         )
-        
-        if os.path.exists(file):
-            with open(file, "r") as f:
-                unoptimized_file_content = f.read()
-        else:
-            return Result(success=False, error_report=f"{file} does not exist.")
 
-        user_prompt = (
-            f"Line {lines} is causing the conflict within the kernel {kernel}"
-            f" inside {unoptimized_file_content}. Please fix the conflict but"
-            f" do not change the semantics of the program."
-        )
-        system_prompt = (
-            "You are a skilled GPU HIP programmer. Given a kernel,"
-            " you will optimize it to remove shared memory bank conflicts"
-            " and provide a correct performant implementation. Do not modify"
-            " the kernel signature and include the dh_comms_dev.h header."
-            " Do not include any markdown code blocks or text other than the code."
-        )
+        if self._instrumentation_results is None:
+            # Get the file from the results
+            filtered_report_card = [entry for entry in self._initial_profiler_results if entry.get("lds", {}).get("bc", 0) > 0]
+            logging.debug(f"Filtered Report Card:\n{filtered_report_card}")
+            kernel = filtered_report_card[0]["kernel"]
+            files = filtered_report_card[0]["source"]["files"]
+            kernel_name = kernel.split("(")[0]
+            kernel_file = None
+            for file in files:
+                if os.path.exists(file):
+                    with open(file, "r") as f:
+                        unoptimized_file_content = f.read()
+                        if kernel_name in unoptimized_file_content:
+                            kernel_file = file
+                            break
+            if kernel_file is None:
+                return Result(success=False, error_report=f"Kernel file not found.")
+            
+            user_prompt = (
+                f"There is a bank conflict in the kernel {kernel} in the file {unoptimized_file_content}."
+                f" Please fix the conflict but do not change the semantics of the program."
+                " If you remove the copyright, your solution will be rejected."
+            )
+            
+        else:
+            kernel = self._instrumentation_results["kernel"]
+            lines = self._instrumentation_results["lines"]
+            file = self._instrumentation_results["file"]
+
+            if os.path.exists(file):
+                with open(file, "r") as f:
+                    unoptimized_file_content = f.read()
+            else:
+                return Result(success=False, error_report=f"{file} does not exist.")
+
+            user_prompt = (
+                f"Line {lines} is causing the conflict within the kernel {kernel}"
+                f" inside {unoptimized_file_content}. Please fix the conflict but"
+                f" do not change the semantics of the program."
+            )
+
+
         logging.debug(f"LLM prompt: {user_prompt}")
         logging.debug(f"System prompt: {system_prompt}")
 
+
+        self.current_kernel = kernel.split("(")[0]
+        self.current_args = kernel.split("(")[1].split(")")[0].split(",")
 
         try:
             optimized_file_content = llm.ask(user_prompt).strip()
             with open(file, "w") as f:
                 f.write(optimized_file_content)
+            logging.debug(f"Optimized file content: {optimized_file_content}")
             return Result(
                 success=True,
                 asset={
@@ -169,6 +202,7 @@ class bank_conflict(Formula_Base):
                 },
             )
         except Exception as e:
+            logging.error(f"An unexpected error occurred - {str(e)}")
             return Result(success=False, error_report=f"An unexpected error occurred - {str(e)}")
 
     def compiler_pass(self) -> Result:
@@ -181,7 +215,7 @@ class bank_conflict(Formula_Base):
         return super().compile_pass()
 
     def validation_pass(
-        self, unoptimized_binary: str, optimized_binary: str, kernel: str, args: list
+        self
     ) -> Result:
         """
         Validate the optimized kernel by comparing the output with the reference kernel
@@ -194,7 +228,7 @@ class bank_conflict(Formula_Base):
         Returns:
             Result: Validation status
         """
-        return super().validation_pass()
+        return super().validation_pass(self.current_kernel, self.current_args)
 
     def performance_pass(
         self

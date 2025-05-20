@@ -39,7 +39,7 @@ class LLM:
         self.system_prompt = system_prompt
         self.deployment_id = deployment_id
         self.server = server
-
+        self.header = {"Ocp-Apim-Subscription-Key": api_key}
     def ask(self, user_prompt: str) -> str:
         body = {
             "messages": [
