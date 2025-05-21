@@ -28,6 +28,7 @@ import selectors
 import logging
 import sys
 import json
+import os
 
 def exit_on_fail(success: bool, message: str, log: str = ""):
     if not success:
@@ -35,7 +36,7 @@ def exit_on_fail(success: bool, message: str, log: str = ""):
         logging.error("Critical Error: %s", full_msg)
         sys.exit(1)
     
-def capture_subprocess_output(subprocess_args:list, new_env=None, verbose=True) -> tuple:
+def capture_subprocess_output(subprocess_args:list, working_directory:str=None, new_env=None, verbose=True) -> tuple:
     # Start subprocess
     # bufsize = 1 means output is line buffered
     # universal_newlines = True is required for line buffering
@@ -43,27 +44,23 @@ def capture_subprocess_output(subprocess_args:list, new_env=None, verbose=True) 
     if new_env is not None:
         logging.debug("Inside the environment:\n%s", json.dumps(new_env, indent=2))
     
-    process = (
-        subprocess.Popen(
-            subprocess_args,
-            bufsize=1,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        if new_env is None
-        else subprocess.Popen(
-            subprocess_args,
-            bufsize=1,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            encoding="utf-8",
-            errors="replace",
-            env=new_env,
-        )
+    if working_directory is not None:
+        logging.debug(f"Working directory: {working_directory}")
+    # Create the environment with working directory
+    env = new_env.copy() if new_env else os.environ.copy()
+    if working_directory is not None:
+        env["PWD"] = working_directory
+    
+    process = subprocess.Popen(
+        subprocess_args,
+        bufsize=1,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        universal_newlines=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+        cwd=working_directory
     )
 
     # Create callback function for process output

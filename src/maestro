@@ -27,7 +27,7 @@ def maestro_parser():
     import argparse
     parser = argparse.ArgumentParser(
         description='Optimize and analyze the given application based on available Maestro formulas.',
-        prog="tool",
+        prog="maestro",
         formatter_class=lambda prog: argparse.RawTextHelpFormatter(
             prog, max_help_position=30
         ),
@@ -58,6 +58,10 @@ def maestro_parser():
                                type=str, 
                                metavar='',
                                help='A command to instrument your application')
+    optional_args.add_argument('-p', '--project_directory', 
+                               type=str, 
+                               metavar='',
+                               help='The directory containing your entire codebase (required when formula is not diagnoseOnly)')
     optional_args.add_argument('-f', 
                                '--formula', 
                                choices=['bankConflict', 'memoryAccess', 'atomicContention', 'diagnoseOnly'], 
@@ -85,6 +89,16 @@ def maestro_parser():
                                help="Path to the output file")
 
     args = parser.parse_args()
+    
+    # Validate that project_directory is provided when formula is not diagnoseOnly
+    if args.formula != 'diagnoseOnly' and not args.project_directory:
+        parser.error("--project_directory is required when --formula is not diagnoseOnly and all paths must be relative to the project directory.")
+    
+    if args.remaining and "--" in args.remaining:
+        args.remaining = args.remaining[1:]
+    else:
+        parser.error("Profiling command required. Pass application executable after -- at the end of options.")
+            
     return args
 
 def main():
@@ -129,6 +143,7 @@ def main():
             name=generated_name,
             build_command=args.build_command,
             instrument_command=args.instrument_command,
+            project_directory=args.project_directory,
             app_cmd=args.remaining,
             top_n=args.top_n,
         )
@@ -154,19 +169,19 @@ def main():
         optimizer.optimize_pass()
         
         # Compile the new application
-        optimizer_result = optimizer.build()
-        if not optimizer_result:
+        build_result = optimizer.build()
+        if not build_result:
             optimizer.summarize_previous_passes()
             continue
         
         # Validate the new application
-        success, _ = optimizer.validation_pass()
-        if not success:
+        validation_result = optimizer.validation_pass()
+        if not validation_result.success:
             optimizer.summarize_previous_passes()
             continue
         
         # If the optimization is successful, break out of the loop
-        if success:
+        if validation_result.success:
             break
 
     # Write the results to the output file

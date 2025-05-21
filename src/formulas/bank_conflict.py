@@ -39,9 +39,12 @@ from utils.process import capture_subprocess_output, exit_on_fail
 from utils.regex import generate_ecma_regex_from_list
 
 class bank_conflict(Formula_Base):
-    def __init__(self, name: str, build_command: list, instrument_command: list, app_cmd: list, top_n: int, only_consider_top_kernel=False):
+    def __init__(self, name: str, build_command: list, instrument_command: list, project_directory: str, app_cmd: list, top_n: int, only_consider_top_kernel=False):
         
-        super().__init__(name, build_command, instrument_command, app_cmd, top_n)
+        super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
+        
+        self._reference_app = self._application.clone()
+
         self.profiler = "guided-tuning"
         # This temp option allows us to toggle if we want a full or partial instrumentation report
         self.only_consider_top_kernel = only_consider_top_kernel
@@ -85,7 +88,8 @@ class bank_conflict(Formula_Base):
                 ecma_regex,
                 "--",
                 " ".join(self._application.get_app_cmd()),
-            ]
+            ],
+            working_directory=self._application.get_project_directory()
         )
         if not success:
             logging.warning(f"Failed to instrument the application: {output}")
@@ -118,7 +122,7 @@ class bank_conflict(Formula_Base):
         llm_key  = os.getenv("LLM_GATEWAY_KEY")
         
         if not llm_key:
-            return Result(success=False, error_report="Missing OpenAI API key.")
+            exit_on_fail(success=False, message="Missing LLM API key.")
                 
         
         system_prompt = (

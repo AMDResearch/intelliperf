@@ -72,26 +72,19 @@ class Result:
             sys.exit(1)
 
 class Formula_Base:
-    def __init__(self, name: str, build_command: list, instrument_command: list, app_cmd: list, top_n: int):
+    def __init__(self, name: str, build_command: list, instrument_command: list, project_directory: str, app_cmd: list, top_n: int):
         # Private
         self.__name = name # name of the run
-        self._application = Application(name, build_command, instrument_command, app_cmd)
+        self._application = Application(name, build_command, instrument_command, project_directory, app_cmd)
 
         self._initial_profiler_results = None
         
         # Public
         self.profiler:str = None
         self.top_n:int = top_n
-          
-
-    def backup(self, suffix: str):
-        """Creates a backup of the application by appending the given suffix."""
-        binary = self._application.get_app_cmd()[0]
-        backup_name = f"{binary}.{suffix}"
-        logging.info(f"copying: {binary} to {backup_name}")
-        shutil.copy2(binary, backup_name)
-        return backup_name 
-
+        
+        self.build()
+        
     def build(self):
         if not self._application.get_build_command():
             return Result(
@@ -138,22 +131,23 @@ class Formula_Base:
 
 
     @abstractmethod
-    def validation_pass(self, kernel, args):
+    def validation_pass(self, kernel, kernel_args):
         """
         Validates the the application.
         """
 
-        cloned_app = self._application.clone(suffix = "unoptimized")
-
         self._application.build()
 
         unoptimized_binary = self._application.get_app_cmd()[0]
-        optimized_binary = cloned_app.get_app_cmd()[0]
+        optimized_binary = self._reference_app.get_app_cmd()[0]
 
+        logging.debug(f"unoptimized_binary: {unoptimized_binary}")
+        logging.debug(f"optimized_binary: {optimized_binary}")
+        
         accordo_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "accordo"))
 
         results = {}
-        for binary, label in zip([unoptimized_binary, optimized_binary], ["unoptimized", "optimized"]):
+        for app, label in zip([self._reference_app, self._application], ["unoptimized", "optimized"]):
             timestamp = int(time.time())
             pipe_name = f"/tmp/kernel_pipe_{timestamp}"
             ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
@@ -161,7 +155,7 @@ class Formula_Base:
             for file in [ipc_file_name, ipc_file_name]:
                 if os.path.exists(file):
                     os.remove(file)
-            generate_header(args)
+            generate_header(kernel_args)
 
             run_subprocess(["cmake", "-B", "build"], accordo_directory)
             run_subprocess(["cmake", "--build", "build", "--parallel", "16"], accordo_directory)
@@ -173,7 +167,16 @@ class Formula_Base:
             env["ACCORDO_PIPE_NAME"] = pipe_name
             env["ACCORDO_IPC_OUTPUT_FILE"] = ipc_file_name
 
+            binary = app.get_app_cmd()[0]
+            args = ' '.join(app.get_app_cmd())
+            project_directory = app.get_project_directory()
+            logging.debug(f"binary: {binary}")
+            logging.debug(f"args: {args}")
+            logging.debug(f"project_directory: {project_directory}")
+            original_dir = os.getcwd()
+            os.chdir(project_directory)
             pid = os.posix_spawn(binary, [binary], env)
+            os.chdir(original_dir)
             results[label] = get_kern_arg_data(pipe_name, args, ipc_file_name)
             send_response(pipe_name)
         logging.debug(f"results unoptimized: results['unoptimized']")

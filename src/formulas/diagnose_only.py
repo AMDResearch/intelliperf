@@ -34,8 +34,8 @@ import re
 import tempfile
 
 class diagnose_only(Formula_Base):
-    def __init__(self, name, build_command, instrument_command, app_cmd, top_n):
-        super().__init__(name, build_command, instrument_command, app_cmd, top_n)
+    def __init__(self, name, build_command, instrument_command, project_directory, app_cmd, top_n):
+        super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
         self.profiler = "guided-tuning"
 
     def profile_pass(self):

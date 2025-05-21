@@ -33,21 +33,22 @@ import json
 import sys
 import os
 import tempfile
+from datetime import datetime
 
 class Application:
-    def __init__(self, name: str, build_command: list, instrument_command: list, app_cmd: list):
+    def __init__(self, name: str, build_command: list, instrument_command: list, project_directory: str, app_cmd: list):
         self.name = name
         self.build_command = build_command
         self.instrument_command = instrument_command
         self.app_cmd = app_cmd
+        self.project_directory = project_directory
         
-        # Validate app command
-        if self.app_cmd and "--" in self.app_cmd:
-            self.app_cmd = self.app_cmd[1:]
-        else:
-            logging.error("Profiling command required. Pass application executable after -- at the end of options.")
-            sys.exit(1)
-        
+        logging.debug(f"App name: {self.name}")
+        logging.debug(f"App build command: {self.build_command}")
+        logging.debug(f"App instrument command: {self.instrument_command}")
+        logging.debug(f"App project directory: {self.project_directory}")
+        logging.debug(f"App app command: {self.app_cmd}")
+
 
     def build(self, instrumented=False):
         """Builds the application, optionally with instrumentation."""
@@ -63,7 +64,7 @@ class Application:
         # Clear the cache before running the profiler
         capture_subprocess_output([
             "rm", "-rf", f"{get_guided_tuning_path()}/workloads/"
-        ])
+        ], working_directory=self.get_project_directory())
         
         # Profile the app using GT
         success, output = capture_subprocess_output(
@@ -72,7 +73,8 @@ class Application:
                 "-n", self.get_name(),
                 "--top-n", str(top_n),
                 "--",
-            ] + self.get_app_cmd()
+            ] + self.get_app_cmd(),
+            working_directory=self.get_project_directory()
         )
             
         exit_on_fail(success = success,
@@ -84,7 +86,8 @@ class Application:
             [
                 f"{get_guided_tuning_path()}/bin/gt", "db",
                 "-n", self.get_name(),
-            ]
+            ],
+            working_directory=self.get_project_directory()
         )
         exit_on_fail(success = success,
                         message = "Failed to generate the performance report card.",
@@ -102,7 +105,8 @@ class Application:
                 f"{get_guided_tuning_path()}/bin/gt", "db",
                 "-w", list(matching_db_workloads.keys())[-1],
                 "--save", f"{get_guided_tuning_path()}/maestro_summary.csv",
-            ]
+            ],
+            working_directory=self.get_project_directory()
         )
         # Handle critical error
         exit_on_fail(success = success,
@@ -120,7 +124,8 @@ class Application:
                 "--separate",
                 "--save",
                 f"{get_guided_tuning_path()}/maestro_report_card.json",
-            ]
+            ],
+            working_directory=self.get_project_directory()
         )
         df_results = json.loads(open(f"{get_guided_tuning_path()}/maestro_report_card.json").read())   
         return df_results        
@@ -147,16 +152,20 @@ class Application:
         parts = self.app_cmd[1:]
         return parts[1] if len(parts) > 1 else ""
     
-    def clone(self, suffix: str = "clone"):
-        binary = self.app_cmd[0]
-        backup_name = f"{binary}.{suffix}"
-        logging.info(f"copying: {binary} to {backup_name}")
-        shutil.copy2(binary, backup_name)
+    def get_project_directory(self):
+        return self.project_directory
+    
+    def clone(self):
+        if not self.project_directory:
+            raise ValueError("Cannot clone application without project directory")
 
-        new_app_cmd = ["--", backup_name] + self.app_cmd[1:]
-        
-        # A clone of the application can't be instrumented or built
-        return Application(self.name, None, None, ' '.join(new_app_cmd))
+        temp_dir = tempfile.mkdtemp()
+        logging.info(f"Creating temporary project directory: {temp_dir}")
+
+        shutil.copytree(self.project_directory, temp_dir, dirs_exist_ok=True)
+        logging.debug(f"Copied project from {self.project_directory} to {temp_dir}")
+
+        return Application(self.name + "_clone", self.build_command, self.instrument_command, temp_dir, self.app_cmd)
     
     def collect_source_code(self):
         nexus_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../external/nexus"))
@@ -170,7 +179,7 @@ class Application:
             env["HSA_TOOLS_LIB"] = lib
             env["NEXUS_LOG_LEVEL"] = "2"
             env["NEXUS_OUTPUT_FILE"] = json_result_file
-            capture_subprocess_output(self.get_app_cmd(), new_env=env)
+            capture_subprocess_output(self.get_app_cmd(), new_env=env, working_directory=self.get_project_directory())
             
             if os.path.exists(json_result_file):
                 df_results = json.loads(open(json_result_file).read())
