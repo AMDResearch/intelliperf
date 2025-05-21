@@ -38,6 +38,18 @@ def run_command(cmd: str, cwd: Path):
     print(f"Running in {cwd}:\n{cmd}")
     subprocess.run(cmd, cwd=cwd, shell=True, check=True, executable="/bin/bash")
 
+def get_current_branch_or_hash(cwd: Path) -> str:
+    result = subprocess.run("git rev-parse --abbrev-ref HEAD", cwd=cwd, shell=True, check=True, capture_output=True, text=True)
+    branch_or_hash = result.stdout.strip()
+    if branch_or_hash == "HEAD":
+        # Detached HEAD state, get the commit hash
+        result = subprocess.run("git rev-parse HEAD", cwd=cwd, shell=True, check=True, capture_output=True, text=True)
+        branch_or_hash = result.stdout.strip()
+    return branch_or_hash
+
+def is_commit_hash(value: str) -> bool:
+    return len(value) == 40 and all(c in "0123456789abcdef" for c in value)
+
 def install_tool(tool: str, config: dict, clean: bool):
     tool_data = config.get("tool", {}).get(tool)
     if not tool_data:
@@ -45,7 +57,7 @@ def install_tool(tool: str, config: dict, clean: bool):
 
     build_command = tool_data["build_command"]
     repo = tool_data.get("git", None)
-    branch = tool_data.get("branch", "main")
+    branch_or_hash = tool_data.get("branch", "main")
 
     if repo:
         tool_dir = Path("external") / tool
@@ -58,11 +70,24 @@ def install_tool(tool: str, config: dict, clean: bool):
         if not tool_dir.exists():
             print(f"Cloning {tool} from {repo}")
             run_command(f"git clone --recurse-submodules {repo} {tool}", cwd="external")
-            print(f"Checking out {branch}")
-            run_command(f"git checkout {branch}", cwd=tool_dir)
+            print(f"Checking out {branch_or_hash}")
+            run_command(f"git checkout {branch_or_hash}", cwd=tool_dir)
             run_command(f"git submodule update --init --recursive", cwd=tool_dir)
         else:
-            print(f"Found existing checkout at {tool_dir}, skipping clone")
+            print(f"Found existing checkout at {tool_dir}, verifying branch or hash")
+            current_branch_or_hash = get_current_branch_or_hash(tool_dir)
+            if current_branch_or_hash != branch_or_hash:
+                print(f"Branch/hash mismatch: expected {branch_or_hash}, found {current_branch_or_hash}. Switching to expected branch/hash.")
+                run_command(f"git fetch", cwd=tool_dir)
+                if is_commit_hash(branch_or_hash):
+                    run_command(f"git checkout {branch_or_hash}", cwd=tool_dir)
+                else:
+                    run_command(f"git checkout {branch_or_hash}", cwd=tool_dir)
+                    run_command(f"git pull", cwd=tool_dir)
+                run_command(f"git submodule update --init --recursive", cwd=tool_dir)
+            else:
+                print(f"Branch/hash matches: {current_branch_or_hash}")
+
     else:
         tool_dir = tool
         print(f"Using local subdirectory for '{tool}' (no git clone)")
