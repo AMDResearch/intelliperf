@@ -33,8 +33,7 @@ import re
 import json
 
 from core.llm import LLM
-
-from formulas.formula_base import Formula_Base, Result
+from formulas.formula_base import Formula_Base, Result, filter_json_field
 from utils.process import capture_subprocess_output, exit_on_fail
 from utils.regex import generate_ecma_regex_from_list
 
@@ -146,7 +145,11 @@ class bank_conflict(Formula_Base):
 
         if self._instrumentation_results is None:
             # Get the file from the results
-            filtered_report_card = [entry for entry in self._initial_profiler_results if entry.get("lds", {}).get("bc", 0) > 0]
+            filtered_report_card = filter_json_field(self._initial_profiler_results, "lds", "bc", lambda x: x > 0)
+            
+            if len(filtered_report_card) == 0:
+                return Result(success=False, error_report="No bank conflicts found.")
+            
             logging.debug(f"Filtered Report Card:\n{filtered_report_card}")
             kernel = filtered_report_card[0]["kernel"]
             files = filtered_report_card[0]["source"]["files"]
@@ -218,7 +221,7 @@ class bank_conflict(Formula_Base):
         """
         return super().compile_pass()
 
-    def validation_pass(
+    def correctness_validation_pass(
         self
     ) -> Result:
         """
@@ -232,27 +235,21 @@ class bank_conflict(Formula_Base):
         Returns:
             Result: Validation status
         """
-        return super().validation_pass(self.current_kernel, self.current_args)
+        return super().correctness_validation_pass(self.current_kernel, self.current_args)
 
-    def performance_pass(
+    def performance_validation_pass(
         self
     ) -> Result:
 
-        unoptimized_df = unoptimized_binary_result.asset
-        unoptimized_time = unoptimized_df.loc[
-            unoptimized_df["Kernel"] == kernel_signature, "Avg-Duration"
-        ].sum()
-        unoptimized_conflicts = unoptimized_df.loc[
-            unoptimized_df["Kernel"] == kernel_signature, "LDS Bank Conflicts"
-        ].sum()
 
-        optimized_df = optimized_binary_result.asset
-        optimized_time = optimized_df.loc[
-            optimized_df["Kernel"] == kernel_signature, "Avg-Duration"
-        ].sum()
-        optimized_conflicts = optimized_df.loc[
-            optimized_df["Kernel"] == kernel_signature, "LDS Bank Conflicts"
-        ].sum()
+        unoptimized_time = self._initial_profiler_results[0]["durations"]["ns"]
+        unoptimized_conflicts = self._initial_profiler_results[0]["lds"]["bc"]
+
+        # Profile the optimized application
+        self._optimization_results = self._application.profile(top_n=self.top_n)
+        
+        optimized_time = self._optimization_results[0]["durations"]["ns"]
+        optimized_conflicts = self._optimization_results[0]["lds"]["bc"]
 
         success = optimized_conflicts < unoptimized_conflicts
         speedup = unoptimized_time / optimized_time
@@ -277,6 +274,9 @@ class bank_conflict(Formula_Base):
                 error_report=f"The optimized code had more shared memory bank conflicts."
                 + report_message,
             )
+            
+        logging.info(report_message)
+        
         return Result(success=True, asset={"log": report_message})
 
     def summarize_previous_passes(self):
