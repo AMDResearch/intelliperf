@@ -56,14 +56,17 @@ class diagnose_only(Formula_Base):
     def compile_pass(self):
         return super().compile_pass()
 
-    def validation_pass(self):
+    def correctness_validation_pass(self):
         """
         Validate the optimized kernel by comparing the output with the reference kernel
 
         Returns:
             Result: Validation status
         """
-        return super().validation_pass()
+        return super().correctness_validation_pass()
+    
+    def performance_validation_pass(self):
+        return super().performance_validation_pass()
     
     def source_code_pass(self):
         return super().source_code_pass()
