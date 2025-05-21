@@ -44,7 +44,7 @@ class bank_conflict(Formula_Base):
         
         self._reference_app = self._application.clone()
 
-        self.profiler = "guided-tuning"
+        
         # This temp option allows us to toggle if we want a full or partial instrumentation report
         self.only_consider_top_kernel = only_consider_top_kernel
         self._instrumentation_results = None
@@ -174,13 +174,13 @@ class bank_conflict(Formula_Base):
         else:
             kernel = self._instrumentation_results["kernel"]
             lines = self._instrumentation_results["lines"]
-            file = self._instrumentation_results["file"]
+            kernel_file = self._instrumentation_results["file"]
 
-            if os.path.exists(file):
-                with open(file, "r") as f:
+            if os.path.exists(kernel_file):
+                with open(kernel_file, "r") as f:
                     unoptimized_file_content = f.read()
             else:
-                return Result(success=False, error_report=f"{file} does not exist.")
+                return Result(success=False, error_report=f"{kernel_file} does not exist.")
 
             user_prompt = (
                 f"Line {lines} is causing the conflict within the kernel {kernel}"
@@ -198,13 +198,13 @@ class bank_conflict(Formula_Base):
 
         try:
             optimized_file_content = llm.ask(user_prompt).strip()
-            with open(file, "w") as f:
+            with open(kernel_file, "w") as f:
                 f.write(optimized_file_content)
             logging.debug(f"Optimized file content: {optimized_file_content}")
             return Result(
                 success=True,
                 asset={
-                    "optimized_code_path": file,
+                    "optimized_code_path": kernel_file,
                     "optimized_code_string": optimized_file_content,
                 },
             )

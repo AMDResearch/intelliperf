@@ -45,8 +45,7 @@ class atomic_contention(Formula_Base):
         super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
         
         self._reference_app = self._application.clone()
-
-        self.profiler = "guided-tuning"
+        
         # This temp option allows us to toggle if we want a full or partial instrumentation report
         self.only_consider_top_kernel = only_consider_top_kernel
         self._instrumentation_results = None
@@ -156,13 +155,13 @@ class atomic_contention(Formula_Base):
 
         try:
             optimized_file_content = llm.ask(user_prompt).strip()
-            with open(file, "w") as f:
+            with open(kernel_file, "w") as f:
                 f.write(optimized_file_content)
             logging.debug(f"Optimized file content: {optimized_file_content}")
             return Result(
                 success=True,
                 asset={
-                    "optimized_code_path": file,
+                    "optimized_code_path": kernel_file,
                     "optimized_code_string": optimized_file_content,
                 },
             )
