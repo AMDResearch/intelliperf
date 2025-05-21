@@ -58,5 +58,5 @@ int main() {
     std::cout << "Success!";
   }
   std::cout << std::endl;
-  return static_cast<int>(result[0]);
+  return 0;
 }
