@@ -131,7 +131,7 @@ class Formula_Base:
 
 
     @abstractmethod
-    def validation_pass(self, kernel, kernel_args):
+    def correctness_validation_pass(self, kernel, kernel_args):
         """
         Validates the the application.
         """
@@ -200,8 +200,15 @@ class Formula_Base:
         return Result(
             success=True
         )        
-        pass
     
+    
+    @abstractmethod
+    def performance_validation_pass(self):
+        """
+        Validates the performance of the application.
+        """
+        pass
+
     @abstractmethod
     def source_code_pass(self):
         """
@@ -262,3 +269,21 @@ def flatten_dict(d, parent_key='', sep='_'):
         else:
             items.append((new_key, v))
     return dict(items)
+
+def filter_json_field(d, field, subfield=None, comparison_func=lambda x: True):
+    """
+    Filters a list of dictionaries based on a comparison function applied to a specified field or subfield.
+
+    Args:
+        d (list): List of dictionaries to filter.
+        field (str): The field in each dictionary to look into.
+        subfield (str, optional): The subfield within the field to apply the comparison. Defaults to None.
+        comparison_func (function): A lambda function that takes a value and returns a boolean. Defaults to a function that always returns True.
+
+    Returns:
+        list: A list of dictionaries that satisfy the comparison function.
+    """
+    if subfield is not None:
+        return [entry for entry in d if comparison_func(entry.get(field, {}).get(subfield, 0))]
+    else:
+        return [entry for entry in d if comparison_func(entry.get(field, 0))]
