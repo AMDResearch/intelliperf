@@ -175,13 +175,19 @@ def main():
             continue
         
         # Validate the new application
-        validation_result = optimizer.validation_pass()
-        if not validation_result.success:
+        correctness_result = optimizer.correctness_validation_pass()
+        if not correctness_result:
+            optimizer.summarize_previous_passes()
+            continue
+        
+        
+        performance_result = optimizer.performance_validation_pass()
+        if not performance_result:
             optimizer.summarize_previous_passes()
             continue
         
         # If the optimization is successful, break out of the loop
-        if validation_result.success:
+        if performance_result:
             break
 
     # Write the results to the output file
