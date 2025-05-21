@@ -143,7 +143,7 @@ class Formula_Base:
         Validates the the application.
         """
 
-        cloned_app = self._application.clone(prefix = "unoptimized")
+        cloned_app = self._application.clone(suffix = "unoptimized")
 
         self._application.build()
 

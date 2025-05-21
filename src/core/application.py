@@ -153,10 +153,10 @@ class Application:
         logging.info(f"copying: {binary} to {backup_name}")
         shutil.copy2(binary, backup_name)
 
-        new_app_cmd = [backup_name] + self.app_cmd[1:]
+        new_app_cmd = ["--", backup_name] + self.app_cmd[1:]
         
         # A clone of the application can't be instrumented or built
-        return Application(self.name, None, None, new_app_cmd)
+        return Application(self.name, None, None, ' '.join(new_app_cmd))
     
     def collect_source_code(self):
         nexus_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../external/nexus"))
