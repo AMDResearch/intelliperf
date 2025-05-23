@@ -25,24 +25,19 @@
 cmake_minimum_required(VERSION 3.10)
 project(Examples LANGUAGES HIP CXX)
 
-add_library(maestro_examples INTERFACE)
-
-target_compile_options(maestro_examples INTERFACE -Wno-unused-result -O3 -g)
 option(INSTRUMENT "Instrument the code with Omniprobe" OFF)
-
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 function(add_example name source_file)
     add_executable(${name} ${source_file})
-    target_link_libraries(${name} PRIVATE maestro_examples)
+    # CMake instrumentation integration example
     if(INSTRUMENT)
         set(OMNIPROBE_PATH ${CMAKE_SOURCE_DIR}/../external/logduration/install)
-        set(KERNEL_DB_INCLUDE_DIR ${OMNIPROBE_PATH}/include/kerneldb)
-        set(DH_COMMS_INCLUDE_DIR ${OMNIPROBE_PATH}/include/dh_comms)
-        target_include_directories(${name} PRIVATE ${KERNEL_DB_INCLUDE_DIR} ${DH_COMMS_INCLUDE_DIR})
+        # Use the plugin to instrument the code
         target_compile_options(${name} PRIVATE 
             -fpass-plugin=${OMNIPROBE_PATH}/lib/libAMDGCNSubmitAddressMessages-rocm.so
         )
+        # Must include debug information to get line numbers
+        target_compile_options(${name} PRIVATE -g)
     endif()
 endfunction()
 
