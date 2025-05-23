@@ -66,6 +66,10 @@ class Application:
             "rm", "-rf", f"{get_guided_tuning_path()}/workloads/"
         ], working_directory=self.get_project_directory())
         
+        capture_subprocess_output([
+            "rm", "-rf", f"{get_guided_tuning_path()}/data/guided.db"
+        ], working_directory=self.get_project_directory())
+                
         # Profile the app using GT
         success, output = capture_subprocess_output(
             [

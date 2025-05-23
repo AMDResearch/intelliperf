@@ -40,7 +40,7 @@ python3 -m pip install -r requirements.txt
 
 [tool.logduration]
 git = "git@github.com:AMDResearch/logduration.git"
-branch = "5caa4a4c4beefda6f357a72579b428d0dd152679"
+branch = "61b72d775ae345abcb21432125089adb43918ff0"
 build_command = """
 git submodule update --init --recursive
 #TODO: search for a Triton LLVM.
@@ -50,10 +50,11 @@ else
     export TRITON_LLVM_PATH="${ROCM_PATH}/llvm/"
 fi
 cmake -DCMAKE_PREFIX_PATH=${ROCM_PATH} \
-      -DTRITON_LLVM=$TRITON_LLVM_PATH \
       -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=install \
       -DCMAKE_VERBOSE_MAKEFILE=ON -S . -B build &&
-cmake --build build --parallel 1
+cmake --build build --parallel 1 &&
+cmake --install build
 """
 
 
