@@ -31,12 +31,14 @@ clean=false
 parallel=8
 build_dir=build
 verbose=false
+instrument=false
 
 print_usage() {
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  -c, --clean       Clean build directory"
     echo "  -v, --verbose     Print verbose output"
+    echo "  -i, --instrument  Instrument the code with Omniprobe"
     echo "  -j, --jobs <num>  Set number of parallel jobs"
 }
 
@@ -49,6 +51,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -v|--verbose)
             verbose=true
+            shift
+            ;;
+        -i|--instrument)
+            instrument=true
             shift
             ;;
         -j|--jobs)
@@ -76,13 +82,24 @@ if [ "$clean" = true ]; then
     rm -rf "$build_dir"
 fi
 
-cmake -B "$build_dir"
 
-cmake_args=()
-if [ "$verbose" = true ]; then
-    cmake_args+=(--verbose)
+cmake_config_args=()
+if [ "$instrument" = true ]; then
+    cmake_config_args+=(-DINSTRUMENT=ON)
 fi
 
-cmake --build "$build_dir" --parallel "$parallel" "${cmake_args[@]}"
+
+
+
+cmake -B "$build_dir"\
+    -DCMAKE_BUILD_TYPE=Release\
+    "${cmake_config_args[@]}"
+
+cmake_build_args=()
+if [ "$verbose" = true ]; then
+    cmake_build_args+=(--verbose)
+fi
+
+cmake --build "$build_dir" --parallel "$parallel" "${cmake_build_args[@]}"
 
 popd > /dev/null
