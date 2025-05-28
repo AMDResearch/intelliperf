@@ -28,6 +28,7 @@ set(EXAMPLES
     "synthetic"
     "transpose_scale_add"
     "transpose_scale_add_templated"
+    "b2b_matrix_transpose"
 )
 
 foreach(example IN LISTS EXAMPLES)

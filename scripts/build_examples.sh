@@ -90,16 +90,21 @@ fi
 
 
 
-
-cmake -B "$build_dir"\
+config_command="cmake -B "$build_dir"\
     -DCMAKE_BUILD_TYPE=Release\
-    "${cmake_config_args[@]}"
+    "${cmake_config_args[@]}""
+
+echo "Configuring command: $config_command"
+$config_command
 
 cmake_build_args=()
 if [ "$verbose" = true ]; then
     cmake_build_args+=(--verbose)
 fi
 
-cmake --build "$build_dir" --parallel "$parallel" "${cmake_build_args[@]}"
+build_command="cmake --build "$build_dir" --parallel "$parallel" "${cmake_build_args[@]}""
+
+echo "Building command: $build_command"
+$build_command
 
 popd > /dev/null
