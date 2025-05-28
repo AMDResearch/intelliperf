@@ -59,9 +59,9 @@ From: ubuntu:22.04
     # Install rocprof-compute (from feature branch)
     export SSH_AUTH_SOCK={{ SSH_AUTH_SOCK }}
     cd /root
-    git clone -v git@github.com:coleramos425/rocprofiler-compute.git
+    git clone -v https://github.com/ROCm/rocprofiler-compute.git
     cd rocprofiler-compute
-    git checkout colramos/omniperf-for-gt
+    git checkout 41e73650d5cfc3dbd98e007d6279235578f8529a
     python3 -m pip install --ignore-installed blinker
     python3 -m pip install -r requirements.txt
     cd src
@@ -81,7 +81,7 @@ From: ubuntu:22.04
     cd /root
     git clone -v git@github.com:AARInternal/logduration.git
     cd logduration
-    git checkout colramos/dev
+    git checkout 5caa4a4c4beefda6f357a72579b428d0dd152679
     git submodule update --init --recursive
     mkdir -p build 
     cmake -DCMAKE_INSTALL_PREFIX=/opt/logduration\
