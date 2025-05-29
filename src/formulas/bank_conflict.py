@@ -52,6 +52,7 @@ class bank_conflict(Formula_Base):
         self._instrumentation_results = None
         self.current_kernel = None
         self.current_args = None
+        self.current_kernel_signature = None
         self.kernel_to_optimize = None
         self.report_message = None
 
@@ -185,7 +186,8 @@ class bank_conflict(Formula_Base):
             # Get the file from the results
         if self._instrumentation_results is None:
             # Get the file from the results
-            filtered_report_card = filter_json_field(self._initial_profiler_results, "lds", "bc", lambda x: x > 0)
+            filtered_report_card = filter_json_field(self._initial_profiler_results, field="lds", 
+                                                     subfield="bc", comparison_func=lambda x: x > 0)
             
             if len(filtered_report_card) == 0:
                 return Result(success=False, error_report="No bank conflicts found.")
@@ -230,13 +232,13 @@ class bank_conflict(Formula_Base):
             )
 
 
-        logging.debug(f"LLM prompt: {user_prompt}")
         logging.debug(f"System prompt: {system_prompt}")
+        logging.debug(f"LLM prompt: {user_prompt}")
 
 
         self.current_kernel = kernel.split("(")[0]
         self.current_args = kernel.split("(")[1].split(")")[0].split(",")
-
+        self.current_kernel_signature = kernel
         try:
             optimized_file_content = llm.ask(user_prompt).strip()
             with open(kernel_file, "w") as f:
@@ -283,14 +285,21 @@ class bank_conflict(Formula_Base):
     ) -> Result:
 
 
-        unoptimized_time = self._initial_profiler_results[0]["durations"]["ns"]
-        unoptimized_conflicts = self._initial_profiler_results[0]["lds"]["bc"]
+
+        unoptimized_results = filter_json_field(self._initial_profiler_results, field="kernel", 
+                                                comparison_func = lambda x: x == self.current_kernel_signature)
+        
+        unoptimized_time = unoptimized_results[0]["durations"]["ns"]
+        unoptimized_conflicts = unoptimized_results[0]["lds"]["bc"]
 
         # Profile the optimized application
         self._optimization_results = self._application.profile(top_n=self.top_n)
         
-        optimized_time = self._optimization_results[0]["durations"]["ns"]
-        optimized_conflicts = self._optimization_results[0]["lds"]["bc"]
+
+        optimized_results = filter_json_field(self._optimization_results, field="kernel",
+                                              comparison_func = lambda x: x == self.current_kernel_signature)
+        optimized_time = optimized_results[0]["durations"]["ns"]
+        optimized_conflicts = optimized_results[0]["lds"]["bc"]
 
         success = optimized_conflicts < unoptimized_conflicts
         speedup = unoptimized_time / optimized_time
@@ -330,7 +339,6 @@ class bank_conflict(Formula_Base):
             "initial": self._initial_profiler_results,
             "report_message": self.report_message,
         }
-        logging.info(f"Writing results to {output_file}")
         write_results(results, output_file)
         
     def summarize_previous_passes(self):

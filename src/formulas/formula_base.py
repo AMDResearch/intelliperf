@@ -244,20 +244,19 @@ def write_results(json_results: dict, output_file: str = None):
     """
     Writes the results to the output file.
     """
+    log_message = f"Writing results to {output_file}" if output_file is not None else "Writing results to stdout"
+    logging.info(log_message)
+    
     if output_file is None:
-        logging.info(f"Writing results to stdout")
         print(json.dumps(json_results, indent=2))
     elif output_file.endswith(".json"):
-        logging.info(f"Writing results to {output_file}")
         with open(output_file, "w") as f:
             json.dump(json_results, f, indent=2)
     elif output_file.endswith(".csv"):
-        logging.info(f"Writing results to {output_file}")
         flattened_results = [flatten_dict(entry) for entry in json_results]
         df = pd.DataFrame(flattened_results)
         df.to_csv(output_file, index=False)
     elif output_file.endswith(".txt"):
-        logging.info(f"Writing results to {output_file}")
         with open(output_file, "w") as f:
             f.write(json.dumps(json_results, indent=2))
     else:

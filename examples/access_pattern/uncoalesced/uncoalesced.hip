@@ -50,8 +50,8 @@ __global__ void matrix_transpose(const float* __restrict__ in,
 }
 
 int main() {
-  const int width = 128;
-  const int height = 128;
+  const int width = 1024;
+  const int height = 1024;
   const int size = width * height;
   const size_t bytes = size * sizeof(float);
 
