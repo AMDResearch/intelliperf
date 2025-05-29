@@ -21,80 +21,79 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ****************************************************************************/
-
 #include <hip/hip_runtime.h>
-#include <cmath>
+#include <cassert>
 #include <iostream>
+#include <vector>
 
-#define N 1024  // Matrix size N x N
+#define hip_try(expr)                                                          \
+  do {                                                                         \
+    hipError_t status = (expr);                                                \
+    if (status != hipSuccess) {                                                \
+      throw std::runtime_error(std::string("HIP error at ") + __FILE__ + ":" + \
+                               std::to_string(__LINE__) + ": " +               \
+                               hipGetErrorString(status));                     \
+    }                                                                          \
+  } while (0)
 
-__global__ void column_stats(const float* __restrict__ data,
-                             float* __restrict__ mean,
-                             float* __restrict__ stddev,
-                             int width) {
-  int col = threadIdx.x + blockIdx.x * blockDim.x;
+// Uncoalesced matrix transpose kernel
+__global__ void matrix_transpose(const float* __restrict__ in,
+                                 float* __restrict__ out,
+                                 int width,
+                                 int height) {
+  int x = blockIdx.x * blockDim.x + threadIdx.x;  // column
+  int y = blockIdx.y * blockDim.y + threadIdx.y;  // row
 
-  if (col < width) {
-    float sum = 0.0f;
-    float sum_sq = 0.0f;
-
-    for (int row = 0; row < width; ++row) {
-      float val = data[row * width + col];
-      sum += val;
-      sum_sq += val * val;
-    }
-
-    float mu = sum / width;
-    float sigma = sqrtf(sum_sq / width - mu * mu);
-
-    mean[col] = mu;
-    stddev[col] = sigma;
+  if (x < width && y < height) {
+    out[x * height + y] = in[y * width + x];
   }
 }
 
 int main() {
-  size_t size = N * N * sizeof(float);
-  float* h_data = new float[N * N];
-  float* h_mean = new float[N];
-  float* h_stddev = new float[N];
+  const int width = 128;
+  const int height = 128;
+  const int size = width * height;
+  const size_t bytes = size * sizeof(float);
 
-  // Initialize matrix with test values
-  for (int i = 0; i < N * N; ++i) {
-    h_data[i] = static_cast<float>(i % 100);
+  std::vector<float> h_in(size);
+  std::vector<float> h_out(size, 0.0f);
+
+  // Initialize input matrix row-major: A[y][x] = y * width + x
+  for (int y = 0; y < height; ++y)
+    for (int x = 0; x < width; ++x)
+      h_in[y * width + x] = static_cast<float>(y * width + x);
+
+  float *d_in, *d_out;
+  hip_try(hipMalloc(&d_in, bytes));
+  hip_try(hipMalloc(&d_out, bytes));
+
+  hip_try(hipMemcpy(d_in, h_in.data(), bytes, hipMemcpyHostToDevice));
+
+  dim3 block(16, 16);
+  dim3 grid((width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+
+  hipLaunchKernelGGL(matrix_transpose, grid, block, 0, 0, d_in, d_out, width, height);
+
+  hip_try(hipMemcpy(h_out.data(), d_out, bytes, hipMemcpyDeviceToHost));
+
+  // Validate result: transpose A[y][x] -> B[x][y]
+  bool correct = true;
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      float expected = h_in[y * width + x];
+      float result = h_out[x * height + y];
+      if (expected != result) {
+        std::cerr << "Mismatch at (" << x << ", " << y << "): " << result
+                  << " != " << expected << "\n";
+        correct = false;
+        break;
+      }
+    }
   }
 
-  // Device allocations
-  float *d_data, *d_mean, *d_stddev;
-  hipMalloc(&d_data, size);
-  hipMalloc(&d_mean, N * sizeof(float));
-  hipMalloc(&d_stddev, N * sizeof(float));
+  std::cout << (correct ? "Transpose correct ✅" : "Transpose incorrect ❌") << "\n";
 
-  // Copy input data to device
-  hipMemcpy(d_data, h_data, size, hipMemcpyHostToDevice);
-
-  // Configure kernel launch
-  dim3 blockSize(256);
-  dim3 gridSize((N + blockSize.x - 1) / blockSize.x);
-
-  // Launch kernel with <<< >>> syntax
-  column_stats<<<gridSize, blockSize>>>(d_data, d_mean, d_stddev, N);
-
-  // Copy results back
-  hipMemcpy(h_mean, d_mean, N * sizeof(float), hipMemcpyDeviceToHost);
-  hipMemcpy(h_stddev, d_stddev, N * sizeof(float), hipMemcpyDeviceToHost);
-
-  // Output result for column 0
-  std::cout << "Mean of column 0: " << h_mean[0] << std::endl;
-  std::cout << "Stddev of column 0: " << h_stddev[0] << std::endl;
-
-  // Cleanup
-  delete[] h_data;
-  delete[] h_mean;
-  delete[] h_stddev;
-
-  hipFree(d_data);
-  hipFree(d_mean);
-  hipFree(d_stddev);
-
+  hipFree(d_in);
+  hipFree(d_out);
   return 0;
 }
