@@ -40,7 +40,7 @@ python3 -m pip install -r requirements.txt
 
 [tool.logduration]
 git = "git@github.com:AMDResearch/logduration.git"
-branch = "61b72d775ae345abcb21432125089adb43918ff0"
+branch = "17da6f901f17a25747ddec988d391c70d34342d8"
 build_command = """
 git submodule update --init --recursive
 #TODO: search for a Triton LLVM.
