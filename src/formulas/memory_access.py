@@ -232,7 +232,7 @@ class memory_access(Formula_Base):
 
         self.report_message = (
             f"The optimized code achieved {optimized_coal}% memory coalescing (up from {unoptimized_coal}%, {coal_improvement * 100:.1f}% improvement), "
-            f"resulting in a {speedup:.3f}x speedup ({unoptimized_time/1000000:.3f} ms → {optimized_time/1000000:.3f} ms), "
+            f"resulting in a {speedup:.3f}x speedup (from {unoptimized_time/1000000:.3f} ms to {optimized_time/1000000:.3f} ms), "
             f"where higher coalescing percentages indicate more efficient memory access patterns."
         )
 

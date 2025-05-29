@@ -36,7 +36,6 @@ SOFTWARE.
     }                                                                          \
   } while (0)
 
-// Uncoalesced matrix transpose kernel
 __global__ void matrix_transpose(const float* __restrict__ in,
                                  float* __restrict__ out,
                                  int width,
