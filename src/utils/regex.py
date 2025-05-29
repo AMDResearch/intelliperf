@@ -25,18 +25,23 @@ import re
 
 def generate_ecma_regex_from_list(kernel_names:set)->str:
     res = []
+    updated_kernel_names = set()
     for i in kernel_names:
+        if " [clone .kd]" not in i:
+            i += " [clone .kd]"
+            updated_kernel_names.add(i)
+    for i in updated_kernel_names:
         escaped_string = re.escape(i)
         regex_string = r"^" + escaped_string + r"$"
         res.append(regex_string)
         # Note: Temporary fix, but until bug in omniprobe is fixed we need to also
         # add the name of the instrumented kernel clone to the regex, otherwise we'll skip it
         # and exclude it from the memory analysis report
-        duplicate_kernel_str = f"__amd_crk_{i.replace(')', ', void*)', 1)}"
+        #duplicate_kernel_str = f"__amd_crk_{i.replace(')', ', void*)', 1)}"
         #duplicate_kernel_str = f"__amd_crk_{i.replace(")", ", void*)", 1)}"
-        escaped_string = re.escape(duplicate_kernel_str)
-        regex_string = r"^" + escaped_string + r"$"
-        res.append(regex_string)
-
+        #escaped_string = re.escape(duplicate_kernel_str)
+        #regex_string = r"^" + escaped_string + r"$"
+        #res.append(regex_string)
+        
     regex = f"({'|'.join(res)})"
     return regex

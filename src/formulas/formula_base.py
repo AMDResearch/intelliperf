@@ -120,7 +120,7 @@ class Formula_Base:
         """
         Instrument elements of the application to pinpoint source of bottleneck.
         """
-        pass
+        self._application.build(instrumented=True)
 
     @abstractmethod
     def optimize_pass(self):
@@ -239,26 +239,31 @@ class Formula_Base:
         """
         pass
 
-    @abstractmethod
-    def write_results(self, output_file: str = None):
-        """
-        Writes the results to the output file.
-        """
-        if output_file is None:
-            print(json.dumps(self._initial_profiler_results, indent=2))
-        elif output_file.endswith(".json"):
-            with open(output_file, "w") as f:
-                json.dump(self._initial_profiler_results, f, indent=2)
-        elif output_file.endswith(".csv"):
-            flattened_results = [flatten_dict(entry) for entry in self._initial_profiler_results]
-            df = pd.DataFrame(flattened_results)
-            df.to_csv(output_file, index=False)
-        elif output_file.endswith(".txt"):
-            with open(output_file, "w") as f:
-                f.write(json.dumps(self._initial_profiler_results, indent=2))
-        else:
-            logging.error("Invalid output file extension. Must be .json, .csv, or .txt.")
-            sys.exit(1)
+
+def write_results(json_results: dict, output_file: str = None):
+    """
+    Writes the results to the output file.
+    """
+    if output_file is None:
+        logging.info(f"Writing results to stdout")
+        print(json.dumps(json_results, indent=2))
+    elif output_file.endswith(".json"):
+        logging.info(f"Writing results to {output_file}")
+        with open(output_file, "w") as f:
+            json.dump(json_results, f, indent=2)
+    elif output_file.endswith(".csv"):
+        logging.info(f"Writing results to {output_file}")
+        flattened_results = [flatten_dict(entry) for entry in json_results]
+        df = pd.DataFrame(flattened_results)
+        df.to_csv(output_file, index=False)
+    elif output_file.endswith(".txt"):
+        logging.info(f"Writing results to {output_file}")
+        with open(output_file, "w") as f:
+            f.write(json.dumps(json_results, indent=2))
+    else:
+        logging.error("Invalid output file extension. Must be .json, .csv, or .txt.")
+        sys.exit(1)
+
 
 def flatten_dict(d, parent_key='', sep='_'):
     items = []

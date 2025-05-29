@@ -31,9 +31,11 @@ import sys
 import numpy as np
 import re
 import json
+import glob
+import shutil
 
 from core.llm import LLM
-from formulas.formula_base import Formula_Base, Result, filter_json_field
+from formulas.formula_base import Formula_Base, Result, filter_json_field, write_results
 from utils.process import capture_subprocess_output, exit_on_fail
 from utils.regex import generate_ecma_regex_from_list
 
@@ -50,6 +52,8 @@ class bank_conflict(Formula_Base):
         self._instrumentation_results = None
         self.current_kernel = None
         self.current_args = None
+        self.kernel_to_optimize = None
+        self.report_message = None
 
     def profile_pass(self) -> Result:
         """
@@ -60,6 +64,19 @@ class bank_conflict(Formula_Base):
         """
         return super().profile_pass()
 
+    def get_top_kernel(self) -> str:
+        # Filter out any kernel with no bank conflicts
+        filtered_report_card = [entry for entry in self._initial_profiler_results if entry.get("lds", {}).get("bc", 0) > 0]
+        # Filter out any kernel with no source code
+        filtered_report_card = [entry for entry in filtered_report_card if entry.get("source", {}).get("hip", [])]
+        
+        logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
+        
+        if len(filtered_report_card) == 0:
+            return None
+        return filtered_report_card[0]["kernel"]
+
+
     def instrument_pass(self) -> Result:
         """
         Instrument the application, targeting the kernels with the highest bank conflict data
@@ -68,12 +85,21 @@ class bank_conflict(Formula_Base):
             Result: Instrumentation data containing the kernel name, arguments, lines, and file path as dict
         """
         super().instrument_pass()
-        filtered_report_card = [entry for entry in self._initial_profiler_results if entry.get("lds", {}).get("bc", 0) > 0]
-        logging.debug(f"Filtered Report Card:\n{filtered_report_card}")
-        kernel_names = [entry["kernel"] for entry in filtered_report_card]
-
-        # Generate ECMA regex from the list of kernel names
-        ecma_regex = generate_ecma_regex_from_list(kernel_names)
+        
+        return Result(success=False, error_report="Not implemented")
+    
+        # Always instrument the first kernel
+        kernel_to_instrument = self.get_top_kernel()
+        if kernel_to_instrument is None:
+            return Result(success=False, error_report="No source code found. Please compile your code with -g.")
+        
+        omniprobe_output_dir = os.path.join(self._application.get_project_directory(), "memory_analysis_output")
+        
+        # Remove directory if it exists and create a new one
+        if os.path.exists(omniprobe_output_dir):
+            shutil.rmtree(omniprobe_output_dir)
+        
+        ecma_regex = generate_ecma_regex_from_list([kernel_to_instrument])
         logging.debug(f"ECMA Regex for kernel names: {ecma_regex}")
         cmd = " ".join(self._application.get_app_cmd())
         logging.debug(f"Omniprobe profiling command is: {cmd}")
@@ -94,14 +120,22 @@ class bank_conflict(Formula_Base):
             logging.warning(f"Failed to instrument the application: {output}")
             return Result(success=False, error_report=f"Failed to instrument the application: {output}")
 
-        bnk_conflicts_map = extract_bank_conflict_lines(output, kernel_names)
-
-        self._instrumentation_results = (
-            bnk_conflicts_map[kernel_names[0]]
-            if self.only_consider_top_kernel
-            else bnk_conflicts_map
-        )
-
+        # Try loading the memory analysis output
+        # Find all files in the memory_analysis_output directory
+        output_files = glob.glob(os.path.join(omniprobe_output_dir, "memory_analysis_*.json"))
+        if len(output_files) == 0:
+            return Result(success=False, error_report="No memory analysis output files found.")
+        output_file = output_files[0]
+        try:
+            with open(output_file, "r") as f:
+                self._instrumentation_results = json.load(f)
+                # for all files, remove the [clone .kd] suffix
+                #for analysis in self._instrumentation_results["kernel_analyses"]:
+                #    analysis["kernel_info"]["name"] = analysis["kernel_info"]["name"].split(" [clone .kd]")[0]
+                logging.debug(f"Instrumentation results: {json.dumps(self._instrumentation_results, indent=4)}")
+        except FileNotFoundError:
+            logging.warning(f"Memory analysis output file not found: {output_file}")
+            return Result(success=False, error_report=f"Memory analysis output file not found: {output_file}")
         return Result(success=True, asset=self._instrumentation_results)
 
     def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000) -> Result:
@@ -143,6 +177,12 @@ class bank_conflict(Formula_Base):
             server=server,
         )
 
+
+        kernel_to_optimize = self.get_top_kernel()
+        if kernel_to_optimize is None:
+            return Result(success=False, error_report="No source code or bank conflicts found. Please compile your code with -g.")
+
+            # Get the file from the results
         if self._instrumentation_results is None:
             # Get the file from the results
             filtered_report_card = filter_json_field(self._initial_profiler_results, "lds", "bc", lambda x: x > 0)
@@ -150,7 +190,8 @@ class bank_conflict(Formula_Base):
             if len(filtered_report_card) == 0:
                 return Result(success=False, error_report="No bank conflicts found.")
             
-            logging.debug(f"Filtered Report Card:\n{filtered_report_card}")
+            logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
+
             kernel = filtered_report_card[0]["kernel"]
             files = filtered_report_card[0]["source"]["files"]
             kernel_name = kernel.split("(")[0]
@@ -253,90 +294,47 @@ class bank_conflict(Formula_Base):
 
         success = optimized_conflicts < unoptimized_conflicts
         speedup = unoptimized_time / optimized_time
-        conflict_improvement = (
-            unoptimized_conflicts / optimized_conflicts
-            if optimized_conflicts != 0
-            else 1
-        )
+        conflict_improvement_percentage = (
+            (unoptimized_conflicts - optimized_conflicts) / unoptimized_conflicts
+            if unoptimized_conflicts != 0
+            else 0
+        ) * 100
 
-        report_message = (
-            f"The optimized code contains {conflict_improvement * 100}% fewer shared memory conflicts."
-            f" The initial implementation contained {unoptimized_conflicts} conflicts and"
-            f" the optimized code contained {optimized_conflicts} conflicts."
-            f" The new code is {speedup:.3f}x faster than the original code. The initial"
-            f" implementation took {unoptimized_time} ns and the new one took"
-            f" {optimized_time} ns."
+
+        self.report_message = (
+            f"The optimized code reduced the LDS conflict ratio by {conflict_improvement_percentage:.3f}%. "
+            f"The initial implementation had a conflict ratio of {unoptimized_conflicts:.3f}, "
+            f"while the optimized version brought it down to {optimized_conflicts:.3f}. "
+            f"This translated to a {speedup:.3f}x speedup overall: execution time dropped from "
+            f"{unoptimized_time / 1_000_000:.3f} ms to {optimized_time / 1_000_000:.3f} ms."
         )
 
         if not success:
             return Result(
                 success=False,
                 error_report=f"The optimized code had more shared memory bank conflicts."
-                + report_message,
+                + self.report_message,
             )
             
-        logging.info(report_message)
+        logging.info(self.report_message)
         
-        return Result(success=True, asset={"log": report_message})
+        return Result(success=True, asset={"log": self.report_message})
 
+    def write_results(self, output_file: str = None):
+        """
+        Writes the results to the output file.
+        """
+        # create a new json contining optimized and unoptimized results
+        results = {
+            "optimized": self._optimization_results,
+            "initial": self._initial_profiler_results,
+            "report_message": self.report_message,
+        }
+        logging.info(f"Writing results to {output_file}")
+        write_results(results, output_file)
+        
     def summarize_previous_passes(self):
         """
         Summarizes the results of the previous passes for future prompts.
         """
         pass
-
-def extract_bank_conflict_lines(output: str, kernel_names: list) -> dict:
-    """
-    Extract the bank conflict report from omniprobe output
-
-    Args:
-        output (str): Omniprobe output
-        kernel_names (list): List of kernel names with bank conflicts
-
-    Returns:
-        dict: Dictionary containing kernel name, arguments, file path, and line number
-    """
-    kernel_reports = {}
-    inside_kernel_report = False
-    inside_bank_conflict_report = False
-    current_kernel_name = None
-
-    for line in output.splitlines():
-        if not inside_kernel_report:
-            # Check if the line marks the start of a kernel report
-            for kernel_sig in kernel_names:
-                if f"Memory analysis for {kernel_sig}" in line:
-                    inside_kernel_report = True
-                    current_kernel_name = kernel_sig
-
-                    kernel_args = kernel_sig.split("(")[1].split(")")[0].split(",")
-                    kernel_reports[current_kernel_name] = {
-                        "kernel": kernel_sig.split("(")[0],
-                        "kernel_signature": kernel_sig,
-                        "arguments": [word.strip() for word in kernel_args],
-                        "file": None,
-                        "lines": set(),
-                    }
-                    break
-        elif not inside_bank_conflict_report:
-            if "Bank conflicts report" in line:
-                inside_bank_conflict_report = True
-        else:
-            line_l = line.replace("WARNING:root:", "").split(":")
-            if os.path.isfile(line_l[0]):
-                kernel_reports[current_kernel_name]["file"] = str(line_l[0])
-                kernel_reports[current_kernel_name]["lines"].add(str(line_l[1]))
-
-            # Check for the end of the bank conflicts report
-            if "=== End of bank conflicts report" in line:
-                kernel_reports[current_kernel_name]["lines"] = ";".join(
-                    kernel_reports[current_kernel_name]["lines"]
-                )
-                inside_kernel_report = False
-                current_kernel_name = None
-                inside_bank_conflict_report = False
-
-    logging.debug(f"Parsed instrumentation output:\n{kernel_reports}")
-    if len(kernel_reports) == 0:
-        logging.warning("No memory analysis data parsed from instrumentation.")
-    return kernel_reports

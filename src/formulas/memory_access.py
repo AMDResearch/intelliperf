@@ -121,7 +121,8 @@ class memory_access(Formula_Base):
             if len(filtered_report_card) == 0:
                 return Result(success=False, error_report="No uncoalesced memory access found.")
             
-            logging.debug(f"Filtered Report Card:\n{filtered_report_card}")
+            logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
+
             kernel = filtered_report_card[0]["kernel"]
             files = filtered_report_card[0]["source"]["files"]
             kernel_name = kernel.split("(")[0]

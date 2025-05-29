@@ -38,8 +38,9 @@ from datetime import datetime
 class Application:
     def __init__(self, name: str, build_command: list, instrument_command: list, project_directory: str, app_cmd: list):
         self.name = name
-        self.build_command = build_command
-        self.instrument_command = instrument_command
+        
+        self.build_command = build_command if isinstance(build_command, list) else build_command.split()
+        self.instrument_command = instrument_command if isinstance(instrument_command, list) else instrument_command.split()
         self.app_cmd = app_cmd
         self.project_directory = project_directory
         

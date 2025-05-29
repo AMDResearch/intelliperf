@@ -36,7 +36,7 @@ def exit_on_fail(success: bool, message: str, log: str = ""):
         logging.error("Critical Error: %s", full_msg)
         sys.exit(1)
     
-def capture_subprocess_output(subprocess_args:list, working_directory:str=None, new_env=None, verbose=True) -> tuple:
+def capture_subprocess_output(subprocess_args:list, working_directory:str=None, new_env=None, verbose=False) -> tuple:
     # Start subprocess
     # bufsize = 1 means output is line buffered
     # universal_newlines = True is required for line buffering
