@@ -36,10 +36,9 @@ def exit_on_fail(success: bool, message: str, log: str = ""):
         logging.error("Critical Error: %s", full_msg)
         sys.exit(1)
     
-def capture_subprocess_output(subprocess_args:list, working_directory:str=None, new_env=None, verbose=False) -> tuple:
-    # Start subprocess
-    # bufsize = 1 means output is line buffered
-    # universal_newlines = True is required for line buffering
+def capture_subprocess_output(subprocess_args:list, working_directory:str=None, new_env=None) -> tuple:
+    verbose = logging.getLogger().getEffectiveLevel() <= logging.DEBUG
+
     logging.debug(f"Running the command: {' '.join(subprocess_args)}")
     if new_env is not None:
         logging.debug("Inside the environment:\n%s", json.dumps(new_env, indent=2))
@@ -51,6 +50,10 @@ def capture_subprocess_output(subprocess_args:list, working_directory:str=None, 
     if working_directory is not None:
         env["PWD"] = working_directory
     
+
+    # Start subprocess
+    # bufsize = 1 means output is line buffered
+    # universal_newlines = True is required for line buffering
     process = subprocess.Popen(
         subprocess_args,
         bufsize=1,

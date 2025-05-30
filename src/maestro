@@ -166,7 +166,11 @@ def main():
         logging.info(f"Executing pass {attempt + 1} of {num_attempts}.")
         
         # Optimize the application based on insights from instrumentation.
-        optimizer.optimize_pass()
+        optimize_result = optimizer.optimize_pass()
+        if not optimize_result:
+            optimize_result.report_out()
+            logging.warning(f"Optimization pass {attempt + 1} failed. Exiting.")
+            continue
         
         # Compile the new application
         build_result = optimizer.build()
