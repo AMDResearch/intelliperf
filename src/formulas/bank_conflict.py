@@ -54,7 +54,9 @@ class bank_conflict(Formula_Base):
         self.current_args = None
         self.current_kernel_signature = None
         self.kernel_to_optimize = None
-        self.report_message = None
+        self.optimization_report = None        
+        self.bottleneck_report = None
+
 
     def profile_pass(self) -> Result:
         """
@@ -214,7 +216,9 @@ class bank_conflict(Formula_Base):
                 f" Please fix the conflict but do not change the semantics of the program."
                 " If you remove the copyright, your solution will be rejected."
             )
-            
+            kernel_name = kernel.split("(")[0]
+            args = kernel.split("(")[1].split(")")[0]
+            self.bottleneck_report = f"Maestro detected bank conflicts in the kernel {kernel_name} with arguments {args}."
         else:
             kernel = self._instrumentation_results["kernel"]
             lines = self._instrumentation_results["lines"]
@@ -311,7 +315,7 @@ class bank_conflict(Formula_Base):
         ) * 100
 
 
-        self.report_message = (
+        self.optimization_report = (
             f"The optimized code reduced the LDS conflict ratio by {conflict_improvement_percentage:.3f}%. "
             f"The initial implementation had a conflict ratio of {unoptimized_conflicts:.3f}, "
             f"while the optimized version brought it down to {optimized_conflicts:.3f}. "
@@ -323,12 +327,12 @@ class bank_conflict(Formula_Base):
             return Result(
                 success=False,
                 error_report=f"The optimized code had more shared memory bank conflicts."
-                + self.report_message,
+                + self.optimization_report,
             )
             
-        logging.info(self.report_message)
+        logging.info(self.optimization_report)
         
-        return Result(success=True, asset={"log": self.report_message})
+        return Result(success=True, asset={"log": self.optimization_report})
 
     def write_results(self, output_file: str = None):
         """
@@ -338,7 +342,8 @@ class bank_conflict(Formula_Base):
         results = {
             "optimized": self._optimization_results,
             "initial": self._initial_profiler_results,
-            "report_message": self.report_message,
+            "report_message": self.optimization_report,
+            "bottleneck_report": self.bottleneck_report,
         }
         write_results(results, output_file)
         

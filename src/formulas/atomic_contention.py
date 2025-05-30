@@ -53,7 +53,8 @@ class atomic_contention(Formula_Base):
         self.current_args = None
         self.current_kernel_signature = None
         self.kernel_to_optimize = None
-        self.report_message = None
+        self.optimization_report = None        
+        self.bottleneck_report = None
 
     def profile_pass(self) -> Result:
         """
@@ -129,7 +130,8 @@ class atomic_contention(Formula_Base):
             
             
             logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
-            
+
+
             kernel = filtered_report_card[0]["kernel"]
             files = filtered_report_card[0]["source"]["files"]
             kernel_name = kernel.split("(")[0]
@@ -145,14 +147,17 @@ class atomic_contention(Formula_Base):
                 return Result(success=False, error_report=f"Kernel file not found.")
             
             user_prompt = (
-                f"There is an atomic contention in the kernel {kernel} in the file {unoptimized_file_content}."
-                f" Please fix the atomic contention but do not change the semantics of the program."
+                f"There is atomic contention in the kernel {kernel} in the file {unoptimized_file_content}."
+                f" Please fix the contention but do not change the semantics of the program."
                 " If you remove the copyright, your solution will be rejected."
             )
+            args = kernel.split("(")[1].split(")")[0]
+            self.bottleneck_report = f"Maestro detected atomic contention in the kernel {kernel_name} with arguments {args}."
             
         else:
             pass
 
+        
 
         logging.debug(f"LLM prompt: {user_prompt}")
         logging.debug(f"System prompt: {system_prompt}")
@@ -240,7 +245,7 @@ class atomic_contention(Formula_Base):
             else 0
         )
 
-        self.report_message = (
+        self.optimization_report = (
             f"The optimized code shows {metric_improvement * 100:.1f}% reduction in atomic contention. "
             f"Average atomic instruction latency improved from {unoptimized_metric:.2f} to {optimized_metric:.2f} cycles ({cycle_latency_improvement:.1f}% reduction). "
             f"The optimized implementation is {speedup:.2f}x faster overall, "
@@ -251,12 +256,12 @@ class atomic_contention(Formula_Base):
             return Result(
                 success=False,
                 error_report=f"The optimized code had more atomic contention."
-                + self.report_message,
+                + self.optimization_report,
             )
             
-        logging.info(self.report_message)
+        logging.info(self.optimization_report)
         
-        return Result(success=True, asset={"log": self.report_message})
+        return Result(success=True, asset={"log": self.optimization_report})
 
 
     def write_results(self, output_file: str = None):
@@ -267,7 +272,8 @@ class atomic_contention(Formula_Base):
         results = {
             "optimized": self._optimization_results,
             "initial": self._initial_profiler_results,
-            "report_message": self.report_message,
+            "report_message": self.optimization_report,
+            "bottleneck_report": self.bottleneck_report,
         }
         write_results(results, output_file)
         

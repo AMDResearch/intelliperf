@@ -53,7 +53,8 @@ class memory_access(Formula_Base):
         self.current_args = None
         self.current_kernel_signature = None
         self.kernel_to_optimize = None
-        self.report_message = None        
+        self.optimization_report = None        
+        self.bottleneck_report = None
 
     def profile_pass(self) -> Result:
         """
@@ -148,7 +149,8 @@ class memory_access(Formula_Base):
                 f" Please fix the access pattern but do not change the semantics of the program."
                 " If you remove the copyright, your solution will be rejected."
             )
-            
+            args = kernel.split("(")[1].split(")")[0]
+            self.bottleneck_report = f"Maestro detected uncoalesced memory accesses in the kernel {kernel_name} with arguments {args}."
         else:
             pass
 
@@ -230,7 +232,7 @@ class memory_access(Formula_Base):
             else 1
         )
 
-        self.report_message = (
+        self.optimization_report = (
             f"The optimized code achieved {optimized_coal}% memory coalescing (up from {unoptimized_coal}%, {coal_improvement * 100:.1f}% improvement), "
             f"resulting in a {speedup:.3f}x speedup (from {unoptimized_time/1000000:.3f} ms to {optimized_time/1000000:.3f} ms), "
             f"where higher coalescing percentages indicate more efficient memory access patterns."
@@ -240,12 +242,12 @@ class memory_access(Formula_Base):
             return Result(
                 success=False,
                 error_report=f"The optimized code had more uncoalesced memory access."
-                + self.report_message,
+                + self.optimization_report,
             )
             
-        logging.info(self.report_message)
+        logging.info(self.optimization_report)
         
-        return Result(success=True, asset={"log": self.report_message})
+        return Result(success=True, asset={"log": self.optimization_report})
 
     def write_results(self, output_file: str = None):
         """
@@ -255,7 +257,8 @@ class memory_access(Formula_Base):
         results = {
             "optimized": self._optimization_results,
             "initial": self._initial_profiler_results,
-            "report_message": self.report_message,
+            "report_message": self.optimization_report,
+            "bottleneck_report": self.bottleneck_report,
         }
         write_results(results, output_file)
 
