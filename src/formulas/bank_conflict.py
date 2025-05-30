@@ -217,7 +217,7 @@ class bank_conflict(Formula_Base):
                 " If you remove the copyright, your solution will be rejected."
             )
             args = kernel.split("(")[1].split(")")[0]
-            self.bottleneck_report = f"Maestro detected bank conflicts in the kernel {kernel_name} with arguments {args}."
+            self.bottleneck_report = f"Maestro detected bank conflicts in the kernel `{kernel_name}` with arguments `{args}`."
         else:
             kernel = self._instrumentation_results["kernel"]
             lines = self._instrumentation_results["lines"]
@@ -343,6 +343,7 @@ class bank_conflict(Formula_Base):
             "initial": self._initial_profiler_results,
             "report_message": self.optimization_report,
             "bottleneck_report": self.bottleneck_report,
+            "formula": "bankConflict"
         }
         write_results(results, output_file)
         

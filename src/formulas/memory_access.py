@@ -150,7 +150,7 @@ class memory_access(Formula_Base):
                 " If you remove the copyright, your solution will be rejected."
             )
             args = kernel.split("(")[1].split(")")[0]
-            self.bottleneck_report = f"Maestro detected uncoalesced memory accesses in the kernel {kernel_name} with arguments {args}."
+            self.bottleneck_report = f"Maestro detected uncoalesced memory accesses in the kernel `{kernel_name}` with arguments `{args}`."
         else:
             pass
 
@@ -259,6 +259,7 @@ class memory_access(Formula_Base):
             "initial": self._initial_profiler_results,
             "report_message": self.optimization_report,
             "bottleneck_report": self.bottleneck_report,
+            "formula": "memoryAccess"
         }
         write_results(results, output_file)
 
