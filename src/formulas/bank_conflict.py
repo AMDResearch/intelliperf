@@ -216,7 +216,6 @@ class bank_conflict(Formula_Base):
                 f" Please fix the conflict but do not change the semantics of the program."
                 " If you remove the copyright, your solution will be rejected."
             )
-            kernel_name = kernel.split("(")[0]
             args = kernel.split("(")[1].split(")")[0]
             self.bottleneck_report = f"Maestro detected bank conflicts in the kernel {kernel_name} with arguments {args}."
         else:
