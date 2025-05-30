@@ -34,7 +34,7 @@ import json
 
 from core.llm import LLM
 
-from formulas.formula_base import Formula_Base, Result, filter_json_field
+from formulas.formula_base import Formula_Base, Result, filter_json_field, write_results
 from utils.process import capture_subprocess_output, exit_on_fail
 from utils.regex import generate_ecma_regex_from_list
 
@@ -51,6 +51,9 @@ class atomic_contention(Formula_Base):
         self._instrumentation_results = None
         self.current_kernel = None
         self.current_args = None
+        self.current_kernel_signature = None
+        self.kernel_to_optimize = None
+        self.report_message = None
 
     def profile_pass(self) -> Result:
         """
@@ -70,7 +73,8 @@ class atomic_contention(Formula_Base):
         """
         super().instrument_pass()
      
-        return Result(success=False, asset=self._instrumentation_results)
+        return Result(success=False, asset=self._instrumentation_results,
+                      error_report="Instrumentation pass not implemented for atomic contention.")
 
     def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000) -> Result:
         """
@@ -89,7 +93,7 @@ class atomic_contention(Formula_Base):
         llm_key  = os.getenv("LLM_GATEWAY_KEY")
         
         if not llm_key:
-            exit_on_fail(success=False, message="Missing LLM API key.")
+            exit_on_fail(success=False, message="Missing LLM API key. Please set the LLM_GATEWAY_KEY environment variable.")
                 
         
         system_prompt = (
@@ -115,8 +119,10 @@ class atomic_contention(Formula_Base):
             # Get the file from the results
             field = "atomics"
             subfield = "atomic_lat"
-            average_atomic_lat = 100
-            filtered_report_card = filter_json_field(self._initial_profiler_results, field, subfield, lambda x: x > average_atomic_lat)
+            average_atomic_lat = 1000
+            filtered_report_card = filter_json_field(self._initial_profiler_results, field=field,
+                                                     subfield=subfield,
+                                                     comparison_func=lambda x: x > average_atomic_lat)
             
             if len(filtered_report_card) == 0:
                 return Result(success=False, error_report="No atomic contention found.")
@@ -154,7 +160,7 @@ class atomic_contention(Formula_Base):
 
         self.current_kernel = kernel.split("(")[0]
         self.current_args = kernel.split("(")[1].split(")")[0].split(",")
-
+        self.current_kernel_signature = kernel
         try:
             optimized_file_content = llm.ask(user_prompt).strip()
             with open(kernel_file, "w") as f:
@@ -201,46 +207,70 @@ class atomic_contention(Formula_Base):
     ) -> Result:
 
 
-        unoptimized_time = self._initial_profiler_results[0]["durations"]["ns"]
+        unoptimized_results = filter_json_field(self._initial_profiler_results, field="kernel", 
+                                                comparison_func = lambda x: x == self.current_kernel_signature)
+        
+        unoptimized_time = unoptimized_results[0]["durations"]["ns"]
         
         field = "atomics"
         subfield = "atomic_lat"
-        unoptimized_metric = self._initial_profiler_results[0][field][subfield]
+        unoptimized_metric = unoptimized_results[0][field][subfield]
 
         # Profile the optimized application
         self._optimization_results = self._application.profile(top_n=self.top_n)
         
-        optimized_time = self._optimization_results[0]["durations"]["ns"]
-        optimized_metric = self._optimization_results[0][field][subfield]
+        optimized_results = filter_json_field(self._optimization_results, field="kernel", 
+                                                comparison_func = lambda x: x == self.current_kernel_signature)
+        
+        optimized_time = optimized_results[0]["durations"]["ns"]
+        optimized_metric = optimized_results[0][field][subfield]
 
-        success = optimized_metric > unoptimized_metric
+        success = optimized_metric < unoptimized_metric
         speedup = unoptimized_time / optimized_time
         metric_improvement = (
-            optimized_metric / unoptimized_metric
+            unoptimized_metric / optimized_metric
             if optimized_metric != 0
             else 1
         )
+        
+        # Calculate cycle latency improvement percentage
+        cycle_latency_improvement = (
+            (unoptimized_metric - optimized_metric) / unoptimized_metric * 100
+            if unoptimized_metric > 0
+            else 0
+        )
 
-        report_message = (
-            f"The optimized code contains {metric_improvement * 100}% fewer atomic contention."
-            f" The initial implementation contained {unoptimized_metric} atomic contention and"
-            f" the optimized code contained {optimized_metric} atomic contention."
-            f" The new code is {speedup:.3f}x faster than the original code. The initial"
-            f" implementation took {unoptimized_time} ns and the new one took"
-            f" {optimized_time} ns."
+        self.report_message = (
+            f"The optimized code shows {metric_improvement * 100:.1f}% reduction in atomic contention. "
+            f"Average atomic instruction latency improved from {unoptimized_metric:.2f} to {optimized_metric:.2f} cycles ({cycle_latency_improvement:.1f}% reduction). "
+            f"The optimized implementation is {speedup:.2f}x faster overall, "
+            f"reducing execution time from {unoptimized_time/1e6:.2f}ms to {optimized_time/1e6:.2f}ms."
         )
 
         if not success:
             return Result(
                 success=False,
                 error_report=f"The optimized code had more atomic contention."
-                + report_message,
+                + self.report_message,
             )
             
-        logging.info(report_message)
+        logging.info(self.report_message)
         
-        return Result(success=True, asset={"log": report_message})
+        return Result(success=True, asset={"log": self.report_message})
 
+
+    def write_results(self, output_file: str = None):
+        """
+        Writes the results to the output file.
+        """
+        # create a new json contining optimized and unoptimized results
+        results = {
+            "optimized": self._optimization_results,
+            "initial": self._initial_profiler_results,
+            "report_message": self.report_message,
+        }
+        write_results(results, output_file)
+        
     def summarize_previous_passes(self):
         """
         Summarizes the results of the previous passes for future prompts.

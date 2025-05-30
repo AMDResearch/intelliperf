@@ -87,7 +87,8 @@ class bank_conflict(Formula_Base):
         """
         super().instrument_pass()
         
-        return Result(success=False, error_report="Not implemented")
+        return Result(success=False, asset=self._instrumentation_results,
+                      error_report="Instrumentation pass not implemented for bank conflict.")
     
         # Always instrument the first kernel
         kernel_to_instrument = self.get_top_kernel()
@@ -156,7 +157,7 @@ class bank_conflict(Formula_Base):
         llm_key  = os.getenv("LLM_GATEWAY_KEY")
         
         if not llm_key:
-            exit_on_fail(success=False, message="Missing LLM API key.")
+            exit_on_fail(success=False, message="Missing LLM API key. Please set the LLM_GATEWAY_KEY environment variable.")
                 
         
         system_prompt = (

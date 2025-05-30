@@ -74,7 +74,7 @@ class memory_access(Formula_Base):
         super().instrument_pass()
      
         return Result(success=False, asset=self._instrumentation_results,
-                      error_report="Instrumentation pass failed")
+                      error_report="The instrumentation is not implemented for memory access.")
 
     def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000) -> Result:
         """
@@ -93,7 +93,7 @@ class memory_access(Formula_Base):
         llm_key  = os.getenv("LLM_GATEWAY_KEY")
         
         if not llm_key:
-            exit_on_fail(success=False, message="Missing LLM API key.")
+            exit_on_fail(success=False, message="Missing LLM API key. Please set the LLM_GATEWAY_KEY environment variable.")
                 
         
         system_prompt = (

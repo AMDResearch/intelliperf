@@ -115,6 +115,8 @@ class Formula_Base:
         Extract any required performance data from the application using the specified profiler.
         """
         self._initial_profiler_results = self._application.profile(top_n=self.top_n)
+        
+        logging.debug(f"Initial profiler results: {json.dumps(self._initial_profiler_results, indent=2)}")
     @abstractmethod
     def instrument_pass(self):
         """
