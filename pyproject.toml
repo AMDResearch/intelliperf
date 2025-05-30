@@ -14,7 +14,8 @@ requires-python = ">=3.8"
 # Python dependencies 
 dependencies = [
     "tomli",
-    "openai>=1.0.0"
+    "openai>=1.0.0",
+    "tabulate"
 ]
 
 
