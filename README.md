@@ -94,12 +94,6 @@ export PATH=$(pwd)/$maestro/src:$PATH
 ```
 
 
-6. Build the examples (optional):
-
-```shell
-./scripts/build_examples.sh
-```
-
 
 ## Usage:
 
@@ -135,3 +129,7 @@ optional arguments:
   --num_attempts              Control the number of attempts in optimize mode (default: 10)
   -o , --output_file          Path to the output file
 ```
+
+
+## Documentation
+1. [Running the examples](examples/README.md).
