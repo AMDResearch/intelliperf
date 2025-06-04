@@ -120,6 +120,7 @@ class atomic_contention(Formula_Base):
             # Get the file from the results
             field = "atomics"
             subfield = "atomic_lat"
+            # Average atomic latency in cycles measured experimentally
             average_atomic_lat = 1000
             filtered_report_card = filter_json_field(self._initial_profiler_results, field=field,
                                                      subfield=subfield,
