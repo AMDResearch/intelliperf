@@ -12,7 +12,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 
 # Python dependencies 
-dependencies = ["tomli", "openai>=1.0.0", "ruff"]
+dependencies = ["tomli", "openai>=1.0.0"]
 
 
 [build-system]
@@ -67,7 +67,7 @@ cmake --build build --parallel 16
 """
 
 [project.optional-dependencies]
-dev = ["black"]
+dev = ["black==25.1.0", "ruff==0.11.12"]
 
 
 [tool.ruff]
