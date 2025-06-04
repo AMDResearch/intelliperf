@@ -99,8 +99,8 @@ def main():
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("tool", nargs="?", help="Tool name (e.g., logduration)")
-    parser.add_argument("--all", action="store_true", help="Install all tools listed in [tool.*]")
-    parser.add_argument("--clean", action="store_true", help="Clean before installing")
+    parser.add_argument("-a", "--all", action="store_true", help="Install all tools listed in [tool.*]")
+    parser.add_argument("-c", "--clean", action="store_true", help="Clean before installing")
     args = parser.parse_args()
 
     pyproject_path = Path("pyproject.toml")
@@ -110,6 +110,9 @@ def main():
     with open(pyproject_path, "rb") as f:
         config = tomllib.load(f)
 
+    # This is a workaround to avoid docker errors when cloning repos
+    run_command("git config --global --add safe.directory '*'", cwd="external")
+    
     if args.all:
         tools = config.get("tool", {}).keys()
         for tool in tools:
