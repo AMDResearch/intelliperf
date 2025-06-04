@@ -28,13 +28,11 @@ import requests
 class LLM:
     def __init__(
         self,
-        model: str,
         api_key: str,
         system_prompt: str,
         deployment_id: str = "dvue-aoai-001-o4-mini",
         server: str = "https://llm-api.amd.com/azure",
     ):
-        self.model = model
         self.api_key = api_key
         self.system_prompt = system_prompt
         self.deployment_id = deployment_id
