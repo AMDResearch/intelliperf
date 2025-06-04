@@ -54,9 +54,9 @@ class Application:
     def build(self, instrumented=False):
         """Builds the application, optionally with instrumentation."""
         if instrumented:
-            return process.capture_subprocess_output(self.instrument_command)
+            return process.capture_subprocess_output(self.instrument_command, working_directory=self.get_project_directory())
         else:
-            return process.capture_subprocess_output(self.build_command)
+            return process.capture_subprocess_output(self.build_command, working_directory=self.get_project_directory())
 
     def profile(self, top_n: int):
         logging.debug(f"Profiling app with name {self.get_name()}")
