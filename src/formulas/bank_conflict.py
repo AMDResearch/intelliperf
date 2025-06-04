@@ -155,7 +155,6 @@ class bank_conflict(Formula_Base):
         """
 
         super().optimize_pass()
-        model = "gpt-4o"
         llm_key  = os.getenv("LLM_GATEWAY_KEY")
         
         if not llm_key:
@@ -174,7 +173,6 @@ class bank_conflict(Formula_Base):
         server = "https://llm-api.amd.com/azure"
         deployment_id = "dvue-aoai-001-o4-mini"
         llm = LLM(
-            model=model,
             api_key=llm_key,
             system_prompt=system_prompt,
             deployment_id=deployment_id,
@@ -219,22 +217,7 @@ class bank_conflict(Formula_Base):
             args = kernel.split("(")[1].split(")")[0]
             self.bottleneck_report = f"Maestro detected bank conflicts in the kernel `{kernel_name}` with arguments `{args}`."
         else:
-            kernel = self._instrumentation_results["kernel"]
-            lines = self._instrumentation_results["lines"]
-            kernel_file = self._instrumentation_results["file"]
-
-            if os.path.exists(kernel_file):
-                with open(kernel_file, "r") as f:
-                    unoptimized_file_content = f.read()
-            else:
-                return Result(success=False, error_report=f"{kernel_file} does not exist.")
-
-            user_prompt = (
-                f"Line {lines} is causing the conflict within the kernel {kernel}"
-                f" inside {unoptimized_file_content}. Please fix the conflict but"
-                f" do not change the semantics of the program."
-            )
-
+           pass
 
         logging.debug(f"System prompt: {system_prompt}")
         logging.debug(f"LLM prompt: {user_prompt}")

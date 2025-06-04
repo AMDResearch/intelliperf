@@ -90,7 +90,6 @@ class memory_access(Formula_Base):
         """
 
         super().optimize_pass()
-        model = "gpt-4o"
         llm_key  = os.getenv("LLM_GATEWAY_KEY")
         
         if not llm_key:
@@ -109,7 +108,6 @@ class memory_access(Formula_Base):
         server = "https://llm-api.amd.com/azure"
         deployment_id = "dvue-aoai-001-o4-mini"
         llm = LLM(
-            model=model,
             api_key=llm_key,
             system_prompt=system_prompt,
             deployment_id=deployment_id,
