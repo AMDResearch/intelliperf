@@ -30,6 +30,11 @@ docker run -it --rm \
     --device=/dev/kfd \
     --device=/dev/dri \
     --group-add video \
-    --mount type=bind,source=$HOME/.ssh,target=/root/.ssh,readonly \
+    -v $HOME/.ssh:/tmp/ssh:ro \
+    -v $(pwd):$(pwd) \
+    -w $(pwd) \
     -e LLM_GATEWAY_KEY="$LLM_GATEWAY_KEY" \
-    "$name"
+    -e SSH_AUTH_SOCK="$SSH_AUTH_SOCK" \
+    -v $SSH_AUTH_SOCK:$SSH_AUTH_SOCK \
+    "$name" \
+    bash -c "cp -r /tmp/ssh/* /root/.ssh/ 2>/dev/null || true && chown -R root:root /root/.ssh && chmod 700 /root/.ssh && chmod 600 /root/.ssh/config /root/.ssh/id_* /root/.ssh/known_hosts 2>/dev/null || true; exec bash"
