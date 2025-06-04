@@ -4,7 +4,7 @@ version = "0.0.1"
 description = "Automated bottleneck detection and solution orchestration"
 authors = [
     { name = "Muhammad Awad", email = "muhaawad@amd.com" },
-    { name = "Cole Ramos", email = "Cole.Ramos@amd.com" }
+    { name = "Cole Ramos", email = "Cole.Ramos@amd.com" },
 ]
 
 license = { text = "MIT" }
@@ -12,10 +12,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 
 # Python dependencies 
-dependencies = [
-    "tomli",
-    "openai>=1.0.0"
-]
+dependencies = ["tomli", "openai>=1.0.0", "ruff"]
 
 
 [build-system]
@@ -68,3 +65,17 @@ cmake -B build -DCMAKE_PREFIX_PATH=/opt/rocm\
     -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --parallel 16
 """
+
+[project.optional-dependencies]
+dev = ["black"]
+
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501", "E701", "E731", "E741", "F841", "F401", "F811"]
+
+[tool.ruff.format]
+quote-style = "double"
