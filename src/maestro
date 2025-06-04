@@ -53,11 +53,11 @@ def maestro_parser():
     optional_args.add_argument('-b', '--build_command', 
                                type=str, 
                                metavar='',
-                               help='A command to build your application')
+                               help='A command to build your application. When project_directory is provided,\nthe command must be relative to the project directory.')
     optional_args.add_argument('-i', '--instrument_command', 
                                type=str, 
                                metavar='',
-                               help='A command to instrument your application')
+                               help='A command to instrument your application (required when formula is not diagnoseOnly). When project_directory is provided,\nthe command must be relative to the project directory.')
     optional_args.add_argument('-p', '--project_directory', 
                                type=str, 
                                metavar='',
@@ -68,7 +68,7 @@ def maestro_parser():
                                default='diagnoseOnly', 
                                metavar='',
                                type=str, 
-                               help='Specify the formula to use for optimization (default: diagnoseOnly)')
+                               help='Specify the formula to use for optimization.\nAvailable options: bankConflict, memoryAccess, atomicContention, diagnoseOnly (default: diagnoseOnly)')
     optional_args.add_argument('--top_n',
                                type=int, 
                                default=10,
