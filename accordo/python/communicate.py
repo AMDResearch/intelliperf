@@ -79,7 +79,7 @@ def read_ipc_handles(args, ipc_file_name):
             logging.debug(f"Waiting for {count - len(handles)} more IPC handles...")
             time.sleep(0.1)
 
-    logging.debug(f"Successfully read {len(handles)} IPC handles and sizes.")
+    #logging.debug(f"Successfully read {len(handles)} IPC handles and sizes.")
     return handles, sizes
 
 

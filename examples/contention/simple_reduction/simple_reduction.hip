@@ -22,41 +22,56 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ****************************************************************************/
 
-#include <thrust/device_vector.h>
-#include <thrust/sequence.h>
+#include <hip/hip_runtime.h>
+#include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <vector>
 
-__global__ void reduction_kernel(const float* input, float* result, std::size_t count) {
+using data_t = double;
+
+__global__ void reduction_kernel(const data_t* input, data_t* result, std::size_t count) {
   const auto thread_id = threadIdx.x + blockIdx.x * blockDim.x;
   if (thread_id < count) {
-    const auto value = input[thread_id];
-    atomicAdd(result, value / (thread_id + 1));
+    unsafeAtomicAdd(result, input[thread_id]);
   }
 }
 
 int main() {
   const std::size_t count{10000000};
-  thrust::device_vector<float> input(count, 1);
-  thrust::device_vector<float> result(1, 0);
-  thrust::sequence(input.begin(), input.end(), 1);
-
   const std::size_t block_size{512};
   const std::size_t num_blocks{(count + block_size - 1) / block_size};
 
-  std::cout << "input: " << input.data().get() << std::endl;
-  std::cout << "result: " << result.data().get() << std::endl;
+  data_t* d_input = nullptr;
+  data_t* d_result = nullptr;
 
-  reduction_kernel<<<num_blocks, block_size, block_size * sizeof(float)>>>(
-      input.data().get(), result.data().get(), count);
+  hipMalloc(&d_input, count * sizeof(data_t));
+  hipMalloc(&d_result, sizeof(data_t));
 
-  const auto status = hipDeviceSynchronize();
-  if (status != hipSuccess || result[0] != count) {
-    std::cout << "Kernel failed.\n";
+  std::vector<data_t> h_input(count, 1);
+  hipMemcpy(d_input, h_input.data(), count * sizeof(data_t), hipMemcpyHostToDevice);
+  hipMemset(d_result, 0, sizeof(data_t));
+
+  std::cout << "input: " << d_input << std::endl;
+  std::cout << "result: " << d_result << std::endl;
+
+  reduction_kernel<<<num_blocks, block_size>>>(d_input, d_result, count);
+  hipDeviceSynchronize();
+
+  data_t h_result = 0;
+  hipMemcpy(&h_result, d_result, sizeof(data_t), hipMemcpyDeviceToHost);
+
+  if (h_result != count) {
+    std::cout << "Kernel failed. Expected: " << count << ", Got: " << h_result << "\n";
+    hipFree(d_input);
+    hipFree(d_result);
     return -1;
   } else {
     std::cout << "Success!";
   }
   std::cout << std::endl;
+
+  hipFree(d_input);
+  hipFree(d_result);
   return 0;
 }

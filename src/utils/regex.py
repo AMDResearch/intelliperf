@@ -21,27 +21,27 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 ################################################################################
+import re
 
-cmake_minimum_required(VERSION 3.10)
-project(Examples LANGUAGES HIP CXX)
-
-option(INSTRUMENT "Instrument the code with Omniprobe" OFF)
-
-function(add_example name source_file)
-    add_executable(${name} ${source_file})
-    # CMake instrumentation integration example
-    if(INSTRUMENT)
-        set(OMNIPROBE_PATH ${CMAKE_SOURCE_DIR}/../external/logduration/install)
-        # Use the plugin to instrument the code
-        target_compile_options(${name} PRIVATE 
-            -fpass-plugin=${OMNIPROBE_PATH}/lib/libAMDGCNSubmitAddressMessages-rocm.so
-        )
-        # Must include debug information to get line numbers
-        target_compile_options(${name} PRIVATE -g)
-    endif()
-endfunction()
-
-add_subdirectory(bank_conflict)
-add_subdirectory(basic)
-add_subdirectory(contention)
-add_subdirectory(access_pattern)
+def generate_ecma_regex_from_list(kernel_names:set)->str:
+    res = []
+    updated_kernel_names = set()
+    for i in kernel_names:
+        if " [clone .kd]" not in i:
+            i += " [clone .kd]"
+            updated_kernel_names.add(i)
+    for i in updated_kernel_names:
+        escaped_string = re.escape(i)
+        regex_string = r"^" + escaped_string + r"$"
+        res.append(regex_string)
+        # Note: Temporary fix, but until bug in omniprobe is fixed we need to also
+        # add the name of the instrumented kernel clone to the regex, otherwise we'll skip it
+        # and exclude it from the memory analysis report
+        #duplicate_kernel_str = f"__amd_crk_{i.replace(')', ', void*)', 1)}"
+        #duplicate_kernel_str = f"__amd_crk_{i.replace(")", ", void*)", 1)}"
+        #escaped_string = re.escape(duplicate_kernel_str)
+        #regex_string = r"^" + escaped_string + r"$"
+        #res.append(regex_string)
+        
+    regex = f"({'|'.join(res)})"
+    return regex

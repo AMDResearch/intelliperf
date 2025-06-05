@@ -88,23 +88,16 @@ locale-gen en_US.UTF-8
 5. Add Maestro and dependencies to your path:
 
 ```shell
-export PATH=$(pwd)/external/logduration/omniprobe:$PATH
+export PATH=$(pwd)/external/logduration/install/bin/logDuration:$PATH
 export PATH=$(pwd)/external/rocprofiler-compute/src:$PATH
 export PATH=$(pwd)/$maestro/src:$PATH
 ```
 
 
-6. Build the examples (optional):
-
-```shell
-./scripts/build_examples.sh
-```
-
 
 ## Usage:
 
 ```console
-$ maestro --help
 usage: 
         maestro [options] -- <profile_cmd>
 
@@ -117,7 +110,7 @@ usage:
 
 Optimize and analyze the given application based on available Maestro formulas.
 
-optional arguments:
+options:
   -h, --help                  show this help message and exit
   -v, --verbose               Increase verbosity level (e.g., -v, -vv, -vvv).
 
@@ -125,11 +118,18 @@ required arguments:
   -- [ ...]                   Provide the command to launch the application.
 
 optional arguments:
-  -s SCRIPT, --script SCRIPT  A script to build your application.
-  -f {bankConflict,diagnoseOnly}, --formula {bankConflict,diagnoseOnly}
-                              Specify the formula to use for optimization (default: diagnoseOnly).
-  -o OUTPUT_FILE, --output_file OUTPUT_FILE
-                              Path to the output file (optional)
-  -c CI_OUTPUT_FILE, --ci_output_file CI_OUTPUT_FILE
-                              Path to the output file for CI integration (optional)
+  -b , --build_command        A command to build your application. When project_directory is provided,
+                              the command must be relative to the project directory.
+  -i , --instrument_command   A command to instrument your application (required when formula is not diagnoseOnly). When project_directory is provided,
+                              the command must be relative to the project directory.
+  -p , --project_directory    The directory containing your entire codebase (required when formula is not diagnoseOnly)
+  -f , --formula              Specify the formula to use for optimization.
+                              Available options: bankConflict, memoryAccess, atomicContention, diagnoseOnly (default: diagnoseOnly)
+  --top_n                     Control the top-n kernels collected in diagnoseOnly mode (default: 10)
+  --num_attempts              Control the number of attempts in optimize mode (default: 10)
+  -o , --output_file          Path to the output file
 ```
+
+
+## Documentation
+1. [Running the examples](examples/README.md).
