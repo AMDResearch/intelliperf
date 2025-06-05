@@ -42,6 +42,7 @@ from accordo.python.communicate import get_kern_arg_data, send_response
 from accordo.python.code_gen import generate_header
 from accordo.python.utils import run_subprocess
 
+
 class Result:
     def __init__(self, success: bool, error_report: str = "", asset=None):
         self.success: bool = success
@@ -71,40 +72,37 @@ class Result:
             logging.error(f"Error: {self.error_report}")
             sys.exit(1)
 
+
 class Formula_Base:
-    def __init__(self, name: str, build_command: list, instrument_command: list, project_directory: str, app_cmd: list, top_n: int):
+    def __init__(
+        self,
+        name: str,
+        build_command: list,
+        instrument_command: list,
+        project_directory: str,
+        app_cmd: list,
+        top_n: int,
+    ):
         # Private
-        self.__name = name # name of the run
+        self.__name = name  # name of the run
         self._application = Application(name, build_command, instrument_command, project_directory, app_cmd)
 
         self._initial_profiler_results = None
-        
+
         # Public
-        self.profiler:str = None
-        self.top_n:int = top_n
-        
+        self.profiler: str = None
+        self.top_n: int = top_n
+
         self.build()
-        
+
     def build(self):
         if not self._application.get_build_command():
-            return Result(
-                success=True,
-                asset={
-                    "log": "No build script provided. Skipping build step."
-                }
-            )
+            return Result(success=True, asset={"log": "No build script provided. Skipping build step."})
         else:
             success, result = self._application.build()
             # Handle critical error
-            exit_on_fail(success = success,
-                        message = f"Failed to build {self.__name} application.",
-                        log = result)
-        return Result(
-            success=success,
-            asset={
-                "log": result
-            }
-        )
+            exit_on_fail(success=success, message=f"Failed to build {self.__name} application.", log=result)
+        return Result(success=success, asset={"log": result})
 
     # ----------------------------------------------------
     # Required methods to be implemented by child classes
@@ -115,8 +113,9 @@ class Formula_Base:
         Extract any required performance data from the application using the specified profiler.
         """
         self._initial_profiler_results = self._application.profile(top_n=self.top_n)
-        
+
         logging.debug(f"Initial profiler results: {json.dumps(self._initial_profiler_results, indent=2)}")
+
     @abstractmethod
     def instrument_pass(self):
         """
@@ -131,7 +130,6 @@ class Formula_Base:
         """
         pass
 
-
     @abstractmethod
     def correctness_validation_pass(self, kernel, kernel_args):
         """
@@ -145,7 +143,7 @@ class Formula_Base:
 
         logging.debug(f"unoptimized_binary: {unoptimized_binary}")
         logging.debug(f"optimized_binary: {optimized_binary}")
-        
+
         accordo_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "accordo"))
 
         results = {}
@@ -170,7 +168,7 @@ class Formula_Base:
             env["ACCORDO_IPC_OUTPUT_FILE"] = ipc_file_name
 
             binary = app.get_app_cmd()[0]
-            args = ' '.join(app.get_app_cmd())
+            args = " ".join(app.get_app_cmd())
             project_directory = app.get_project_directory()
             logging.debug(f"binary: {binary}")
             logging.debug(f"args: {args}")
@@ -181,8 +179,8 @@ class Formula_Base:
             os.chdir(original_dir)
             results[label] = get_kern_arg_data(pipe_name, args, ipc_file_name)
             send_response(pipe_name)
-        logging.debug(f"results unoptimized: results['unoptimized']")
-        logging.debug(f"results optimized: results['optimized']")
+        logging.debug("results unoptimized: results['unoptimized']")
+        logging.debug("results optimized: results['optimized']")
         key0, key1 = results.keys()
         for i in range(len(results[key0])):
             if not np.allclose(results[key0][i], results[key1][i]):
@@ -195,15 +193,11 @@ class Formula_Base:
         for i in range(len(results[key0])):
             if not np.allclose(results[key0][i], results[key1][i]):
                 return Result(
-                    success=False,
-                    error_report=f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close."
+                    success=False, error_report=f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close."
                 )
         logging.debug("Validation succeeded.")
-        return Result(
-            success=True
-        )        
-    
-    
+        return Result(success=True)
+
     @abstractmethod
     def performance_validation_pass(self):
         """
@@ -221,18 +215,10 @@ class Formula_Base:
         # In-place append of source info
         for entry in self._initial_profiler_results:
             kernel_name = entry["kernel"]
-            empty = {
-                "assembly": [],
-                "files": [],
-                "hip": [],
-                "lines": [],
-                "signature": ""}
+            empty = {"assembly": [], "files": [], "hip": [], "lines": [], "signature": ""}
             entry["source"] = df_results["kernels"].get(kernel_name, empty)
-            
-        return Result(
-            success=True,
-            asset=self._initial_profiler_results
-        )        
+
+        return Result(success=True, asset=self._initial_profiler_results)
 
     @abstractmethod
     def summarize_previous_passes(self):
@@ -248,7 +234,7 @@ def write_results(json_results: dict, output_file: str = None):
     """
     log_message = f"Writing results to {output_file}" if output_file is not None else "Writing results to stdout"
     logging.info(log_message)
-    
+
     if output_file is None:
         print(json.dumps(json_results, indent=2))
     elif output_file.endswith(".json"):
@@ -266,7 +252,7 @@ def write_results(json_results: dict, output_file: str = None):
         sys.exit(1)
 
 
-def flatten_dict(d, parent_key='', sep='_'):
+def flatten_dict(d, parent_key="", sep="_"):
     items = []
     for k, v in d.items():
         new_key = f"{parent_key}{sep}{k}" if parent_key else k
@@ -275,6 +261,7 @@ def flatten_dict(d, parent_key='', sep='_'):
         else:
             items.append((new_key, v))
     return dict(items)
+
 
 def filter_json_field(d, field, subfield=None, comparison_func=lambda x: True):
     """

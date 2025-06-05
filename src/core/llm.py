@@ -25,6 +25,7 @@
 
 import requests
 
+
 class LLM:
     def __init__(
         self,
@@ -38,6 +39,7 @@ class LLM:
         self.deployment_id = deployment_id
         self.server = server
         self.header = {"Ocp-Apim-Subscription-Key": api_key}
+
     def ask(self, user_prompt: str) -> str:
         body = {
             "messages": [
@@ -56,4 +58,4 @@ class LLM:
             json=body,
             headers=self.header,
         ).json()
-        return response['choices'][0]['message']['content']
+        return response["choices"][0]["message"]["content"]

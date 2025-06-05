@@ -33,9 +33,10 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from hip import memcpy_d2h, open_ipc_handle
 
+
 def read_ipc_handles(args, ipc_file_name):
     count = sum(1 for arg in args if "*" in arg and "const" not in arg)
-    
+
     handles = []
     sizes = []
     handles_set = set()
@@ -79,14 +80,14 @@ def read_ipc_handles(args, ipc_file_name):
             logging.debug(f"Waiting for {count - len(handles)} more IPC handles...")
             time.sleep(0.1)
 
-    #logging.debug(f"Successfully read {len(handles)} IPC handles and sizes.")
+    # logging.debug(f"Successfully read {len(handles)} IPC handles and sizes.")
     return handles, sizes
-
 
 
 def send_response(pipe_name):
     with open(pipe_name, "w") as fifo:
         fifo.write("done\n")
+
 
 def get_kern_arg_data(pipe_name, args, ipc_file_name):
     if not os.path.exists(pipe_name):
@@ -117,8 +118,6 @@ def get_kern_arg_data(pipe_name, args, ipc_file_name):
         # max_num_elements = 32
         num_elements_to_copy = num_elements
         host_array = memcpy_d2h(ptr, num_elements_to_copy, dtype)
-        logging.debug(
-            f"Received data from IPC ({arg_type}/{num_elements}): {host_array}"
-        )
+        logging.debug(f"Received data from IPC ({arg_type}/{num_elements}): {host_array}")
         results.append(host_array)
     return results

@@ -40,8 +40,8 @@ logging.basicConfig(level=logging.DEBUG, format="[Python] [%(asctime)s]: %(messa
 example_directory = os.path.dirname(os.path.abspath(__file__))
 accordo_directory = os.path.dirname(example_directory)
 
-def fetch_results(binary):
 
+def fetch_results(binary):
     timestamp = int(time.time())
     pipe_name = f"/tmp/kernel_pipe_{timestamp}"
     ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
@@ -83,11 +83,9 @@ def fetch_results(binary):
         print(f"Process exited with code {exit_code}")
     elif os.WIFSIGNALED(status):
         print(f"Process was terminated by signal {os.WTERMSIG(status)}")
-    
-    logging.info("Python processing complete")       
-    return results    
-     
 
+    logging.info("Python processing complete")
+    return results
 
 
 # app = "dummy"
@@ -101,19 +99,18 @@ kernel = "matrixTransposeShared"
 args = ["float*", "const float*", "int", "int"]
 apps = {
     "initial_code": "examples/bank_conflict/matrix_transpose/matrix_transpose.optimized",
-    "optimized_code": "examples/bank_conflict/matrix_transpose/matrix_transpose.unoptimized"
+    "optimized_code": "examples/bank_conflict/matrix_transpose/matrix_transpose.unoptimized",
 }
-
 
 
 kernel = "reduction_kernel"
 args = ["const float*", "float*", "std::size_t"]
 apps = {
     "initial_code": "examples/contention/reduction/reduction.optimized",
-    "optimized_code": "examples/contention/reduction/reduction.unoptimized"
+    "optimized_code": "examples/contention/reduction/reduction.unoptimized",
 }
 
-                                      
+
 for app in ["initial_code", "optimized_code"]:
     binary = "../../" + apps[app]
     results[app] = fetch_results(binary)

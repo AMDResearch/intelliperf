@@ -33,10 +33,10 @@ from utils.env import get_guided_tuning_path
 import re
 import tempfile
 
+
 class diagnose_only(Formula_Base):
     def __init__(self, name, build_command, instrument_command, project_directory, app_cmd, top_n):
         super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
-        
 
     def profile_pass(self):
         """
@@ -44,7 +44,7 @@ class diagnose_only(Formula_Base):
 
         Returns:
             Result: DataFrame containing the performance report card
-        """        
+        """
         return super().profile_pass()
 
     def instrument_pass(self):
@@ -64,13 +64,13 @@ class diagnose_only(Formula_Base):
             Result: Validation status
         """
         return super().correctness_validation_pass()
-    
+
     def performance_validation_pass(self):
         return super().performance_validation_pass()
-    
+
     def source_code_pass(self):
         return super().source_code_pass()
-    
+
     def summarize_previous_passes(self):
         return super().summarize_previous_passes()
 

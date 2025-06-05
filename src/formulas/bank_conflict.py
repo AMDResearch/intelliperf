@@ -39,14 +39,22 @@ from formulas.formula_base import Formula_Base, Result, filter_json_field, write
 from utils.process import capture_subprocess_output, exit_on_fail
 from utils.regex import generate_ecma_regex_from_list
 
+
 class bank_conflict(Formula_Base):
-    def __init__(self, name: str, build_command: list, instrument_command: list, project_directory: str, app_cmd: list, top_n: int, only_consider_top_kernel=False):
-        
+    def __init__(
+        self,
+        name: str,
+        build_command: list,
+        instrument_command: list,
+        project_directory: str,
+        app_cmd: list,
+        top_n: int,
+        only_consider_top_kernel=False,
+    ):
         super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
-        
+
         self._reference_app = self._application.clone()
 
-        
         # This temp option allows us to toggle if we want a full or partial instrumentation report
         self.only_consider_top_kernel = only_consider_top_kernel
         self._instrumentation_results = None
@@ -54,9 +62,8 @@ class bank_conflict(Formula_Base):
         self.current_args = None
         self.current_kernel_signature = None
         self.kernel_to_optimize = None
-        self.optimization_report = None        
+        self.optimization_report = None
         self.bottleneck_report = None
-
 
     def profile_pass(self) -> Result:
         """
@@ -69,16 +76,17 @@ class bank_conflict(Formula_Base):
 
     def get_top_kernel(self) -> str:
         # Filter out any kernel with no bank conflicts
-        filtered_report_card = [entry for entry in self._initial_profiler_results if entry.get("lds", {}).get("bc", 0) > 0]
+        filtered_report_card = [
+            entry for entry in self._initial_profiler_results if entry.get("lds", {}).get("bc", 0) > 0
+        ]
         # Filter out any kernel with no source code
         filtered_report_card = [entry for entry in filtered_report_card if entry.get("source", {}).get("hip", [])]
-        
+
         logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
-        
+
         if len(filtered_report_card) == 0:
             return None
         return filtered_report_card[0]["kernel"]
-
 
     def instrument_pass(self) -> Result:
         """
@@ -88,21 +96,24 @@ class bank_conflict(Formula_Base):
             Result: Instrumentation data containing the kernel name, arguments, lines, and file path as dict
         """
         super().instrument_pass()
-        
-        return Result(success=False, asset=self._instrumentation_results,
-                      error_report="Instrumentation pass not implemented for bank conflict.")
-    
+
+        return Result(
+            success=False,
+            asset=self._instrumentation_results,
+            error_report="Instrumentation pass not implemented for bank conflict.",
+        )
+
         # Always instrument the first kernel
         kernel_to_instrument = self.get_top_kernel()
         if kernel_to_instrument is None:
             return Result(success=False, error_report="No source code found. Please compile your code with -g.")
-        
+
         omniprobe_output_dir = os.path.join(self._application.get_project_directory(), "memory_analysis_output")
-        
+
         # Remove directory if it exists and create a new one
         if os.path.exists(omniprobe_output_dir):
             shutil.rmtree(omniprobe_output_dir)
-        
+
         ecma_regex = generate_ecma_regex_from_list([kernel_to_instrument])
         logging.debug(f"ECMA Regex for kernel names: {ecma_regex}")
         cmd = " ".join(self._application.get_app_cmd())
@@ -118,7 +129,7 @@ class bank_conflict(Formula_Base):
                 "--",
                 " ".join(self._application.get_app_cmd()),
             ],
-            working_directory=self._application.get_project_directory()
+            working_directory=self._application.get_project_directory(),
         )
         if not success:
             logging.warning(f"Failed to instrument the application: {output}")
@@ -134,7 +145,7 @@ class bank_conflict(Formula_Base):
             with open(output_file, "r") as f:
                 self._instrumentation_results = json.load(f)
                 # for all files, remove the [clone .kd] suffix
-                #for analysis in self._instrumentation_results["kernel_analyses"]:
+                # for analysis in self._instrumentation_results["kernel_analyses"]:
                 #    analysis["kernel_info"]["name"] = analysis["kernel_info"]["name"].split(" [clone .kd]")[0]
                 logging.debug(f"Instrumentation results: {json.dumps(self._instrumentation_results, indent=4)}")
         except FileNotFoundError:
@@ -155,21 +166,22 @@ class bank_conflict(Formula_Base):
         """
 
         super().optimize_pass()
-        llm_key  = os.getenv("LLM_GATEWAY_KEY")
-        
+        llm_key = os.getenv("LLM_GATEWAY_KEY")
+
         if not llm_key:
-            exit_on_fail(success=False, message="Missing LLM API key. Please set the LLM_GATEWAY_KEY environment variable.")
-                
-        
+            exit_on_fail(
+                success=False, message="Missing LLM API key. Please set the LLM_GATEWAY_KEY environment variable."
+            )
+
         system_prompt = (
             "You are a skilled GPU HIP programmer. Given a kernel,"
             " you will optimize it to remove shared memory bank conflicts"
             " and provide a correct performant implementation. Do not modify"
-            " the kernel signature. Do not touch any other code, licenses, copyrights, or comments in the file." 
+            " the kernel signature. Do not touch any other code, licenses, copyrights, or comments in the file."
             " If you remove the copyright, your solution will be rejected."
             " Do not include any markdown code blocks or text other than the code."
         )
-                        
+
         server = "https://llm-api.amd.com/azure"
         deployment_id = "dvue-aoai-001-o4-mini"
         llm = LLM(
@@ -179,11 +191,11 @@ class bank_conflict(Formula_Base):
             server=server,
         )
 
-
         kernel_to_optimize = self.get_top_kernel()
         if kernel_to_optimize is None:
-            return Result(success=False, error_report="No source code or bank conflicts found. Please compile your code with -g.")
-
+            return Result(
+                success=False, error_report="No source code or bank conflicts found. Please compile your code with -g."
+            )
 
         kernel = None
         kernel_file = None
@@ -191,12 +203,13 @@ class bank_conflict(Formula_Base):
         # Get the file from the results
         if self._instrumentation_results is None:
             # Get the file from the results
-            filtered_report_card = filter_json_field(self._initial_profiler_results, field="lds", 
-                                                     subfield="bc", comparison_func=lambda x: x > 0)
-            
+            filtered_report_card = filter_json_field(
+                self._initial_profiler_results, field="lds", subfield="bc", comparison_func=lambda x: x > 0
+            )
+
             if len(filtered_report_card) == 0:
                 return Result(success=False, error_report="No bank conflicts found.")
-            
+
             logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
 
             kernel = filtered_report_card[0]["kernel"]
@@ -211,17 +224,19 @@ class bank_conflict(Formula_Base):
                             kernel_file = file
                             break
             if kernel_file is None:
-                return Result(success=False, error_report=f"Kernel file not found.")
-            
+                return Result(success=False, error_report="Kernel file not found.")
+
             user_prompt = (
                 f"There is a bank conflict in the kernel {kernel} in the file {unoptimized_file_content}."
                 f" Please fix the conflict but do not change the semantics of the program."
                 " If you remove the copyright, your solution will be rejected."
             )
             args = kernel.split("(")[1].split(")")[0]
-            self.bottleneck_report = f"Maestro detected bank conflicts in the kernel `{kernel_name}` with arguments `{args}`."
+            self.bottleneck_report = (
+                f"Maestro detected bank conflicts in the kernel `{kernel_name}` with arguments `{args}`."
+            )
         else:
-           pass
+            pass
 
         if kernel is None:
             return Result(success=False, error_report="Failed to extract the kernel name.")
@@ -230,7 +245,6 @@ class bank_conflict(Formula_Base):
 
         logging.debug(f"System prompt: {system_prompt}")
         logging.debug(f"LLM prompt: {user_prompt}")
-
 
         self.current_kernel = kernel.split("(")[0]
         self.current_args = kernel.split("(")[1].split(")")[0].split(",")
@@ -260,9 +274,7 @@ class bank_conflict(Formula_Base):
         """
         return super().compile_pass()
 
-    def correctness_validation_pass(
-        self
-    ) -> Result:
+    def correctness_validation_pass(self) -> Result:
         """
         Validate the optimized kernel by comparing the output with the reference kernel
 
@@ -276,35 +288,28 @@ class bank_conflict(Formula_Base):
         """
         return super().correctness_validation_pass(self.current_kernel, self.current_args)
 
-    def performance_validation_pass(
-        self
-    ) -> Result:
+    def performance_validation_pass(self) -> Result:
+        unoptimized_results = filter_json_field(
+            self._initial_profiler_results, field="kernel", comparison_func=lambda x: x == self.current_kernel_signature
+        )
 
-
-
-        unoptimized_results = filter_json_field(self._initial_profiler_results, field="kernel", 
-                                                comparison_func = lambda x: x == self.current_kernel_signature)
-        
         unoptimized_time = unoptimized_results[0]["durations"]["ns"]
         unoptimized_conflicts = unoptimized_results[0]["lds"]["bc"]
 
         # Profile the optimized application
         self._optimization_results = self._application.profile(top_n=self.top_n)
-        
 
-        optimized_results = filter_json_field(self._optimization_results, field="kernel",
-                                              comparison_func = lambda x: x == self.current_kernel_signature)
+        optimized_results = filter_json_field(
+            self._optimization_results, field="kernel", comparison_func=lambda x: x == self.current_kernel_signature
+        )
         optimized_time = optimized_results[0]["durations"]["ns"]
         optimized_conflicts = optimized_results[0]["lds"]["bc"]
 
         success = optimized_conflicts < unoptimized_conflicts
         speedup = unoptimized_time / optimized_time
         conflict_improvement_percentage = (
-            (unoptimized_conflicts - optimized_conflicts) / unoptimized_conflicts
-            if unoptimized_conflicts != 0
-            else 0
+            (unoptimized_conflicts - optimized_conflicts) / unoptimized_conflicts if unoptimized_conflicts != 0 else 0
         ) * 100
-
 
         self.optimization_report = (
             f"The optimized code reduced the LDS conflict ratio by {conflict_improvement_percentage:.3f}%. "
@@ -317,12 +322,11 @@ class bank_conflict(Formula_Base):
         if not success:
             return Result(
                 success=False,
-                error_report=f"The optimized code had more shared memory bank conflicts."
-                + self.optimization_report,
+                error_report="The optimized code had more shared memory bank conflicts." + self.optimization_report,
             )
-            
+
         logging.info(self.optimization_report)
-        
+
         return Result(success=True, asset={"log": self.optimization_report})
 
     def write_results(self, output_file: str = None):
@@ -335,10 +339,10 @@ class bank_conflict(Formula_Base):
             "initial": self._initial_profiler_results,
             "report_message": self.optimization_report,
             "bottleneck_report": self.bottleneck_report,
-            "formula": "bankConflict"
+            "formula": "bankConflict",
         }
         write_results(results, output_file)
-        
+
     def summarize_previous_passes(self):
         """
         Summarizes the results of the previous passes for future prompts.
