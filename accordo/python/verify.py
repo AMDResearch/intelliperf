@@ -30,9 +30,9 @@ import stat
 import logging
 import numpy as np
 
-from accordo.python.communicate import *
-from accordo.python.code_gen import *
-from accordo.python.utils import *
+from accordo.python.communicate import get_kern_arg_data, send_response
+from accordo.python.code_gen import generate_header
+from accordo.python.utils import run_subprocess
 
 logging.basicConfig(level=logging.DEBUG, format="[Python] [%(asctime)s]: %(message)s")
 
