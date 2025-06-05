@@ -57,9 +57,7 @@ def open_ipc_handle(ipc_handle_data):
         ipc_handle_bytes = ipc_handle_data.tobytes()
         ipc_handle_data = (ctypes.c_char * 64).from_buffer_copy(ipc_handle_bytes)
     else:
-        raise TypeError(
-            "ipc_handle_data must be a numpy.ndarray of dtype uint8 with 64 elements"
-        )
+        raise TypeError("ipc_handle_data must be a numpy.ndarray of dtype uint8 with 64 elements")
 
     raw_memory = ctypes.create_string_buffer(64)
     ctypes.memset(raw_memory, 0x00, 64)
@@ -67,7 +65,7 @@ def open_ipc_handle(ipc_handle_data):
     ipc_handle_data_bytes = bytes(ipc_handle_data)
     ctypes.memmove(raw_memory, ipc_handle_data_bytes, 64)
 
-    logging.debug(f"[ipc_handle_struct]:")
+    logging.debug("[ipc_handle_struct]:")
     for i in range(0, len(ipc_handle_data_bytes), 16):
         chunk = ipc_handle_data_bytes[i : i + 16]
         logging.debug(" ".join(f"{b:02x}" for b in chunk))
@@ -93,13 +91,16 @@ def memcpy_d2h(ptr, num_elements_to_copy, dtype):
         ctypes.c_int,
     ]
     bytes_to_copy = num_elements_to_copy * ctypes.sizeof(dtype)
-    logging.debug(f"Copying {num_elements_to_copy * ctypes.sizeof(dtype)} bytes "
-                f"from {hex(ptr)} to {hex(host_array.ctypes.data)}")
+    logging.debug(
+        f"Copying {num_elements_to_copy * ctypes.sizeof(dtype)} bytes from {hex(ptr)} to {hex(host_array.ctypes.data)}"
+    )
 
-    hip_try(hip_runtime.hipMemcpy(
-        ctypes.c_void_p(host_array.ctypes.data),
-        ctypes.c_void_p(ptr),
-        ctypes.c_size_t(bytes_to_copy),
-        2,
-    ))
+    hip_try(
+        hip_runtime.hipMemcpy(
+            ctypes.c_void_p(host_array.ctypes.data),
+            ctypes.c_void_p(ptr),
+            ctypes.c_size_t(bytes_to_copy),
+            2,
+        )
+    )
     return host_array

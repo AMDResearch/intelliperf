@@ -30,26 +30,27 @@ import sys
 import json
 import os
 
+
 def exit_on_fail(success: bool, message: str, log: str = ""):
     if not success:
         full_msg = f"{message}\n{log.strip()}" if log.strip() else message
         logging.error("Critical Error: %s", full_msg)
         sys.exit(1)
-    
-def capture_subprocess_output(subprocess_args:list, working_directory:str=None, new_env=None) -> tuple:
+
+
+def capture_subprocess_output(subprocess_args: list, working_directory: str = None, new_env=None) -> tuple:
     verbose = logging.getLogger().getEffectiveLevel() <= logging.DEBUG
 
     logging.debug(f"Running the command: {' '.join(subprocess_args)}")
     if new_env is not None:
         logging.debug("Inside the environment:\n%s", json.dumps(new_env, indent=2))
-    
+
     if working_directory is not None:
         logging.debug(f"Working directory: {working_directory}")
     # Create the environment with working directory
     env = new_env.copy() if new_env else os.environ.copy()
     if working_directory is not None:
         env["PWD"] = working_directory
-    
 
     # Start subprocess
     # bufsize = 1 means output is line buffered
@@ -63,7 +64,7 @@ def capture_subprocess_output(subprocess_args:list, working_directory:str=None, 
         encoding="utf-8",
         errors="replace",
         env=env,
-        cwd=working_directory
+        cwd=working_directory,
     )
 
     # Create callback function for process output
@@ -100,7 +101,7 @@ def capture_subprocess_output(subprocess_args:list, working_directory:str=None, 
         if verbose:
             for line in remaining.splitlines():
                 print(line.strip())
-             
+
     # Get process return code
     return_code = process.wait()
     selector.close()
