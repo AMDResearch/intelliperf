@@ -114,6 +114,9 @@ class memory_access(Formula_Base):
             server=server,
         )
 
+        kernel = None
+        kernel_file = None
+
         if self._instrumentation_results is None:
             # Get the file from the results
             field = "l1"
@@ -151,6 +154,11 @@ class memory_access(Formula_Base):
             self.bottleneck_report = f"Maestro detected uncoalesced memory accesses in the kernel `{kernel_name}` with arguments `{args}`."
         else:
             pass
+
+        if kernel is None:
+            return Result(success=False, error_report="Failed to extract the kernel name.")
+        if kernel_file is None:
+            return Result(success=False, error_report="Failed to extract the kernel file path.")
 
 
         logging.debug(f"System prompt: {system_prompt}")
@@ -231,7 +239,7 @@ class memory_access(Formula_Base):
         )
 
         self.optimization_report = (
-            f"The optimized code achieved {optimized_coal}% memory coalescing (up from {unoptimized_coal}%, {coal_improvement * 100:.1f}% improvement), "
+            f"The optimized code achieved {optimized_coal}% memory coalescing (up from {unoptimized_coal}%, {coal_improvement * 100:.3f}% improvement), "
             f"resulting in a {speedup:.3f}x speedup (from {unoptimized_time/1000000:.3f} ms to {optimized_time/1000000:.3f} ms), "
             f"where higher coalescing percentages indicate more efficient memory access patterns."
         )

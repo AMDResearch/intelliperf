@@ -116,6 +116,9 @@ class atomic_contention(Formula_Base):
             server=server,
         )
 
+        kernel = None
+        kernel_file = None
+        
         if self._instrumentation_results is None:
             # Get the file from the results
             field = "atomics"
@@ -158,8 +161,11 @@ class atomic_contention(Formula_Base):
         else:
             pass
 
+        if kernel is None:
+            return Result(success=False, error_report="Failed to extract the kernel name.")
+        if kernel_file is None:
+            return Result(success=False, error_report="Failed to extract the kernel file path.")
         
-
         logging.debug(f"LLM prompt: {user_prompt}")
         logging.debug(f"System prompt: {system_prompt}")
 
@@ -247,10 +253,10 @@ class atomic_contention(Formula_Base):
         )
 
         self.optimization_report = (
-            f"The optimized code shows {metric_improvement * 100:.1f}% reduction in atomic contention. "
-            f"Average atomic instruction latency improved from {unoptimized_metric:.2f} to {optimized_metric:.2f} cycles ({cycle_latency_improvement:.1f}% reduction). "
-            f"The optimized implementation is {speedup:.2f}x faster overall, "
-            f"reducing execution time from {unoptimized_time/1e6:.2f}ms to {optimized_time/1e6:.2f}ms."
+            f"The optimized code shows {metric_improvement * 100:.3f}% reduction in atomic contention. "
+            f"Average atomic instruction latency improved from {unoptimized_metric:.3f} to {optimized_metric:.3f} cycles ({cycle_latency_improvement:.1f}% reduction). "
+            f"The optimized implementation is {speedup:.3f}x faster overall, "
+            f"reducing execution time from {unoptimized_time/1e6:.3f}ms to {optimized_time/1e6:.3f}ms."
         )
 
         if not success:

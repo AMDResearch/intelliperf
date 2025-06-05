@@ -184,7 +184,11 @@ class bank_conflict(Formula_Base):
         if kernel_to_optimize is None:
             return Result(success=False, error_report="No source code or bank conflicts found. Please compile your code with -g.")
 
-            # Get the file from the results
+
+        kernel = None
+        kernel_file = None
+
+        # Get the file from the results
         if self._instrumentation_results is None:
             # Get the file from the results
             filtered_report_card = filter_json_field(self._initial_profiler_results, field="lds", 
@@ -218,6 +222,11 @@ class bank_conflict(Formula_Base):
             self.bottleneck_report = f"Maestro detected bank conflicts in the kernel `{kernel_name}` with arguments `{args}`."
         else:
            pass
+
+        if kernel is None:
+            return Result(success=False, error_report="Failed to extract the kernel name.")
+        if kernel_file is None:
+            return Result(success=False, error_report="Failed to extract the kernel file path.")
 
         logging.debug(f"System prompt: {system_prompt}")
         logging.debug(f"LLM prompt: {user_prompt}")
