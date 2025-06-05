@@ -30,9 +30,9 @@ import stat
 import logging
 import numpy as np
 
-from communicate import *
-from code_gen import *
-from utils import *
+from accordo.python.communicate import *
+from accordo.python.code_gen import *
+from accordo.python.utils import *
 
 logging.basicConfig(level=logging.DEBUG, format="[Python] [%(asctime)s]: %(message)s")
 
