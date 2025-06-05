@@ -14,7 +14,8 @@ requires-python = ">=3.8"
 # Python dependencies 
 dependencies = [
     "tomli",
-    "openai>=1.0.0"
+    "openai>=1.0.0",
+    "tabulate"
 ]
 
 
@@ -40,8 +41,10 @@ python3 -m pip install -r requirements.txt
 
 [tool.logduration]
 git = "git@github.com:AMDResearch/logduration.git"
-branch = "5caa4a4c4beefda6f357a72579b428d0dd152679"
+branch = "17da6f901f17a25747ddec988d391c70d34342d8"
 build_command = """
+export CC=${ROCM_PATH}/bin/hipcc
+export CXX=${ROCM_PATH}/bin/hipcc
 git submodule update --init --recursive
 #TODO: search for a Triton LLVM.
 if [ -d "/root/.triton/llvm/llvm-ubuntu-x64" ]; then
@@ -50,10 +53,11 @@ else
     export TRITON_LLVM_PATH="${ROCM_PATH}/llvm/"
 fi
 cmake -DCMAKE_PREFIX_PATH=${ROCM_PATH} \
-      -DTRITON_LLVM=$TRITON_LLVM_PATH \
       -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=install \
       -DCMAKE_VERBOSE_MAKEFILE=ON -S . -B build &&
-cmake --build build --parallel 1
+cmake --build build --parallel 1 &&
+cmake --install build
 """
 
 
