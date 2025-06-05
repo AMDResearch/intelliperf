@@ -22,26 +22,10 @@
 # SOFTWARE.
 ################################################################################
 
-cmake_minimum_required(VERSION 3.10)
-project(Examples LANGUAGES HIP CXX)
+set(EXAMPLES
+    "uncoalesced"
+)
 
-option(INSTRUMENT "Instrument the code with Omniprobe" OFF)
-
-function(add_example name source_file)
-    add_executable(${name} ${source_file})
-    # CMake instrumentation integration example
-    if(INSTRUMENT)
-        set(OMNIPROBE_PATH ${CMAKE_SOURCE_DIR}/../external/logduration/install)
-        # Use the plugin to instrument the code
-        target_compile_options(${name} PRIVATE 
-            -fpass-plugin=${OMNIPROBE_PATH}/lib/libAMDGCNSubmitAddressMessages-rocm.so
-        )
-        # Must include debug information to get line numbers
-        target_compile_options(${name} PRIVATE -g)
-    endif()
-endfunction()
-
-add_subdirectory(bank_conflict)
-add_subdirectory(basic)
-add_subdirectory(contention)
-add_subdirectory(access_pattern)
+foreach(example IN LISTS EXAMPLES)
+    add_example(${example} ${example}/${example}.hip)
+endforeach() 

@@ -24,6 +24,7 @@
 
 set(EXAMPLES
     "reduction"
+    "simple_reduction"
     "reduction_optimized"
 )
 

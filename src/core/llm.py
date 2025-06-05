@@ -22,26 +22,38 @@
 # SOFTWARE.
 ################################################################################
 
-cmake_minimum_required(VERSION 3.10)
-project(Examples LANGUAGES HIP CXX)
 
-option(INSTRUMENT "Instrument the code with Omniprobe" OFF)
+import requests
 
-function(add_example name source_file)
-    add_executable(${name} ${source_file})
-    # CMake instrumentation integration example
-    if(INSTRUMENT)
-        set(OMNIPROBE_PATH ${CMAKE_SOURCE_DIR}/../external/logduration/install)
-        # Use the plugin to instrument the code
-        target_compile_options(${name} PRIVATE 
-            -fpass-plugin=${OMNIPROBE_PATH}/lib/libAMDGCNSubmitAddressMessages-rocm.so
-        )
-        # Must include debug information to get line numbers
-        target_compile_options(${name} PRIVATE -g)
-    endif()
-endfunction()
+class LLM:
+    def __init__(
+        self,
+        api_key: str,
+        system_prompt: str,
+        deployment_id: str = "dvue-aoai-001-o4-mini",
+        server: str = "https://llm-api.amd.com/azure",
+    ):
+        self.api_key = api_key
+        self.system_prompt = system_prompt
+        self.deployment_id = deployment_id
+        self.server = server
+        self.header = {"Ocp-Apim-Subscription-Key": api_key}
+    def ask(self, user_prompt: str) -> str:
+        body = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": self.system_prompt,
+                },
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_Tokens": 4096,
+            "max_Completion_Tokens": 4096,
+        }
 
-add_subdirectory(bank_conflict)
-add_subdirectory(basic)
-add_subdirectory(contention)
-add_subdirectory(access_pattern)
+        response = requests.post(
+            url=f"{self.server}/engines/{self.deployment_id}/chat/completions",
+            json=body,
+            headers=self.header,
+        ).json()
+        return response['choices'][0]['message']['content']

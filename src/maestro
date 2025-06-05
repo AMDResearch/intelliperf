@@ -23,20 +23,11 @@
 # SOFTWARE.
 ################################################################################
 
-
-import sys
-import argparse
-import logging
-import json
-from datetime import datetime
-from formulas.bank_conflict import bank_conflict
-from formulas.diagnose_only import diagnose_only
-from tabulate import tabulate
-
 def maestro_parser():
+    import argparse
     parser = argparse.ArgumentParser(
         description='Optimize and analyze the given application based on available Maestro formulas.',
-        prog="tool",
+        prog="maestro",
         formatter_class=lambda prog: argparse.RawTextHelpFormatter(
             prog, max_help_position=30
         ),
@@ -51,48 +42,75 @@ def maestro_parser():
         """,
     )
     parser.add_argument('-v', '--verbose', action='count', default=0, help='Increase verbosity level (e.g., -v, -vv, -vvv).')
+    
     # Required arguments group
     required_args = parser.add_argument_group('required arguments')
     required_args.add_argument('remaining', metavar="-- [ ...]", nargs=argparse.REMAINDER, help='Provide the command to launch the application.')
 
     # Optional arguments group
     optional_args = parser.add_argument_group('optional arguments')
-    optional_args.add_argument('-s', '--script', 
+    # Input arguments
+    optional_args.add_argument('-b', '--build_command', 
                                type=str, 
                                metavar='',
-                               help='A script to build your application')
+                               help='A command to build your application. When project_directory is provided,\nthe command must be relative to the project directory.')
+    optional_args.add_argument('-i', '--instrument_command', 
+                               type=str, 
+                               metavar='',
+                               help='A command to instrument your application (required when formula is not diagnoseOnly). When project_directory is provided,\nthe command must be relative to the project directory.')
+    optional_args.add_argument('-p', '--project_directory', 
+                               type=str, 
+                               metavar='',
+                               help='The directory containing your entire codebase (required when formula is not diagnoseOnly)')
     optional_args.add_argument('-f', 
                                '--formula', 
-                               choices=['bankConflict', 'diagnoseOnly'], 
+                               choices=['bankConflict', 'memoryAccess', 'atomicContention', 'diagnoseOnly'], 
                                default='diagnoseOnly', 
                                metavar='',
                                type=str, 
-                               help='Specify the formula to use for optimization (default: diagnoseOnly)')
+                               help='Specify the formula to use for optimization.\nAvailable options: bankConflict, memoryAccess, atomicContention, diagnoseOnly (default: diagnoseOnly)')
+    optional_args.add_argument('--top_n',
+                               type=int, 
+                               default=10,
+                               metavar='',
+                               help='Control the top-n kernels collected in diagnoseOnly mode (default: 10)')
+    optional_args.add_argument('--num_attempts',
+                               type=int, 
+                               default=10,
+                               metavar='',
+                               help='Control the number of max optimization attempts (default: 10)')
+    
+    
+    # Output arguments
     optional_args.add_argument("-o", 
                                "--output_file", 
                                type=str, 
                                metavar='',
                                help="Path to the output file")
-    optional_args.add_argument("-c", 
-                               "--ci_output_file", 
-                               type=str, 
-                               metavar='',
-                               help="Path to the output file for CI integration")
-    optional_args.add_argument('--top-n',
-                               type=int, 
-                               default=10,
-                               metavar='',
-                               help='Control the top-n kernels collected in diagnoseOnly mode (default: 10)')
 
     args = parser.parse_args()
+    
+    # Validate that project_directory is provided when formula is not diagnoseOnly
+    if args.formula != 'diagnoseOnly' and not args.project_directory:
+        parser.error("--project_directory is required when --formula is not diagnoseOnly and all paths must be relative to the project directory.")
+    
+    if args.remaining and "--" in args.remaining:
+        args.remaining = args.remaining[1:]
+    else:
+        parser.error("Profiling command required. Pass application executable after -- at the end of options.")
+            
     return args
 
 def main():
-    logging.raiseExceptions = True
     args = maestro_parser()
+    
     # Generate a name for the Maestro run using timestamp
+    from datetime import datetime
     generated_name = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
+    
     # Set logging level based on verbosity
+    import logging
+    logging.raiseExceptions = True
     if args.verbose == 1:
         logging.basicConfig(level=logging.INFO, format="[MAESTRO] %(levelname)s: %(message)s")
     elif args.verbose == 2:
@@ -104,110 +122,80 @@ def main():
 
     # Create an optimizer based on available Maestro formulas.
     if args.formula == 'bankConflict':
-        optimizer = bank_conflict(
-            name=generated_name,
-            build_script=args.script,
-            app_cmd=args.remaining,
-            only_consider_top_kernel=True
-        )
+        from formulas.bank_conflict import bank_conflict
+        formula = bank_conflict
     elif args.formula == 'diagnoseOnly':
-        optimizer = diagnose_only(
+        from formulas.diagnose_only import diagnose_only
+        formula = diagnose_only
+    elif args.formula == 'memoryAccess':
+        from formulas.memory_access import memory_access
+        formula = memory_access
+    elif args.formula == 'atomicContention':
+        from formulas.atomic_contention import atomic_contention
+        formula = atomic_contention
+    else:
+        logging.error(f"Invalid formula specified. {args.formula} is not supported.")
+        import sys
+        sys.exit(1)
+
+    
+    optimizer = formula(
             name=generated_name,
-            build_script=args.script,
+            build_command=args.build_command,
+            instrument_command=args.instrument_command,
+            project_directory=args.project_directory,
             app_cmd=args.remaining,
             top_n=args.top_n,
         )
-    else:
-        logging.error(f"Invalid formula specified. {args.formula} is not supported.")
-        sys.exit(1)
+
+    num_attempts = 0 if args.formula == 'diagnoseOnly' else args.num_attempts
 
     # Build the application
-    build_results = optimizer.build()
-    build_results.report_out()
-
+    optimizer.build()
+    
     # Profile the application and collect the results.
-    unoptimized_binary_profiler_results = optimizer.profile_pass()
-    unoptimized_binary_profiler_results.report_out()
+    optimizer.profile_pass()
 
     # Get source code mappings
-    if args.formula == 'diagnoseOnly':
-        source_code_collection = optimizer.source_code_pass()
-        source_code_collection.report_out()
+    optimizer.source_code_pass()
 
-        profiler_data = unoptimized_binary_profiler_results.asset
-        source_kernels = source_code_collection.asset["kernels"]
+    # Instrument the application based on the results.
+    optimizer.instrument_pass()
 
-        # In-place append of source info
-        for entry in profiler_data:
-            kernel_name = entry["kernel"]
-            empty = {
-                "assembly": [],
-                "files": [],
-                "hip": [],
-                "lines": [],
-                "signature": ""}
-            entry["source"] = source_kernels.get(kernel_name, empty)
-
-    if args.formula != 'diagnoseOnly':
-        # Instrument the application based on the results.
-        instrument_results = optimizer.instrument_pass(perf_report_card=unoptimized_binary_profiler_results.asset)
-        instrument_results.report_out()
-
+    for attempt in range(num_attempts):
+        logging.info(f"Executing pass {attempt + 1} of {num_attempts}.")
+        
         # Optimize the application based on insights from instrumentation.
-        optimizer_results = optimizer.optimize_pass(file = instrument_results.asset["file"],
-                                                    kernel = instrument_results.asset["kernel"],
-                                                    lines = instrument_results.asset["lines"])
-        optimizer_results.report_out()
-
+        optimize_result = optimizer.optimize_pass()
+        if not optimize_result:
+            optimize_result.report_out()
+            logging.warning(f"Optimization pass {attempt + 1} failed. Exiting.")
+            continue
+        
         # Compile the new application
-        # Backup the unoptimized binary
-        unoptimized_binary = optimizer.backup("unoptimized")
-        compiler_results = optimizer.build()
-        compiler_results.report_out()
-
-        # Backup the optimized binary
-        optimized_binary = optimizer.backup("optimized")
-
-        # Find the performance results
-        validation_results = optimizer.validation_pass(unoptimized_binary = unoptimized_binary,
-                                                    optimized_binary = optimized_binary,
-                                                    kernel = instrument_results.asset["kernel"],
-                                                    args = instrument_results.asset["arguments"])
-        validation_results.report_out()
-
-        # Find the performance results
-        # We updated and built the optimized code, now we can just run the 
-        # profiling pass 
-        optimized_binary_profiler_results = optimizer.profile_pass()
-        optimized_binary_profiler_results.report_out()
+        build_result = optimizer.build()
+        if not build_result:
+            optimizer.summarize_previous_passes()
+            continue
         
-        logging.info("Optimized code:")
-        logging.info(tabulate(optimized_binary_profiler_results.asset, headers='keys', tablefmt='psql'))
-        logging.info("Unoptimized code:")
-        logging.info(tabulate(unoptimized_binary_profiler_results.asset, headers='keys', tablefmt='psql'))
+        # Validate the new application
+        correctness_result = optimizer.correctness_validation_pass()
+        if not correctness_result:
+            optimizer.summarize_previous_passes()
+            continue
+        
+        
+        performance_result = optimizer.performance_validation_pass()
+        if not performance_result:
+            optimizer.summarize_previous_passes()
+            continue
+        
+        # If the optimization is successful, break out of the loop
+        if performance_result:
+            break
 
-        performance_results = optimizer.performance_pass(unoptimized_binary_result=unoptimized_binary_profiler_results,
-                                                        optimized_binary_result=optimized_binary_profiler_results,
-                                                        kernel_signature=instrument_results.asset["kernel_signature"] )
-        performance_results.report_out()
-
-    # Write output
-    log = json.dumps(unoptimized_binary_profiler_results.asset, indent=4) if args.formula == "diagnoseOnly" else performance_results.asset['log']
-    if args.output_file:
-        with open(args.output_file, 'w') as f:
-            f.write(log)
-    else:
-        print(log)
-        
-    if args.ci_output_file and args.formula != "diagnoseOnly":
-        kernel = instrument_results.asset['kernel']
-        lines = instrument_results.asset['lines']
-        
-        message = (f"Maestro detected bank conflicts in the kernel `{kernel}` at line(s) {lines}." 
-                   f" This PR contains an optimized and validated implementation. See log below for complete output.")
-        with open(args.ci_output_file, 'w') as f:
-            f.write(message)
-        
+    # Write the results to the output file
+    optimizer.write_results(args.output_file)
 
 if __name__ == '__main__':
     main()
