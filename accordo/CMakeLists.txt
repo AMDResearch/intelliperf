@@ -29,7 +29,7 @@ project(
     VERSION       0.1.0
     DESCRIPTION   "Accordo"
     HOMEPAGE_URL  "https://github.com/AARInternal/maestro"
-    LANGUAGES     CXX C
+    LANGUAGES     HIP CXX C
 )
 
 # CMake modules

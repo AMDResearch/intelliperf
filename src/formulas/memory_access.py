@@ -137,6 +137,10 @@ class memory_access(Formula_Base):
 			kernel = filtered_report_card[0]["kernel"]
 			files = filtered_report_card[0]["source"]["files"]
 			kernel_name = kernel.split("(")[0]
+			# Handle template arguments in the kernel name
+			kernel_name = kernel_name.split("<")[0]
+
+			logging.debug(f"Kernel name: {kernel_name}")
 			kernel_file = None
 			for file in files:
 				if os.path.exists(file):
@@ -146,7 +150,7 @@ class memory_access(Formula_Base):
 							kernel_file = file
 							break
 			if kernel_file is None:
-				return Result(success=False, error_report="Kernel file not found.")
+				return Result(success=False, error_report=f"Kernel file not found for kernel {kernel}.")
 
 			user_prompt = (
 				f"There is an uncoalesced memory access in the kernel {kernel} in the file {unoptimized_file_content}."

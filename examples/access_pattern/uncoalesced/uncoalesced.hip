@@ -26,6 +26,9 @@ SOFTWARE.
 #include <iostream>
 #include <vector>
 
+#include <hip/hip_fp16.h> // for float16
+#include <hip/hip_bf16.h> // for bfloat16
+
 #define hip_try(expr)                                                          \
   do {                                                                         \
     hipError_t status = (expr);                                                \
@@ -36,8 +39,9 @@ SOFTWARE.
     }                                                                          \
   } while (0)
 
-__global__ void matrix_transpose(const float* __restrict__ in,
-                                 float* __restrict__ out,
+template<typename T>
+__global__ void matrix_transpose(const T* __restrict__ in,
+                                 T* __restrict__ out,
                                  int width,
                                  int height) {
   int x = blockIdx.x * blockDim.x + threadIdx.x;  // column
@@ -47,22 +51,23 @@ __global__ void matrix_transpose(const float* __restrict__ in,
     out[x * height + y] = in[y * width + x];
   }
 }
-
 int main() {
+  using T = __hip_bfloat16;
+  
   const int width = 1024;
   const int height = 1024;
   const int size = width * height;
-  const size_t bytes = size * sizeof(float);
+  const size_t bytes = size * sizeof(T);
 
-  std::vector<float> h_in(size);
-  std::vector<float> h_out(size, 0.0f);
+  std::vector<T> h_in(size);
+  std::vector<T> h_out(size, 0);
 
   // Initialize input matrix row-major: A[y][x] = y * width + x
   for (int y = 0; y < height; ++y)
     for (int x = 0; x < width; ++x)
-      h_in[y * width + x] = static_cast<float>(y * width + x);
+      h_in[y * width + x] = static_cast<T>(y * width + x);
 
-  float *d_in, *d_out;
+  T *d_in, *d_out;
   hip_try(hipMalloc(&d_in, bytes));
   hip_try(hipMalloc(&d_out, bytes));
 
@@ -79,11 +84,11 @@ int main() {
   bool correct = true;
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
-      float expected = h_in[y * width + x];
-      float result = h_out[x * height + y];
-      if (expected != result) {
-        std::cerr << "Mismatch at (" << x << ", " << y << "): " << result
-                  << " != " << expected << "\n";
+      T expected = h_in[y * width + x];
+      T result = h_out[x * height + y];
+      if (static_cast<float>(expected) != static_cast<float>(result)) {
+        std::cerr << "Mismatch at (" << x << ", " << y << "): " << static_cast<float>(result)
+                  << " != " << static_cast<float>(expected) << "\n";
         correct = false;
         break;
       }

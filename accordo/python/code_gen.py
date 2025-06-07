@@ -34,6 +34,10 @@ def generate_header(args: list[str]) -> str:
 	header_content = f"""#pragma once
 #include <tuple>
 
+// Datatypes
+#include <hip/hip_fp16.h> // for float16
+#include <hip/hip_bf16.h> // for bfloat16
+
 struct KernelArguments {{
     {members}
 
