@@ -24,7 +24,8 @@ SOFTWARE.
 
 #include <hip/hip_runtime.h>
 #include <vector>
-
+#include <cstdlib>
+#include <iostream>
 
 #define TILE_DIM 16
 
@@ -79,7 +80,11 @@ void runTranspose(int width, int height) {
   hipFree(d_out);
 }
 
-int main() {
-  runTranspose(1024, 1024);
+int main(int argc, char* argv[]) {
+  if (argc != 3) {
+    std::cerr << "Usage: " << argv[0] << " <width> <height>" << std::endl;
+    return 1;
+  }
+  runTranspose(atoi(argv[1]), atoi(argv[2]));
   return 0;
 }

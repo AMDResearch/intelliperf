@@ -30,7 +30,6 @@ import shutil
 import tempfile
 
 import pandas as pd
-
 from utils import process
 from utils.env import get_guided_tuning_path
 from utils.process import capture_subprocess_output, exit_on_fail
@@ -165,6 +164,9 @@ class Application:
 	def get_app_args(self):
 		parts = self.app_cmd[1:]
 		return parts[1] if len(parts) > 1 else ""
+
+	def get_app_cmd_without_args(self):
+		return self.app_cmd[0]
 
 	def get_project_directory(self):
 		return self.project_directory
