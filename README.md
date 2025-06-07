@@ -30,7 +30,7 @@ SOFTWARE.
 
 ## Overview
 
-**Maestro** is a tool that reports and optimizes performance bottlenecks in an automated workflow. Given a target application, our tool generates kernel report cards containing performance metrics and their source code object alongside suggestions for code improvements. Maestro orchestrates existing Omni-tools such as [rocprofiler-compute](https://github.com/ROCm/rocprofiler-compute), and [guided-tuning](https://github.com/AARInternal/guided-tuning) in addition to new ones like _Accordo_ for correctness validation and [nexus](https://github.com/AARInternal/nexus) for code object back to source code mapping.
+**Maestro** is a tool that reports and optimizes performance bottlenecks in an automated workflow. Given a target application, our tool generates kernel report cards containing performance metrics and their source code object alongside suggestions for code improvements. Maestro orchestrates existing Omni-tools such as [rocprofiler-compute](https://github.com/ROCm/rocprofiler-compute), and [guided-tuning](https://github.com/AMDResearch/guided-tuning) in addition to new ones like _Accordo_ for correctness validation and [nexus](https://github.com/AMDResearch/nexus) for code object back to source code mapping.
 
 ### Key Features
 
@@ -41,6 +41,7 @@ SOFTWARE.
   - Memory access patterns
   - Atomic contention
   - And more to come...
+* **Diagnostic Mode**: Run in diagnose-only mode to analyze performance without making code changes
 
 ## Installation
 
@@ -48,7 +49,7 @@ SOFTWARE.
 
 We provide both Apptainer and Docker images for easy setup:
 
-#### Using Apptainer:
+#### Using Apptainer
 ```bash
 ./apptainer/build.sh
 ./apptainer/run.sh
