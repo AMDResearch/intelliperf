@@ -121,8 +121,8 @@ maestro -- python3 gemm.py
 
 ### Command Line Options
 
-| Option | Description |
-|--------|-------------|
+| Option                           | Description          |
+|----------------------------------|----------------------|
 | `-h, --help` | Show help message and exit |
 | `-v, --verbose` | Increase verbosity level (e.g., -v, -vv, -vvv) |
 | `-b, --build_command` | Command to build your application |
@@ -132,7 +132,7 @@ maestro -- python3 gemm.py
 | `--top_n` | Control top-n kernels in diagnoseOnly mode (default: 10) |
 | `--num_attempts` | Control optimization attempts (default: 10) |
 | `-o, --output_file` | Path to output file |
-| `-t, --accordo_absolute_tolerance` | Validation tolerarnce |
+| `-t, --accordo_absolute_tolerance` | Validation tolerance |
 
 ## Documentation
 
