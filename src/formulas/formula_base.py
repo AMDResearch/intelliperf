@@ -131,7 +131,7 @@ class Formula_Base:
         pass
 
     @abstractmethod
-    def correctness_validation_pass(self, kernel, kernel_args, accordo_tolerance: float = 1e-6):
+    def correctness_validation_pass(self, kernel, kernel_args, accordo_absolute_tolerance: float = 1e-6):
         """
         Validates the the application.
         """
@@ -191,7 +191,7 @@ class Formula_Base:
                 logging.debug(f"  Difference: {diff}")
 
         for i in range(len(results[key0])):
-            if not np.allclose(results[key0][i], results[key1][i], atol=accordo_tolerance):
+            if not np.allclose(results[key0][i], results[key1][i], atol=accordo_absolute_tolerance):
                 return Result(
                     success=False, error_report=f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close."
                 )

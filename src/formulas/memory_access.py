@@ -205,7 +205,7 @@ class memory_access(Formula_Base):
         """
         return super().compile_pass()
 
-    def correctness_validation_pass(self, accordo_tolerance: float = 1e-6) -> Result:
+    def correctness_validation_pass(self, accordo_absolute_tolerance: float = 1e-6) -> Result:
         """
         Validate the optimized kernel by comparing the output with the reference kernel
 
@@ -217,7 +217,7 @@ class memory_access(Formula_Base):
         Returns:
             Result: Validation status
         """
-        return super().correctness_validation_pass(self.current_kernel, self.current_args, accordo_tolerance)
+        return super().correctness_validation_pass(self.current_kernel, self.current_args, accordo_absolute_tolerance)
 
     def performance_validation_pass(self) -> Result:
         unoptimized_results = filter_json_field(
