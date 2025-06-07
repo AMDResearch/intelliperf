@@ -36,7 +36,7 @@ def maestro_parser():
 
         Example:
         # Run maestro to optimize bank conflicts in a HIP app
-        maestro -s ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas_gemm
+        maestro -b ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas_gemm
         # Run maestro to diagnose a Triton app
         maestro -- python3 gemm.py
         """,
