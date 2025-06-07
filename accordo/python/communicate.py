@@ -91,6 +91,9 @@ def send_response(pipe_name):
 
 
 def get_kern_arg_data(pipe_name, args, ipc_file_name):
+	logging.debug(f"pipe_name: {pipe_name}")
+	logging.debug(f"get_kern_arg_data args: {args}")
+	logging.debug(f"ipc_file_name: {ipc_file_name}")
 	if not os.path.exists(pipe_name):
 		os.mkfifo(pipe_name)
 		os.chmod(pipe_name, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
@@ -106,7 +109,7 @@ def get_kern_arg_data(pipe_name, args, ipc_file_name):
 	}
 	results = []
 	pointer_args = list(filter(lambda arg: "*" in arg and "const" not in arg, args))
-
+	logging.debug(f"pointer_args: {pointer_args}")
 	for handle, arg, array_size in zip(ipc_handles, pointer_args, ptr_sizes):
 		ptr = open_ipc_handle(handle)
 		logging.debug(f"Opened IPC Ptr: {ptr} (0x{ptr:x})")
