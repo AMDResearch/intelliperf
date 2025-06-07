@@ -119,14 +119,20 @@ def main():
 	with open(pyproject_path, "rb") as f:
 		config = tomllib.load(f)
 
+	run_command("mkdir -p external", cwd=".")
 	# This is a workaround to avoid docker errors when cloning repos
-	run_command("git config --global --add safe.directory '*'", cwd="external")
+	run_command("git config --global --add safe.directory '*'", cwd=".")
 
 	if args.all:
 		tools = config.get("tool", {}).keys()
+
 		for tool in tools:
 			print(f"\n=== Installing '{tool}' ===")
-			install_tool(tool, config, args.clean)
+			tool_data = config.get("tool", {}).get(tool)
+			if tool_data.get("build_command"):
+				install_tool(tool, config, args.clean)
+			else:
+				print(f"Skipping '{tool}' as it does not have a build command")
 	elif args.tool:
 		install_tool(args.tool, config, args.clean)
 	else:
