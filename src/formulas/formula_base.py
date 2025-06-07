@@ -60,18 +60,15 @@ class Result:
 
 	def report_out(self):
 		if self.success:
-			logging.info(self.log)
+			logging.debug(self.log)
 			if self.asset is not None:
 				for asset in self.asset:
 					if isinstance(asset, pd.DataFrame):
-						logging.info("\n%s", asset.to_string(index=False))
+						logging.debug("\n%s", asset.to_string(index=False))
 					elif isinstance(asset, dict):
-						logging.info("\n%s", json.dumps(asset, indent=2))
+						logging.debug("\n%s", json.dumps(asset, indent=2))
 					else:
-						logging.info("\n%s", pformat(asset))
-		else:
-			logging.error(f"Error: {self.error_report}")
-			sys.exit(1)
+						logging.debug("\n%s", pformat(asset))
 
 
 class Formula_Base:
@@ -96,14 +93,20 @@ class Formula_Base:
 
 		self.build()
 
-	def build(self):
+	def build(self, validate_build_result=True):
 		if not self._application.get_build_command():
 			return Result(success=True, asset={"log": "No build script provided. Skipping build step."})
 		else:
 			success, result = self._application.build()
-			# Handle critical error
-			exit_on_fail(success=success, message=f"Failed to build {self.__name} application.", log=result)
-		return Result(success=success, asset={"log": result})
+			if validate_build_result:
+				logging.debug(
+					f"Exiting because of build failure: validate_build_result={validate_build_result}, success={success}, result={result}"
+				)
+				exit_on_fail(success=success, message=f"Failed to build {self.__name} application.", log=result)
+		if success:
+			return Result(success=success, asset={"log": result})
+		else:
+			return Result(success=success, error_report="The application failed to build.")
 
 	# ----------------------------------------------------
 	# Required methods to be implemented by child classes
@@ -317,3 +320,22 @@ def validate_arrays(arr1, arr2, tolerance):
 	else:
 		# For all other types, use regular allclose
 		return np.allclose(arr1, arr2, atol=tolerance)
+
+
+def get_kernel_name(kernel):
+	"""
+	Extracts the kernel name from the kernel signature.
+
+	Args:
+	    kernel (str): The kernel signature.
+
+	Returns:
+	    str: The kernel name.
+	"""
+	# Remove arguments from kernel name
+	kernel_name = kernel.split("(")[0]
+	# Remove template arguments from kernel name
+	kernel_name = kernel_name.split("<")[0]
+	# Remove namespace from kernel name
+	kernel_name = kernel_name.split("::")[-1]
+	return kernel_name
