@@ -224,10 +224,7 @@ class atomic_contention(Formula_Base):
 		Validate the optimized kernel by comparing the output with the reference kernel
 
 		Args:
-		    optimized_binary (str): File path of the optimized kernel
-		    kernel (str): Kernel name
-		    args (list): List of kernel arguments
-
+		    accordo_absolute_tolerance (float): Absolute tolerance for Accordo
 		Returns:
 		    Result: Validation status
 		"""
@@ -239,11 +236,6 @@ class atomic_contention(Formula_Base):
 	def performance_validation_pass(self) -> Result:
 		"""
 		Validate the optimized kernel by comparing the output with the reference kernel
-
-		Args:
-		    optimized_binary (str): File path of the optimized kernel
-		    kernel (str): Kernel name
-		    args (list): List of kernel arguments
 
 		Returns:
 		    Result: Validation status
@@ -301,10 +293,7 @@ class atomic_contention(Formula_Base):
 
 		if not success or speedup < 1:
 			self.current_summary = self.optimization_report
-			return Result(
-				success=False,
-				error_report=self.optimization_report,
-			)
+			return Result(success=False, error_report=self.optimization_report)
 
 		logging.info(self.optimization_report)
 
