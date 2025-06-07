@@ -29,9 +29,9 @@ maestro --project_directory=./examples\
 ```
 
 
-Example output:
+## Example output:
 
-## Memory Access Forumla
+### Memory Access Forumla
 
 
 After running, you will get an output similar to:
