@@ -27,7 +27,7 @@ import logging
 import os
 
 from core.llm import LLM
-from formulas.formula_base import Formula_Base, Result, filter_json_field, write_results
+from formulas.formula_base import Formula_Base, Result, filter_json_field, get_kernel_name, write_results
 from utils.process import exit_on_fail
 
 
@@ -136,9 +136,7 @@ class memory_access(Formula_Base):
 
 			kernel = filtered_report_card[0]["kernel"]
 			files = filtered_report_card[0]["source"]["files"]
-			kernel_name = kernel.split("(")[0]
-			# Handle template arguments in the kernel name
-			kernel_name = kernel_name.split("<")[0]
+			kernel_name = get_kernel_name(kernel)
 
 			logging.debug(f"Kernel name: {kernel_name}")
 			kernel_file = None

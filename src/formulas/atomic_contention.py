@@ -27,7 +27,7 @@ import logging
 import os
 
 from core.llm import LLM
-from formulas.formula_base import Formula_Base, Result, filter_json_field, write_results
+from formulas.formula_base import Formula_Base, Result, filter_json_field, get_kernel_name, write_results
 from utils.process import exit_on_fail
 
 
@@ -55,6 +55,7 @@ class atomic_contention(Formula_Base):
 		self.kernel_to_optimize = None
 		self.optimization_report = None
 		self.bottleneck_report = None
+		self.current_summary = None
 
 	def profile_pass(self) -> Result:
 		"""
@@ -79,6 +80,21 @@ class atomic_contention(Formula_Base):
 			asset=self._instrumentation_results,
 			error_report="Instrumentation pass not implemented for atomic contention.",
 		)
+
+	def build_pass(self, validate_build_result=True) -> Result:
+		"""
+		Build the application and store the summary.
+
+		Args:
+		    validate_build_result (bool): Whether to validate the build result
+
+		Returns:
+		    Result: Build status and the output file path
+		"""
+		result = super().build(validate_build_result=validate_build_result)
+		if not result:
+			self.current_summary = result.error_report
+		return result
 
 	def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000) -> Result:
 		"""
@@ -140,7 +156,7 @@ class atomic_contention(Formula_Base):
 
 			kernel = filtered_report_card[0]["kernel"]
 			files = filtered_report_card[0]["source"]["files"]
-			kernel_name = kernel.split("(")[0]
+			kernel_name = get_kernel_name(kernel)
 			kernel_file = None
 			for file in files:
 				if os.path.exists(file):
@@ -157,6 +173,8 @@ class atomic_contention(Formula_Base):
 				f" Please fix the contention but do not change the semantics of the program."
 				" If you remove the copyright, your solution will be rejected."
 			)
+			if self.current_summary is not None:
+				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
 			args = kernel.split("(")[1].split(")")[0]
 			self.bottleneck_report = (
 				f"Maestro detected atomic contention in the kernel `{kernel_name}` with arguments `{args}`."
@@ -213,9 +231,23 @@ class atomic_contention(Formula_Base):
 		Returns:
 		    Result: Validation status
 		"""
-		return super().correctness_validation_pass(self.current_kernel, self.current_args, accordo_absolute_tolerance)
+		result = super().correctness_validation_pass(self.current_kernel, self.current_args, accordo_absolute_tolerance)
+		if not result:
+			self.current_summary = result.error_report
+		return result
 
 	def performance_validation_pass(self) -> Result:
+		"""
+		Validate the optimized kernel by comparing the output with the reference kernel
+
+		Args:
+		    optimized_binary (str): File path of the optimized kernel
+		    kernel (str): Kernel name
+		    args (list): List of kernel arguments
+
+		Returns:
+		    Result: Validation status
+		"""
 		unoptimized_results = filter_json_field(
 			self._initial_profiler_results, field="kernel", comparison_func=lambda x: x == self.current_kernel_signature
 		)
@@ -246,16 +278,18 @@ class atomic_contention(Formula_Base):
 		)
 
 		self.optimization_report = (
-			f"The optimized code shows {metric_improvement * 100:.3f}% reduction in atomic contention. "
+			f"The optimized code shows {metric_improvement * 100:.3f}% improvement in atomic contention. "
 			f"Average atomic instruction latency improved from {unoptimized_metric:.3f} to {optimized_metric:.3f} cycles ({cycle_latency_improvement:.1f}% reduction). "
 			f"The optimized implementation is {speedup:.3f}x faster overall, "
 			f"reducing execution time from {unoptimized_time / 1e6:.3f}ms to {optimized_time / 1e6:.3f}ms."
 		)
 
 		if not success:
+			message = "The optimized code had more atomic contention. " + self.optimization_report
+			self.current_summary = message
 			return Result(
 				success=False,
-				error_report="The optimized code had more atomic contention." + self.optimization_report,
+				error_report=message,
 			)
 
 		logging.info(self.optimization_report)
