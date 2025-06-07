@@ -147,6 +147,7 @@ class Formula_Base:
 
 		results = {}
 		for app, label in zip([self._reference_app, self._application], ["unoptimized", "optimized"]):
+			logging.debug(f"Running accordo for {label}")
 			timestamp = int(time.time())
 			pipe_name = f"/tmp/kernel_pipe_{timestamp}"
 			ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
@@ -162,24 +163,36 @@ class Formula_Base:
 			env = os.environ.copy()
 			env["HSA_TOOLS_LIB"] = lib
 			env["KERNEL_TO_TRACE"] = kernel
-			env["ACCORDO_LOG_LEVEL"] = "0"
+
+			# Get the debug level from logger and convert it
+			debug_level = logging.getLogger().getEffectiveLevel()
+			level_map = {
+				logging.WARNING: 0,  # Warning
+				logging.INFO: 1,  # Info
+				logging.DEBUG: 2,  # Debug
+				logging.NOTSET: 3,  # NOTEST
+			}
+			env["ACCORDO_LOG_LEVEL"] = str(level_map.get(debug_level, 0))  # Default to 0 (Warning) if level not found
 			env["ACCORDO_PIPE_NAME"] = pipe_name
 			env["ACCORDO_IPC_OUTPUT_FILE"] = ipc_file_name
 
-			binary = app.get_app_cmd()[0]
-			args = " ".join(app.get_app_cmd())
+			binary = app.get_app_cmd_without_args()
+			binary_with_args = app.get_app_cmd()
 			project_directory = app.get_project_directory()
 			logging.debug(f"binary: {binary}")
-			logging.debug(f"args: {args}")
 			logging.debug(f"project_directory: {project_directory}")
+			logging.debug(f"kernel: {kernel}")
+			logging.debug(f"binary_with_args: {binary_with_args}")
+			logging.debug(f"kernel_args: {kernel_args}")
+			logging.debug(f"ipc_file_name: {ipc_file_name}")
 			original_dir = os.getcwd()
 			os.chdir(project_directory)
-			os.posix_spawn(binary, [binary], env)
+			os.posix_spawn(binary, binary_with_args, env)
 			os.chdir(original_dir)
-			results[label] = get_kern_arg_data(pipe_name, args, ipc_file_name)
+			results[label] = get_kern_arg_data(pipe_name, kernel_args, ipc_file_name)
 			send_response(pipe_name)
-		logging.debug("results unoptimized: results['unoptimized']")
-		logging.debug("results optimized: results['optimized']")
+		logging.debug(f"results unoptimized: {results['unoptimized']}")
+		logging.debug(f"results optimized: {results['optimized']}")
 		key0, key1 = results.keys()
 		for i in range(len(results[key0])):
 			if not np.allclose(results[key0][i], results[key1][i]):
