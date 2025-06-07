@@ -29,7 +29,7 @@ import os
 import shutil
 
 from core.llm import LLM
-from formulas.formula_base import Formula_Base, Result, filter_json_field, write_results
+from formulas.formula_base import Formula_Base, Result, filter_json_field, get_kernel_name, write_results
 from utils.process import capture_subprocess_output, exit_on_fail
 from utils.regex import generate_ecma_regex_from_list
 
@@ -207,7 +207,7 @@ class bank_conflict(Formula_Base):
 
 			kernel = filtered_report_card[0]["kernel"]
 			files = filtered_report_card[0]["source"]["files"]
-			kernel_name = kernel.split("(")[0]
+			kernel_name = get_kernel_name(kernel)
 			kernel_file = None
 			for file in files:
 				if os.path.exists(file):
