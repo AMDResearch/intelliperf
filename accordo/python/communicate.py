@@ -29,6 +29,7 @@ import stat
 import sys
 import time
 
+import ml_dtypes
 import numpy as np
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -106,6 +107,8 @@ def get_kern_arg_data(pipe_name, args, ipc_file_name):
 		"float*": ctypes.c_float,
 		"int*": ctypes.c_int,
 		"std::size_t*": ctypes.c_size_t,
+		"__half*": np.float16,
+		"__hip_bfloat16*": ml_dtypes.bfloat16,
 	}
 	results = []
 	pointer_args = list(filter(lambda arg: "*" in arg and "const" not in arg, args))
@@ -114,14 +117,23 @@ def get_kern_arg_data(pipe_name, args, ipc_file_name):
 		ptr = open_ipc_handle(handle)
 		logging.debug(f"Opened IPC Ptr: {ptr} (0x{ptr:x})")
 		arg_type = arg.split()[0]
+		logging.debug(f"arg_type: {arg_type}")
 		if arg_type in type_map:
 			dtype = type_map[arg_type]
+			logging.debug(f"dtype: {dtype}")
+			# Special handling for FP16 and bfloat16
+			if arg_type == "__half*":
+				temp_array = memcpy_d2h(ptr, array_size // 2, ctypes.c_uint16)
+				host_array = np.frombuffer(temp_array, dtype=np.float16)
+			elif arg_type == "__hip_bfloat16*":
+				temp_array = memcpy_d2h(ptr, array_size // 2, ctypes.c_uint16)
+				host_array = np.frombuffer(temp_array, dtype=ml_dtypes.bfloat16)
+			else:
+				num_elements = array_size // ctypes.sizeof(dtype)
+				host_array = memcpy_d2h(ptr, num_elements, dtype)
 		else:
 			raise TypeError(f"Unsupported pointer type: {arg_type}")
-		num_elements = array_size // ctypes.sizeof(dtype)
-		# max_num_elements = 32
-		num_elements_to_copy = num_elements
-		host_array = memcpy_d2h(ptr, num_elements_to_copy, dtype)
-		logging.debug(f"Received data from IPC ({arg_type}/{num_elements}): {host_array}")
+
+		logging.debug(f"Received data from IPC ({arg_type}/{len(host_array)}): {host_array}")
 		results.append(host_array)
 	return results

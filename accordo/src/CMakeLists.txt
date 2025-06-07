@@ -63,7 +63,7 @@ target_sources(accordo
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/log.hpp>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/accordo.hpp>
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/accordo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/accordo.hip
 )
 
 maestro_compiler_warnings(accordo)

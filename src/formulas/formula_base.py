@@ -30,6 +30,7 @@ import time
 from abc import abstractmethod
 from pprint import pformat
 
+import ml_dtypes
 import numpy as np
 import pandas as pd
 
@@ -195,7 +196,7 @@ class Formula_Base:
 		logging.debug(f"results optimized: {results['optimized']}")
 		key0, key1 = results.keys()
 		for i in range(len(results[key0])):
-			if not np.allclose(results[key0][i], results[key1][i]):
+			if not validate_arrays(results[key0][i], results[key1][i], accordo_absolute_tolerance):
 				diff = np.abs(results[key0][i] - results[key1][i])
 				logging.debug(f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close.")
 				logging.debug(f"  {key0}[{i}]: {results[key0][i]}")
@@ -203,7 +204,7 @@ class Formula_Base:
 				logging.debug(f"  Difference: {diff}")
 
 		for i in range(len(results[key0])):
-			if not np.allclose(results[key0][i], results[key1][i], atol=accordo_absolute_tolerance):
+			if not validate_arrays(results[key0][i], results[key1][i], accordo_absolute_tolerance):
 				return Result(
 					success=False, error_report=f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close."
 				)
@@ -292,3 +293,27 @@ def filter_json_field(d, field, subfield=None, comparison_func=lambda x: True):
 		return [entry for entry in d if comparison_func(entry.get(field, {}).get(subfield, 0))]
 	else:
 		return [entry for entry in d if comparison_func(entry.get(field, 0))]
+
+
+def validate_arrays(arr1, arr2, tolerance):
+	"""
+	Validate if two arrays are close enough, with special handling for bfloat16.
+
+	Args:
+		arr1: First array to compare
+		arr2: Second array to compare
+		tolerance: Absolute tolerance for comparison
+
+	Returns:
+		bool: True if arrays are close enough, False otherwise
+	"""
+	# Check if either array is bfloat16
+	if arr1.dtype == ml_dtypes.bfloat16 or arr2.dtype == ml_dtypes.bfloat16:
+		# Iterate through arrays and compare each element
+		for a, b in zip(arr1, arr2):
+			if abs(float(a) - float(b)) > tolerance:
+				return False
+		return True
+	else:
+		# For all other types, use regular allclose
+		return np.allclose(arr1, arr2, atol=tolerance)
