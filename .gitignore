@@ -25,3 +25,5 @@ bnk_conflict*
 *.egg-info
 
 external/
+
+.venv/
