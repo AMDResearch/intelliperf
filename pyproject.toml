@@ -70,15 +70,54 @@ cmake --build build --parallel 16
 """
 
 [project.optional-dependencies]
-dev = ["black==25.1.0", "ruff==0.11.12"]
-
+dev = [
+    "ruff==0.3.0",
+    "pre-commit==3.6.0"
+]
 
 [tool.ruff]
 line-length = 120
+target-version = "py38"
 
 [tool.ruff.lint]
-select = ["E", "F", "W"]
-ignore = ["E501", "E701", "E731", "E741", "F841", "F401", "F811"]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "W",   # pycodestyle warnings
+    "D",   # pydocstyle
+    "ERA", # eradicate (detects commented-out code and merge conflicts)
+]
+ignore = [
+    "E501",  # line too long (handled by line-length)
+    "E701",  # multiple statements on one line
+    "E731",  # do not assign a lambda expression
+    "D100",  # Missing docstring in public module
+    "D101",  # Missing docstring in public class
+    "D102",  # Missing docstring in public method
+    "D103",  # Missing docstring in public function
+    "D104",  # Missing docstring in public package
+    "D105",  # Missing docstring in magic method
+    "D106",  # Missing docstring in public nested class
+    "D107",  # Missing docstring in __init__
+    "W292",  # No newline at end of file (handled by Ruff)
+    "W291",  # Trailing whitespace (handled by Ruff)
+    "W293",  # Blank line contains whitespace (handled by Ruff)
+    "W191",  # Indentation contains tabs (we want tabs)
+    "D203",  # one-blank-line-before-class (using D211 instead)
+    "D212",  # multi-line-summary-first-line (using D213 instead)
+    "ERA001", # Found commented-out code
+    "D200",  # One-line docstring should fit on one line
+    "D206",  # Docstring should be indented with spaces, not tabs
+    "D415",  # First line should end with a period, question mark, or exclamation point
+    "D417",  # Missing argument description in the docstring
+    "E101",  # Indentation contains mixed spaces and tabs
+]
 
 [tool.ruff.format]
 quote-style = "double"
+indent-style = "tab"
+line-ending = "auto"
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"  # Use Google-style docstrings

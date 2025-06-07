@@ -30,6 +30,42 @@ SOFTWARE.
 **Maestro** is a tool that reports and optimizes performance bottlenecks in an automated workflow. Given a target application, our tool generates kernel report cards containing performance metrics and their source code object alongside suggestions for code improvements. Maestro orchestrates existing Omni-tools such as [rocprofiler-compute](https://github.com/ROCm/rocprofiler-compute), and [guided-tuning](https://github.com/AARInternal/guided-tuning) in addition to new ones like _Accordo_ for correctness validation and [nexus](https://github.com/AARInternal/nexus) for code object back to source code mapping.
 
 
+## Usage:
+
+```console
+usage: 
+        maestro [options] -- <profile_cmd>
+
+        Example:
+        # Run maestro to optimize bank conflicts in a HIP app
+        maestro -s ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas_gemm
+        # Run maestro to diagnose a Triton app
+        maestro -- python3 gemm.py
+        
+
+Optimize and analyze the given application based on available Maestro formulas.
+
+options:
+  -h, --help                  show this help message and exit
+  -v, --verbose               Increase verbosity level (e.g., -v, -vv, -vvv).
+
+required arguments:
+  -- [ ...]                   Provide the command to launch the application.
+
+optional arguments:
+  -b , --build_command        A command to build your application. When project_directory is provided,
+                              the command must be relative to the project directory.
+  -i , --instrument_command   A command to instrument your application (required when formula is not diagnoseOnly). When project_directory is provided,
+                              the command must be relative to the project directory.
+  -p , --project_directory    The directory containing your entire codebase (required when formula is not diagnoseOnly)
+  -f , --formula              Specify the formula to use for optimization.
+                              Available options: bankConflict, memoryAccess, atomicContention, diagnoseOnly (default: diagnoseOnly)
+  --top_n                     Control the top-n kernels collected in diagnoseOnly mode (default: 10)
+  --num_attempts              Control the number of attempts in optimize mode (default: 10)
+  -o , --output_file          Path to the output file
+```
+
+
 ## Quick start
 
 We provide both Apptainer and Docker images containing all the dependencies. To get started, run:
@@ -93,43 +129,33 @@ export PATH=$(pwd)/external/rocprofiler-compute/src:$PATH
 export PATH=$(pwd)/$maestro/src:$PATH
 ```
 
-
-
-## Usage:
-
-```console
-usage: 
-        maestro [options] -- <profile_cmd>
-
-        Example:
-        # Run maestro to optimize bank conflicts in a HIP app
-        maestro -s ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas_gemm
-        # Run maestro to diagnose a Triton app
-        maestro -- python3 gemm.py
-        
-
-Optimize and analyze the given application based on available Maestro formulas.
-
-options:
-  -h, --help                  show this help message and exit
-  -v, --verbose               Increase verbosity level (e.g., -v, -vv, -vvv).
-
-required arguments:
-  -- [ ...]                   Provide the command to launch the application.
-
-optional arguments:
-  -b , --build_command        A command to build your application. When project_directory is provided,
-                              the command must be relative to the project directory.
-  -i , --instrument_command   A command to instrument your application (required when formula is not diagnoseOnly). When project_directory is provided,
-                              the command must be relative to the project directory.
-  -p , --project_directory    The directory containing your entire codebase (required when formula is not diagnoseOnly)
-  -f , --formula              Specify the formula to use for optimization.
-                              Available options: bankConflict, memoryAccess, atomicContention, diagnoseOnly (default: diagnoseOnly)
-  --top_n                     Control the top-n kernels collected in diagnoseOnly mode (default: 10)
-  --num_attempts              Control the number of attempts in optimize mode (default: 10)
-  -o , --output_file          Path to the output file
-```
-
-
 ## Documentation
 1. [Running the examples](examples/README.md).
+
+## Development
+
+### Pre-commit Hooks
+
+This project uses [pre-commit](https://pre-commit.com/) with [Ruff](https://github.com/astral-sh/ruff) for code quality checks. The hooks will run automatically on each commit.
+
+1. Install development dependencies:
+```shell
+pip install -e ".[dev]"
+```
+
+2. Install pre-commit hooks:
+```shell
+pre-commit install
+```
+
+3. (Optional) Run hooks manually on all files:
+```shell
+pre-commit run --all-files
+```
+
+The hooks will:
+- Format code with Ruff
+- Sort imports
+- Check for common code issues
+- Detect merge conflicts
+- Ensure consistent code style
