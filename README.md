@@ -59,6 +59,21 @@ We provide both Apptainer and Docker images for easy setup:
 ./docker/build.sh
 ./docker/run.sh
 ```
+#### For baremetal installation
+
+
+1. **Install Additional Dependencies**:
+   ```bash
+   # ROCm dependencies
+   apt-get install -y rocm-llvm-dev libzstd-dev
+
+   # KernelDB dependencies
+   apt-get install -y libdwarf-dev
+
+   # Omniperf dependencies
+   apt-get install -y locales
+   locale-gen en_US.UTF-8
+   ```
 
 ### Installation from Source
 
@@ -78,18 +93,6 @@ We provide both Apptainer and Docker images for easy setup:
    python3 scripts/install_tool.py --all
    ```
 
-4. **Install Additional Dependencies**:
-   ```bash
-   # ROCm dependencies
-   apt-get install -y rocm-llvm-dev libzstd-dev
-
-   # KernelDB dependencies
-   apt-get install -y libdwarf-dev
-
-   # Omniperf dependencies
-   apt-get install -y locales
-   locale-gen en_US.UTF-8
-   ```
 
 5. **Set Up Environment**:
    ```bash
