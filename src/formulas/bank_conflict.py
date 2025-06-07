@@ -58,6 +58,22 @@ class bank_conflict(Formula_Base):
 		self.kernel_to_optimize = None
 		self.optimization_report = None
 		self.bottleneck_report = None
+		self.current_summary = None
+
+	def build_pass(self, validate_build_result=True) -> Result:
+		"""
+		Build the application and store the summary.
+
+		Args:
+		    validate_build_result (bool): Whether to validate the build result
+
+		Returns:
+		    Result: Build status and the output file path
+		"""
+		result = super().build(validate_build_result=validate_build_result)
+		if not result:
+			self.current_summary = result.error_report
+		return result
 
 	def profile_pass(self) -> Result:
 		"""
@@ -224,6 +240,8 @@ class bank_conflict(Formula_Base):
 				f" Please fix the conflict but do not change the semantics of the program."
 				" If you remove the copyright, your solution will be rejected."
 			)
+			if self.current_summary is not None:
+				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
 			args = kernel.split("(")[1].split(")")[0]
 			self.bottleneck_report = (
 				f"Maestro detected bank conflicts in the kernel `{kernel_name}` with arguments `{args}`."
@@ -272,14 +290,14 @@ class bank_conflict(Formula_Base):
 		Validate the optimized kernel by comparing the output with the reference kernel
 
 		Args:
-		    optimized_binary (str): File path of the optimized kernel
-		    kernel (str): Kernel name
-		    args (list): List of kernel arguments
-
+		    accordo_absolute_tolerance (float): Absolute tolerance for Accordo
 		Returns:
 		    Result: Validation status
 		"""
-		return super().correctness_validation_pass(self.current_kernel, self.current_args, accordo_absolute_tolerance)
+		result = super().correctness_validation_pass(self.current_kernel, self.current_args, accordo_absolute_tolerance)
+		if not result:
+			self.current_summary = result.error_report
+		return result
 
 	def performance_validation_pass(self) -> Result:
 		unoptimized_results = filter_json_field(
@@ -304,19 +322,34 @@ class bank_conflict(Formula_Base):
 			(unoptimized_conflicts - optimized_conflicts) / unoptimized_conflicts if unoptimized_conflicts != 0 else 0
 		) * 100
 
-		self.optimization_report = (
-			f"The optimized code reduced the LDS conflict ratio by {conflict_improvement_percentage:.3f}%. "
-			f"The initial implementation had a conflict ratio of {unoptimized_conflicts:.3f}, "
-			f"while the optimized version brought it down to {optimized_conflicts:.3f}. "
-			f"This translated to a {speedup:.3f}x speedup overall: execution time dropped from "
-			f"{unoptimized_time / 1_000_000:.3f} ms to {optimized_time / 1_000_000:.3f} ms."
-		)
-
-		if not success:
-			return Result(
-				success=False,
-				error_report="The optimized code had more shared memory bank conflicts." + self.optimization_report,
+		self.optimization_report = ""
+		if conflict_improvement_percentage > 1:
+			self.optimization_report += (
+				f"The optimized code reduced the LDS conflict ratio by {conflict_improvement_percentage:.3f}%. "
+				f"The initial implementation had a conflict ratio of {unoptimized_conflicts:.3f}, "
+				f"while the optimized version brought it down to {optimized_conflicts:.3f}. "
 			)
+		else:
+			self.optimization_report += (
+				f"The optimized code increased the LDS conflict ratio by {conflict_improvement_percentage:.3f}%. "
+				f"The initial implementation had a conflict ratio of {unoptimized_conflicts:.3f}, "
+				f"while the optimized version brought it up to {optimized_conflicts:.3f}. "
+			)
+
+		if speedup > 1:
+			self.optimization_report += (
+				f"This translated to a {speedup:.3f}x speedup overall: execution time dropped from "
+			)
+			self.optimization_report += f"{unoptimized_time / 1_000_000:.3f} ms to {optimized_time / 1_000_000:.3f} ms."
+		else:
+			self.optimization_report += (
+				f"This translated to a {speedup:.3f}x slowdown overall: execution time increased from "
+			)
+			self.optimization_report += f"{unoptimized_time / 1_000_000:.3f} ms to {optimized_time / 1_000_000:.3f} ms."
+
+		if not success or speedup < 1:
+			self.current_summary = self.optimization_report
+			return Result(success=False, error_report=self.optimization_report)
 
 		logging.info(self.optimization_report)
 
