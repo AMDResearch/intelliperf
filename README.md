@@ -24,138 +24,131 @@ SOFTWARE.
 
 # Maestro: Orchestrating the Omniverse
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 ![Maestro](./images/maestro.png)
 
+## Overview
 
-**Maestro** is a tool that reports and optimizes performance bottlenecks in an automated workflow. Given a target application, our tool generates kernel report cards containing performance metrics and their source code object alongside suggestions for code improvements. Maestro orchestrates existing Omni-tools such as [rocprofiler-compute](https://github.com/ROCm/rocprofiler-compute), and [guided-tuning](https://github.com/AARInternal/guided-tuning) in addition to new ones like _Accordo_ for correctness validation and [nexus](https://github.com/AARInternal/nexus) for code object back to source code mapping.
+**Maestro** is a tool that reports and optimizes performance bottlenecks in an automated workflow. Given a target application, our tool generates kernel report cards containing performance metrics and their source code object alongside suggestions for code improvements. Maestro orchestrates existing Omni-tools such as [rocprofiler-compute](https://github.com/ROCm/rocprofiler-compute), and [guided-tuning](https://github.com/AMDResearch/guided-tuning) in addition to new ones like _Accordo_ for correctness validation and [nexus](https://github.com/AMDResearch/nexus) for code object back to source code mapping.
 
+### Key Features
 
-## Usage:
+* **AI-Powered Optimization**: Automatically identifies and optimizes common performance bottlenecks using Large Language Models
+* **Precise Analysis**: Pinpoints performance issues down to specific source code lines
+* **Comprehensive Coverage**: Supports multiple bottleneck types:
+  - Bank conflicts
+  - Memory access patterns
+  - Atomic contention
+  - And more to come...
+* **Diagnostic Mode**: Run in diagnose-only mode to analyze performance without making code changes
 
-```console
-usage: 
-        maestro [options] -- <profile_cmd>
+## Installation
 
-        Example:
-        # Run maestro to optimize bank conflicts in a HIP app
-        maestro -s ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas_gemm
-        # Run maestro to diagnose a Triton app
-        maestro -- python3 gemm.py
-        
+### Quick Start with Containers
 
-Optimize and analyze the given application based on available Maestro formulas.
+We provide both Apptainer and Docker images for easy setup:
 
-options:
-  -h, --help                  show this help message and exit
-  -v, --verbose               Increase verbosity level (e.g., -v, -vv, -vvv).
-
-required arguments:
-  -- [ ...]                   Provide the command to launch the application.
-
-optional arguments:
-  -b , --build_command        A command to build your application. When project_directory is provided,
-                              the command must be relative to the project directory.
-  -i , --instrument_command   A command to instrument your application (required when formula is not diagnoseOnly). When project_directory is provided,
-                              the command must be relative to the project directory.
-  -p , --project_directory    The directory containing your entire codebase (required when formula is not diagnoseOnly)
-  -f , --formula              Specify the formula to use for optimization.
-                              Available options: bankConflict, memoryAccess, atomicContention, diagnoseOnly (default: diagnoseOnly)
-  --top_n                     Control the top-n kernels collected in diagnoseOnly mode (default: 10)
-  --num_attempts              Control the number of attempts in optimize mode (default: 10)
-  -o , --output_file          Path to the output file
-```
-
-
-## Quick start
-
-We provide both Apptainer and Docker images containing all the dependencies. To get started, run:
-```
+#### Using Apptainer
+```bash
 ./apptainer/build.sh
-```
-or,
-```
-./docker/build.sh
-```
-
-
-To start the container, run:
-
-```
 ./apptainer/run.sh
 ```
-or,
-```
+#### Using Docker
+```bash
+./docker/build.sh
 ./docker/run.sh
 ```
+#### For baremetal installation
 
 
-## Install from source
+1. **Install Additional Dependencies**:
+   ```bash
+   # ROCm dependencies
+   apt-get install -y rocm-llvm-dev libzstd-dev
 
-1. Clone:
+   # KernelDB dependencies
+   apt-get install -y libdwarf-dev
 
-```shell
-git clone git@github.com:AMDResearch/maestro.git
-cd maestro
+   # Omniperf dependencies
+   apt-get install -y locales
+   locale-gen en_US.UTF-8
+   ```
+
+### Installation from Source
+
+1. **Clone the Repository**:
+   ```bash
+   git clone git@github.com:AMDResearch/maestro.git
+   cd maestro
+   ```
+
+2. **Install Maestro**:
+   ```bash
+   pip install -e .
+   ```
+
+3. **Install Dependencies**:
+   ```bash
+   python3 scripts/install_tool.py --all
+   ```
+
+
+5. **Set Up Environment**:
+   ```bash
+   export PATH=$(pwd)/external/logduration/install/bin/logDuration:$PATH
+   export PATH=$(pwd)/external/rocprofiler-compute/src:$PATH
+   export PATH=$(pwd)/$maestro/src:$PATH
+   ```
+
+## Usage
+
+Maestro can be used to analyze and optimize your GPU applications:
+
+```bash
+maestro [options] -- <profile_cmd>
 ```
 
-2. Install Maestro:
-```shell
-pip install -e .
+### Examples
+
+```bash
+# Optimize bank conflicts in a HIP application
+maestro -b ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas_gemm
+
+# Diagnose a Triton application
+maestro -- python3 gemm.py
 ```
 
-3. Install the dependencies:
-```shell
-python3 scripts/install_tool.py --all
-```
+### Command Line Options
 
-4. Additional dependencies:
-```shell
-# For ROCm
-apt-get install -y rocm-llvm-dev libzstd-dev
-
-# For KernelDB
-apt-get install -y libdwarf-dev
-
-# For Omniperf
-apt-get install -y locales
-locale-gen en_US.UTF-8 
-```
-
-5. Add Maestro and dependencies to your path:
-
-```shell
-export PATH=$(pwd)/external/logduration/install/bin/logDuration:$PATH
-export PATH=$(pwd)/external/rocprofiler-compute/src:$PATH
-export PATH=$(pwd)/$maestro/src:$PATH
-```
+| Option                           | Description          |
+|----------------------------------|----------------------|
+| `-h, --help` | Show help message and exit |
+| `-v, --verbose` | Increase verbosity level (e.g., -v, -vv, -vvv) |
+| `-b, --build_command` | Command to build your application |
+| `-i, --instrument_command` | Command to build your application with instrument |
+| `-p, --project_directory` | Directory containing your codebase |
+| `-f, --formula` | Optimization formula to use (bankConflict, memoryAccess, atomicContention, diagnoseOnly) |
+| `--top_n` | Control top-n kernels in diagnoseOnly mode (default: 10) |
+| `--num_attempts` | Control optimization attempts (default: 10) |
+| `-o, --output_file` | Path to output file |
+| `-t, --accordo_absolute_tolerance` | Validation tolerance |
 
 ## Documentation
-1. [Running the examples](examples/README.md).
 
-## Development
+- [Running Examples](examples/README.md)
 
-### Pre-commit Hooks
+## Contributing
 
-This project uses [pre-commit](https://pre-commit.com/) with [Ruff](https://github.com/astral-sh/ruff) for code quality checks. The hooks will run automatically on each commit.
+We welcome contributions! Please see our [Contributing Guide](docs/CONTRIBUTING.md) for details on how to set up your development environment and contribute to the project.
 
-1. Install development dependencies:
-```shell
-pip install -e ".[dev]"
-```
+## Support
 
-2. Install pre-commit hooks:
-```shell
-pre-commit install
-```
+For support, please:
+1. Open an [issue](https://github.com/AMDResearch/maestro/issues)
+2. Contact the development team
 
-3. (Optional) Run hooks manually on all files:
-```shell
-pre-commit run --all-files
-```
+## License
 
-The hooks will:
-- Format code with Ruff
-- Sort imports
-- Check for common code issues
-- Detect merge conflicts
-- Ensure consistent code style
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
