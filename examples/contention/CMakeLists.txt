@@ -26,6 +26,7 @@ set(EXAMPLES
     "reduction"
     "simple_reduction"
     "reduction_optimized"
+    "histogram"
 )
 
 foreach(example IN LISTS EXAMPLES)

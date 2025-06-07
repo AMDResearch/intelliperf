@@ -276,20 +276,34 @@ class atomic_contention(Formula_Base):
 		cycle_latency_improvement = (
 			(unoptimized_metric - optimized_metric) / unoptimized_metric * 100 if unoptimized_metric > 0 else 0
 		)
+		self.optimization_report = ""
+		if metric_improvement > 1:
+			self.optimization_report += (
+				f"The optimized code shows {metric_improvement * 100:.3f}% improvement in atomic contention. "
+			)
+			self.optimization_report += f"Average atomic instruction latency improved from {unoptimized_metric:.3f} to {optimized_metric:.3f} cycles ({cycle_latency_improvement:.1f}% reduction). "
+		else:
+			self.optimization_report += (
+				f"The optimized code shows {metric_improvement * 100:.3f}% slowdown in atomic contention. "
+			)
+			self.optimization_report += f"Average atomic instruction latency increased from {unoptimized_metric:.3f} to {optimized_metric:.3f} cycles ({-1 * cycle_latency_improvement:.1f}% increase). "
 
-		self.optimization_report = (
-			f"The optimized code shows {metric_improvement * 100:.3f}% improvement in atomic contention. "
-			f"Average atomic instruction latency improved from {unoptimized_metric:.3f} to {optimized_metric:.3f} cycles ({cycle_latency_improvement:.1f}% reduction). "
-			f"The optimized implementation is {speedup:.3f}x faster overall, "
-			f"reducing execution time from {unoptimized_time / 1e6:.3f}ms to {optimized_time / 1e6:.3f}ms."
-		)
+		if speedup > 1:
+			self.optimization_report += f"The optimized implementation is {speedup:.3f}x faster overall, "
+			self.optimization_report += (
+				f"reducing execution time from {unoptimized_time / 1e6:.3f}ms to {optimized_time / 1e6:.3f}ms."
+			)
+		else:
+			self.optimization_report += f"The optimized implementation is {speedup:.3f}x slower overall, "
+			self.optimization_report += (
+				f"increasing execution time from {unoptimized_time / 1e6:.3f}ms to {optimized_time / 1e6:.3f}ms."
+			)
 
-		if not success:
-			message = "The optimized code had more atomic contention. " + self.optimization_report
-			self.current_summary = message
+		if not success or speedup < 1:
+			self.current_summary = self.optimization_report
 			return Result(
 				success=False,
-				error_report=message,
+				error_report=self.optimization_report,
 			)
 
 		logging.info(self.optimization_report)
