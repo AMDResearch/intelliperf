@@ -91,7 +91,7 @@ def send_response(pipe_name):
 		fifo.write("done\n")
 
 
-def get_kern_arg_data(pipe_name, args, ipc_file_name):
+def get_kern_arg_data(pipe_name, args, ipc_file_name, ipc_timeout_seconds=30):
 	logging.debug(f"pipe_name: {pipe_name}")
 	logging.debug(f"get_kern_arg_data args: {args}")
 	logging.debug(f"ipc_file_name: {ipc_file_name}")
@@ -99,8 +99,19 @@ def get_kern_arg_data(pipe_name, args, ipc_file_name):
 		os.mkfifo(pipe_name)
 		os.chmod(pipe_name, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
 
+	start_time = time.time()
 	with open(pipe_name, "rb") as fifo:  # noqa:  F841
-		ipc_handles, ptr_sizes = read_ipc_handles(args, ipc_file_name)
+		while True:
+			if time.time() - start_time > ipc_timeout_seconds:
+				raise TimeoutError(f"Timeout after {ipc_timeout_seconds} seconds waiting for IPC data")
+
+			try:
+				ipc_handles, ptr_sizes = read_ipc_handles(args, ipc_file_name)
+				break
+			except Exception as e:
+				if time.time() - start_time > ipc_timeout_seconds:
+					raise TimeoutError(f"Timeout after {ipc_timeout_seconds} seconds waiting for IPC data: {str(e)}")
+				time.sleep(0.1)
 
 	type_map = {
 		"double*": ctypes.c_double,

@@ -193,7 +193,14 @@ class Formula_Base:
 			os.chdir(project_directory)
 			os.posix_spawn(binary, binary_with_args, env)
 			os.chdir(original_dir)
-			results[label] = get_kern_arg_data(pipe_name, kernel_args, ipc_file_name)
+			try:
+				results[label] = get_kern_arg_data(pipe_name, kernel_args, ipc_file_name)
+			except TimeoutError as e:
+				logging.error(f"Timeout while getting kernel argument data for {label}: {str(e)}")
+				return Result(
+					success=False,
+					error_report=f"Timeout while getting kernel argument data for {label}: {str(e)}. The code may have crashed.",
+				)
 			send_response(pipe_name)
 		logging.debug(f"results unoptimized: {results['unoptimized']}")
 		logging.debug(f"results optimized: {results['optimized']}")
@@ -209,7 +216,8 @@ class Formula_Base:
 		for i in range(len(results[key0])):
 			if not validate_arrays(results[key0][i], results[key1][i], accordo_absolute_tolerance):
 				return Result(
-					success=False, error_report=f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close."
+					success=False,
+					error_report=f"The optimized code output does not match the unoptimized code output. Arrays at index {i} for '{key0}' and '{key1}' are NOT close.",
 				)
 		logging.debug("Validation succeeded.")
 		return Result(success=True)
