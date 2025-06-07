@@ -1,6 +1,16 @@
 # Examples
 
-To run an example after installing Maestro and its dependacies:
+
+## Bank Conflict Formula
+
+```console
+maestro --project_directory=./examples\
+    --build_command=../scripts/build_examples.sh\
+    --instrument_command="../scripts/build_examples.sh -i -c"\
+    --formula=bankConflict -- ./build/bank_conflict/matrix_transpose
+```
+
+## Memory Access Forumla
 
 ```console
 maestro --project_directory=./examples\
@@ -8,6 +18,21 @@ maestro --project_directory=./examples\
     --instrument_command="../scripts/build_examples.sh -i -c"\
     --formula=memoryAccess -- ./build/access_pattern/uncoalesced
 ```
+
+## Atomic Contention Formula
+
+```console
+maestro --project_directory=./examples\
+    --build_command=../scripts/build_examples.sh\
+    --instrument_command="../scripts/build_examples.sh -i -c"\
+    --formula=atomicContention -- ./build/contention/reduction
+```
+
+
+Example output:
+
+## Memory Access Forumla
+
 
 After running, you will get an output similar to:
 
@@ -314,3 +339,5 @@ Transpose correct ✅
   "formula": "memoryAccess"
 }
 ```
+
+
