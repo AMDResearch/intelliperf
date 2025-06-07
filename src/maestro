@@ -213,7 +213,7 @@ def main():
             continue
 
         # Validate the new application
-        correctness_result = optimizer.correctness_validation_pass(args.accordo_tolerance)
+        correctness_result = optimizer.correctness_validation_pass(args.accordo_absolute_tolerance)
         if not correctness_result:
             optimizer.summarize_previous_passes()
             continue
