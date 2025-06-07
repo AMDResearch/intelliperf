@@ -27,35 +27,35 @@ import requests
 
 
 class LLM:
-    def __init__(
-        self,
-        api_key: str,
-        system_prompt: str,
-        deployment_id: str = "dvue-aoai-001-o4-mini",
-        server: str = "https://llm-api.amd.com/azure",
-    ):
-        self.api_key = api_key
-        self.system_prompt = system_prompt
-        self.deployment_id = deployment_id
-        self.server = server
-        self.header = {"Ocp-Apim-Subscription-Key": api_key}
+	def __init__(
+		self,
+		api_key: str,
+		system_prompt: str,
+		deployment_id: str = "dvue-aoai-001-o4-mini",
+		server: str = "https://llm-api.amd.com/azure",
+	):
+		self.api_key = api_key
+		self.system_prompt = system_prompt
+		self.deployment_id = deployment_id
+		self.server = server
+		self.header = {"Ocp-Apim-Subscription-Key": api_key}
 
-    def ask(self, user_prompt: str) -> str:
-        body = {
-            "messages": [
-                {
-                    "role": "system",
-                    "content": self.system_prompt,
-                },
-                {"role": "user", "content": user_prompt},
-            ],
-            "max_Tokens": 4096,
-            "max_Completion_Tokens": 4096,
-        }
+	def ask(self, user_prompt: str) -> str:
+		body = {
+			"messages": [
+				{
+					"role": "system",
+					"content": self.system_prompt,
+				},
+				{"role": "user", "content": user_prompt},
+			],
+			"max_Tokens": 4096,
+			"max_Completion_Tokens": 4096,
+		}
 
-        response = requests.post(
-            url=f"{self.server}/engines/{self.deployment_id}/chat/completions",
-            json=body,
-            headers=self.header,
-        ).json()
-        return response["choices"][0]["message"]["content"]
+		response = requests.post(
+			url=f"{self.server}/engines/{self.deployment_id}/chat/completions",
+			json=body,
+			headers=self.header,
+		).json()
+		return response["choices"][0]["message"]["content"]
