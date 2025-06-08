@@ -98,7 +98,7 @@ We provide both Apptainer and Docker images for easy setup:
    ```bash
    export PATH=$(pwd)/external/logduration/install/bin/logDuration:$PATH
    export PATH=$(pwd)/external/rocprofiler-compute/src:$PATH
-   export PATH=$(pwd)/maestro/src:$PATH
+   export PATH=$(pwd)/src:$PATH
    ```
 
 ## Usage
