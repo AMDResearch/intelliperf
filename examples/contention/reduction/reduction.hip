@@ -28,25 +28,10 @@ SOFTWARE.
 #include <iostream>
 
 __global__ void reduction_kernel(const float* input, float* result, std::size_t count) {
-  extern __shared__ float sdata[];
-  unsigned int tid = threadIdx.x;
-  unsigned long idx = threadIdx.x + blockIdx.x * blockDim.x;
-  float val = 0.0f;
-  if (idx < count) {
-    val = input[idx] / (idx + 1);
-  }
-  sdata[tid] = val;
-  __syncthreads();
-
-  for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
-    if (tid < s) {
-      sdata[tid] += sdata[tid + s];
-    }
-    __syncthreads();
-  }
-
-  if (tid == 0) {
-    atomicAdd(result, sdata[0]);
+  const auto thread_id = threadIdx.x + blockIdx.x * blockDim.x;
+  if (thread_id < count) {
+    const auto value = input[thread_id];
+    atomicAdd(result, value / (thread_id + 1));
   }
 }
 
