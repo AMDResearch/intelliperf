@@ -34,14 +34,12 @@ import ml_dtypes
 import numpy as np
 import pandas as pd
 
-from core.application import Application
-from utils.process import exit_on_fail
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
-
 from accordo.python.code_gen import generate_header
 from accordo.python.communicate import get_kern_arg_data, send_response
 from accordo.python.utils import run_subprocess
+from maestro.core.application import Application
+from maestro.utils.env import get_accordo_path
+from maestro.utils.process import exit_on_fail
 
 
 class Result:
@@ -147,7 +145,7 @@ class Formula_Base:
 		logging.debug(f"unoptimized_binary: {unoptimized_binary}")
 		logging.debug(f"optimized_binary: {optimized_binary}")
 
-		accordo_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../", "accordo"))
+		accordo_directory = get_accordo_path()
 
 		results = {}
 		for app, label in zip([self._reference_app, self._application], ["unoptimized", "optimized"]):

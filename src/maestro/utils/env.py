@@ -1,4 +1,3 @@
-#!/bin/bash
 ################################################################################
 # MIT License
 
@@ -23,58 +22,23 @@
 # SOFTWARE.
 ################################################################################
 
-# Parse command line arguments
-dev_mode=false
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --dev|-d)
-            dev_mode=true
-            shift
-            ;;
-        *)
-            echo "Unknown option: $1"
-            exit 1
-            ;;
-    esac
-done
+import os
+from pathlib import Path
 
-# Container name
-name="maestro"
 
-# Script directories
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-parent_dir="$(dirname "$script_dir")"
-cur_dir=$(pwd)
+def get_guided_tuning_path():
+	if os.environ.get("GT_TUNING"):
+		return Path(os.environ["GT_TUNING"]).resolve()
+	return (Path(__file__).resolve().parent / "../../../external/guided-tuning").resolve()
 
-# Set MAESTRO_HOME based on dev mode
-if [ "$dev_mode" = true ]; then
-    maestro_home="$cur_dir"
-else
-    maestro_home="/maestro"
-fi
 
-pushd "$script_dir"
+def get_accordo_path():
+	return (Path(__file__).resolve().parent / "../../accordo").resolve()
 
-# Auto-configure SSH agent
-if [ ! -S ~/.ssh/ssh_auth_sock ]; then
-    eval "$(ssh-agent)" > /dev/null
-    ln -sf "$SSH_AUTH_SOCK" ~/.ssh/ssh_auth_sock
-fi
-export SSH_AUTH_SOCK=~/.ssh/ssh_auth_sock
 
-# Add default keys if they exist
-[ -f ~/.ssh/id_rsa ] && ssh-add ~/.ssh/id_rsa
-[ -f ~/.ssh/id_ed25519 ] && ssh-add ~/.ssh/id_ed25519
-[ -f ~/.ssh/id_github ] && ssh-add ~/.ssh/id_github
+def get_rocprofiler_path():
+	return (Path(__file__).resolve().parent / "../../../external/rocprofiler-compute/src").resolve()
 
-# Enable BuildKit and build the Docker image
-export DOCKER_BUILDKIT=1
-docker build \
-    --ssh default \
-    -t "$name" \
-    --build-arg DEV_MODE="$dev_mode" \
-    --build-arg MAESTRO_HOME="$maestro_home" \
-    -f "$script_dir/maestro.Dockerfile" \
-    .
 
-popd
+def get_nexus_path():
+	return (Path(__file__).resolve().parent / "../../../external/nexus").resolve()

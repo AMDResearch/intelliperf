@@ -2,13 +2,12 @@
 
 FROM rocm/vllm-dev:nightly_aiter_integration_final_20250325
 
-
+ARG DEV_MODE=false
+ARG MAESTRO_HOME=/maestro
 
 ENV LANG=en_US.UTF-8
-ARG MAESTRO_HOME=/maestro
 ENV GT_COLOR=0
 ENV PATH=/opt/rocm/bin:$PATH
-ENV PATH=$MAESTRO_HOME/external/logduration/install/bin/logDuration:$MAESTRO_HOME/external/rocprofiler-compute/src:$MAESTRO_HOME/src:$PATH
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \
@@ -21,9 +20,6 @@ RUN apt-get update && apt-get install -y \
     gdb \
     && locale-gen en_US.UTF-8
 
-# Temporary until we merge the logduration PR
-RUN apt-get install -y nlohmann-json3-dev
-
 # Add GitHub trusted host
 RUN mkdir -p ~/.ssh && \
     touch ~/.ssh/known_hosts && \
@@ -34,6 +30,10 @@ RUN mkdir -p ~/.ssh && \
 # Set the working directory
 WORKDIR $MAESTRO_HOME
 
-# Clone Maestro
-RUN  --mount=type=ssh \
-    git clone git@github.com:AMDResearch/maestro.git .
+# Clone Maestro only in non-dev mode
+RUN if [ "$DEV_MODE" = "false" ]; then \
+    --mount=type=ssh \
+    git clone git@github.com:AMDResearch/maestro.git . ; \
+    pip install -e .; \
+    python3 scripts/install_tool.py --all; \
+    fi

@@ -152,19 +152,19 @@ def main():
 
 	# Create an optimizer based on available Maestro formulas.
 	if args.formula == "bankConflict":
-		from formulas.bank_conflict import bank_conflict
+		from maestro.formulas.bank_conflict import bank_conflict
 
 		formula = bank_conflict
 	elif args.formula == "diagnoseOnly":
-		from formulas.diagnose_only import diagnose_only
+		from maestro.formulas.diagnose_only import diagnose_only
 
 		formula = diagnose_only
 	elif args.formula == "memoryAccess":
-		from formulas.memory_access import memory_access
+		from maestro.formulas.memory_access import memory_access
 
 		formula = memory_access
 	elif args.formula == "atomicContention":
-		from formulas.atomic_contention import atomic_contention
+		from maestro.formulas.atomic_contention import atomic_contention
 
 		formula = atomic_contention
 	else:

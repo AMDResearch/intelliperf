@@ -38,7 +38,9 @@ def exit_on_fail(success: bool, message: str, log: str = ""):
 		sys.exit(1)
 
 
-def capture_subprocess_output(subprocess_args: list, working_directory: str = None, new_env=None) -> tuple:
+def capture_subprocess_output(
+	subprocess_args: list, working_directory: str = None, new_env=None, additional_path=None
+) -> tuple:
 	verbose = logging.getLogger().getEffectiveLevel() <= logging.DEBUG
 
 	logging.debug(f"Running the command: {' '.join(subprocess_args)}")
@@ -51,6 +53,11 @@ def capture_subprocess_output(subprocess_args: list, working_directory: str = No
 	env = new_env.copy() if new_env else os.environ.copy()
 	if working_directory is not None:
 		env["PWD"] = working_directory
+
+	if additional_path is not None:
+		env["PATH"] = str(additional_path) + ":" + env["PATH"]
+
+	logging.debug(f"PATH: {env['PATH']}")
 
 	# Start subprocess
 	# bufsize = 1 means output is line buffered
