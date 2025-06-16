@@ -31,9 +31,8 @@ RUN mkdir -p ~/.ssh && \
 WORKDIR $MAESTRO_HOME
 
 # Clone Maestro only in non-dev mode
-RUN if [ "$DEV_MODE" = "false" ]; then \
-    --mount=type=ssh \
+RUN --mount=type=ssh bash -c 'if [ "$DEV_MODE" = "false" ]; then \
     git clone git@github.com:AMDResearch/maestro.git . ; \
     pip install -e .; \
     python3 scripts/install_tool.py --all; \
-    fi
+    fi'
