@@ -23,7 +23,7 @@
 # SOFTWARE.
 ################################################################################
 
-name="muhaawad_maestro"
+name="maestro"
 
 docker run -it --rm \
     --name "$name" \

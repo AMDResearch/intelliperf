@@ -39,7 +39,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Container name
-name="muhaawad_maestro"
+name="maestro"
 
 # Script directories
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

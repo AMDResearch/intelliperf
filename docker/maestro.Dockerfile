@@ -8,7 +8,6 @@ ARG MAESTRO_HOME=/maestro
 ENV LANG=en_US.UTF-8
 ENV GT_COLOR=0
 ENV PATH=/opt/rocm/bin:$PATH
-#ENV PATH=$MAESTRO_HOME/external/logduration/install/bin/logDuration:$MAESTRO_HOME/external/rocprofiler-compute/src:$MAESTRO_HOME/src:$PATH
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \
