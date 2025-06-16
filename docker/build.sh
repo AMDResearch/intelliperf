@@ -23,13 +23,35 @@
 # SOFTWARE.
 ################################################################################
 
+# Parse command line arguments
+dev_mode=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --dev|-d)
+            dev_mode=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
 # Container name
-name="maestro"
+name="muhaawad_maestro"
 
 # Script directories
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 parent_dir="$(dirname "$script_dir")"
 cur_dir=$(pwd)
+
+# Set MAESTRO_HOME based on dev mode
+if [ "$dev_mode" = true ]; then
+    maestro_home="$cur_dir"
+else
+    maestro_home="/maestro"
+fi
 
 pushd "$script_dir"
 
@@ -50,6 +72,8 @@ export DOCKER_BUILDKIT=1
 docker build \
     --ssh default \
     -t "$name" \
+    --build-arg DEV_MODE="$dev_mode" \
+    --build-arg MAESTRO_HOME="$maestro_home" \
     -f "$script_dir/maestro.Dockerfile" \
     .
 

@@ -26,9 +26,9 @@ import json
 import logging
 import os
 
-from core.llm import LLM
-from formulas.formula_base import Formula_Base, Result, filter_json_field, get_kernel_name, write_results
-from utils.process import exit_on_fail
+from maestro.core.llm import LLM
+from maestro.formulas.formula_base import Formula_Base, Result, filter_json_field, get_kernel_name, write_results
+from maestro.utils.process import exit_on_fail
 
 
 class memory_access(Formula_Base):

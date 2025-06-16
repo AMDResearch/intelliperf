@@ -30,10 +30,9 @@ import shutil
 import tempfile
 
 import pandas as pd
-
-from utils import process
-from utils.env import get_guided_tuning_path
-from utils.process import capture_subprocess_output, exit_on_fail
+from maestro.utils import process
+from maestro.utils.env import get_guided_tuning_path, get_nexus_path, get_rocprofiler_path
+from maestro.utils.process import capture_subprocess_output, exit_on_fail
 
 
 class Application:
@@ -68,11 +67,15 @@ class Application:
 
 		# Clear the cache before running the profiler
 		capture_subprocess_output(
-			["rm", "-rf", f"{get_guided_tuning_path()}/workloads/"], working_directory=self.get_project_directory()
+			["rm", "-rf", f"{get_guided_tuning_path()}/workloads/"],
+			working_directory=self.get_project_directory(),
+			additional_path=get_rocprofiler_path(),
 		)
 
 		capture_subprocess_output(
-			["rm", "-rf", f"{get_guided_tuning_path()}/data/guided.db"], working_directory=self.get_project_directory()
+			["rm", "-rf", f"{get_guided_tuning_path()}/data/guided.db"],
+			working_directory=self.get_project_directory(),
+			additional_path=get_rocprofiler_path(),
 		)
 
 		# Profile the app using GT
@@ -88,6 +91,7 @@ class Application:
 			]
 			+ self.get_app_cmd(),
 			working_directory=self.get_project_directory(),
+			additional_path=get_rocprofiler_path(),
 		)
 
 		exit_on_fail(success=success, message="Failed to profile the binary", log=output)
@@ -101,6 +105,7 @@ class Application:
 				self.get_name(),
 			],
 			working_directory=self.get_project_directory(),
+			additional_path=get_rocprofiler_path(),
 		)
 		exit_on_fail(success=success, message="Failed to generate the performance report card.", log=output)
 
@@ -121,6 +126,7 @@ class Application:
 				f"{get_guided_tuning_path()}/maestro_summary.csv",
 			],
 			working_directory=self.get_project_directory(),
+			additional_path=get_rocprofiler_path(),
 		)
 		# Handle critical error
 		exit_on_fail(success=success, message="Failed to generate the performance report card.", log=output)
@@ -141,6 +147,7 @@ class Application:
 				f"{get_guided_tuning_path()}/maestro_report_card.json",
 			],
 			working_directory=self.get_project_directory(),
+			additional_path=get_rocprofiler_path(),
 		)
 		df_results = json.loads(open(f"{get_guided_tuning_path()}/maestro_report_card.json").read())
 		return df_results
@@ -185,7 +192,7 @@ class Application:
 		return Application(self.name + "_clone", self.build_command, self.instrument_command, temp_dir, self.app_cmd)
 
 	def collect_source_code(self):
-		nexus_directory = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../external/nexus"))
+		nexus_directory = get_nexus_path()
 		lib = os.path.join(nexus_directory, "build", "lib", "libnexus.so")
 		env = os.environ.copy()
 

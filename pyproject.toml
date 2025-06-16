@@ -15,6 +15,16 @@ requires-python = ">=3.8"
 dependencies = ["tomli", "openai>=1.0.0", "tabulate", "ml_dtypes"]
 
 
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["maestro", "accordo"]
+
+[project.scripts]
+maestro = "maestro.__main__:main"
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
@@ -37,7 +47,7 @@ python3 -m pip install -r requirements.txt
 
 [tool.logduration]
 git = "git@github.com:AMDResearch/logduration.git"
-branch = "17da6f901f17a25747ddec988d391c70d34342d8"
+branch = "8e63827f1cd17077cdf13aef7177eb311cc2c896"
 build_command = """
 export CC=${ROCM_PATH}/bin/hipcc
 export CXX=${ROCM_PATH}/bin/hipcc

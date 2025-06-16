@@ -1,4 +1,3 @@
-#!/bin/bash
 ################################################################################
 # MIT License
 
@@ -23,18 +22,23 @@
 # SOFTWARE.
 ################################################################################
 
-name="muhaawad_maestro"
+import os
+from pathlib import Path
 
-docker run -it --rm \
-    --name "$name" \
-    --device=/dev/kfd \
-    --device=/dev/dri \
-    --group-add video \
-    -v $HOME/.ssh:/tmp/ssh:ro \
-    -v $(pwd):$(pwd) \
-    -w $(pwd) \
-    -e LLM_GATEWAY_KEY="$LLM_GATEWAY_KEY" \
-    -e SSH_AUTH_SOCK="$SSH_AUTH_SOCK" \
-    -v $SSH_AUTH_SOCK:$SSH_AUTH_SOCK \
-    "$name" \
-    bash -c "cp -r /tmp/ssh/* /root/.ssh/ 2>/dev/null || true && chown -R root:root /root/.ssh && chmod 700 /root/.ssh && chmod 600 /root/.ssh/config /root/.ssh/id_* /root/.ssh/known_hosts 2>/dev/null || true; exec bash"
+
+def get_guided_tuning_path():
+	if os.environ.get("GT_TUNING"):
+		return Path(os.environ["GT_TUNING"]).resolve()
+	return (Path(__file__).resolve().parent / "../../../external/guided-tuning").resolve()
+
+
+def get_accordo_path():
+	return (Path(__file__).resolve().parent / "../../accordo").resolve()
+
+
+def get_rocprofiler_path():
+	return (Path(__file__).resolve().parent / "../../../external/rocprofiler-compute/src").resolve()
+
+
+def get_nexus_path():
+	return (Path(__file__).resolve().parent / "../../../external/nexus").resolve()
