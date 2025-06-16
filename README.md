@@ -93,14 +93,6 @@ We provide both Apptainer and Docker images for easy setup:
    python3 scripts/install_tool.py --all
    ```
 
-
-5. **Set Up Environment**:
-   ```bash
-   export PATH=$(pwd)/external/logduration/install/bin/logDuration:$PATH
-   export PATH=$(pwd)/external/rocprofiler-compute/src:$PATH
-   export PATH=$(pwd)/src:$PATH
-   ```
-
 ## Usage
 
 Maestro can be used to analyze and optimize your GPU applications:
