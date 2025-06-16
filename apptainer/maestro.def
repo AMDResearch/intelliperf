@@ -81,7 +81,7 @@ From: ubuntu:22.04
     cd /root
     git clone -v git@github.com:AARInternal/logduration.git
     cd logduration
-    git checkout 5caa4a4c4beefda6f357a72579b428d0dd152679
+    git checkout 8e63827f1cd17077cdf13aef7177eb311cc2c896
     git submodule update --init --recursive
     mkdir -p build 
     cmake -DCMAKE_INSTALL_PREFIX=/opt/logduration\
