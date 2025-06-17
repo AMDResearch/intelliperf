@@ -164,7 +164,7 @@ class atomic_contention(Formula_Base):
 				return Result(success=False, error_report="Kernel file not found.")
 
 			user_prompt = (
-				f"There is atomic contention in the kernel {kernel} in the file {unoptimized_file_content}."
+				f"There is atomic contention in the kernel {kernel} in the source code {unoptimized_file_content}."
 				f" Please fix the contention but do not change the semantics of the program."
 				" If you remove the copyright, your solution will be rejected."
 			)

@@ -162,7 +162,7 @@ class memory_access(Formula_Base):
 				return Result(success=False, error_report=f"Kernel file not found for kernel {kernel}.")
 
 			user_prompt = (
-				f"There is an uncoalesced memory access in the kernel {kernel} in the file {unoptimized_file_content}."
+				f"There is an uncoalesced memory access in the kernel {kernel} in the source code {unoptimized_file_content}."
 				f" Please fix the access pattern but do not change the semantics of the program."
 				" If you remove the copyright, your solution will be rejected."
 			)
