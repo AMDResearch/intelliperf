@@ -25,6 +25,7 @@
 import json
 import logging
 import os
+import difflib
 
 from maestro.core.llm import LLM
 from maestro.formulas.formula_base import Formula_Base, Result, filter_json_field, get_kernel_name, write_results
@@ -54,6 +55,7 @@ class atomic_contention(Formula_Base):
 		self.optimization_report = None
 		self.bottleneck_report = None
 		self.current_summary = None
+		self.previous_source_code = None
 
 	def profile_pass(self) -> Result:
 		"""
@@ -167,9 +169,21 @@ class atomic_contention(Formula_Base):
 				" If you remove the copyright, your solution will be rejected."
 			)
 			if self.current_summary is not None:
-				diff = self.compute_diff(kernel_file)
-				user_prompt += f"\nThe current summary is: {self.current_summary}"
-				user_prompt += f"\nThe diff between the current and reference code is: {diff}"
+				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
+
+				# Split the strings into lines for proper diff computation
+				prev_lines = self.previous_source_code.splitlines(keepends=True)
+				curr_lines = unoptimized_file_content.splitlines(keepends=True)
+				cur_diff = difflib.unified_diff(prev_lines, curr_lines)
+				cur_diff = "".join(cur_diff)
+
+				logging.debug(f"Previous source code: {self.previous_source_code}")
+				logging.debug(f"Unoptimized file content: {unoptimized_file_content}")
+				logging.debug(f"Current diff: {cur_diff}")
+
+				user_prompt += f"\nThe diff between the current and previous code is: {cur_diff}"
+
+			self.previous_source_code = unoptimized_file_content
 
 			args = kernel.split("(")[1].split(")")[0]
 			self.bottleneck_report = (
