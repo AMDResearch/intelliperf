@@ -22,12 +22,12 @@
 # SOFTWARE.
 ################################################################################
 
+import difflib
 import glob
 import json
 import logging
 import os
 import shutil
-import difflib
 
 from maestro.core.llm import LLM
 from maestro.formulas.formula_base import Formula_Base, Result, filter_json_field, get_kernel_name, write_results
