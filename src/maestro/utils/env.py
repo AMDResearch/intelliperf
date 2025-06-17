@@ -25,6 +25,8 @@
 import os
 from pathlib import Path
 
+from maestro.utils.process import exit_on_fail
+
 
 def get_guided_tuning_path():
 	if os.environ.get("GT_TUNING"):
@@ -42,3 +44,10 @@ def get_rocprofiler_path():
 
 def get_nexus_path():
 	return (Path(__file__).resolve().parent / "../../../external/nexus").resolve()
+
+
+def get_llm_api_key():
+	llm_key = os.environ.get("LLM_GATEWAY_KEY")
+	if not llm_key:
+		exit_on_fail(success=False, message="Missing LLM API key. Please set the LLM_GATEWAY_KEY environment variable.")
+	return llm_key
