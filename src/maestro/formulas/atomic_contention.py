@@ -28,7 +28,7 @@ import os
 
 from maestro.core.llm import LLM
 from maestro.formulas.formula_base import Formula_Base, Result, filter_json_field, get_kernel_name, write_results
-from maestro.utils.process import exit_on_fail
+from maestro.utils.env import get_llm_api_key
 
 
 class atomic_contention(Formula_Base):
@@ -108,12 +108,7 @@ class atomic_contention(Formula_Base):
 		    Result: Optimized kernel as a file path
 		"""
 		super().optimize_pass()
-		llm_key = os.getenv("LLM_GATEWAY_KEY")
-
-		if not llm_key:
-			exit_on_fail(
-				success=False, message="Missing LLM API key. Please set the LLM_GATEWAY_KEY environment variable."
-			)
+		llm_key = get_llm_api_key()
 
 		system_prompt = (
 			"You are a skilled GPU HIP programmer. Given a kernel,"

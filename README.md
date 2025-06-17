@@ -93,6 +93,24 @@ We provide both Apptainer and Docker images for easy setup:
    python3 scripts/install_tool.py --all
    ```
 
+## Environment Variables
+
+Set the following environment variable for AI-powered optimization:
+
+```bash
+export LLM_GATEWAY_KEY="your_api_key_here"
+```
+
+Required for bank conflicts, memory access patterns, and atomic contention optimization.
+
+## Supported GPUs
+
+Maestro currently supports:
+
+- **MI300X**
+
+> **Note**: Maestro may work on other AMD GPUs with ROCm compatibility, but has only been tested on MI300X.
+
 ## Usage
 
 Maestro can be used to analyze and optimize your GPU applications:
