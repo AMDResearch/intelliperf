@@ -187,7 +187,9 @@ class atomic_contention(Formula_Base):
 
 			args = kernel.split("(")[1].split(")")[0]
 			self.bottleneck_report = (
-				f"Maestro detected atomic contention in the kernel `{kernel_name}` with arguments `{args}`."
+				f"Atomic Contention Detection: Maestro identified high atomic contention in kernel "
+				f"`{kernel_name}` with arguments `{args}`. Atomic contention occurs when multiple threads "
+				f"compete for the same atomic operations, causing serialization and increased latency."
 			)
 
 		else:
@@ -279,26 +281,35 @@ class atomic_contention(Formula_Base):
 			(unoptimized_metric - optimized_metric) / unoptimized_metric * 100 if unoptimized_metric > 0 else 0
 		)
 		self.optimization_report = ""
+
+		# Format the atomic contention improvement message
 		if metric_improvement > 1:
 			self.optimization_report += (
-				f"The optimized code shows {metric_improvement * 100:.3f}% improvement in atomic contention. "
+				f"Atomic Contention Reduction: Successfully reduced atomic contention by "
+				f"{metric_improvement * 100:.1f}%. "
+				f"Average atomic latency improved from {unoptimized_metric:.0f} to {optimized_metric:.0f} cycles "
+				f"({cycle_latency_improvement:.1f}% reduction - lower latency means less contention). "
 			)
-			self.optimization_report += f"Average atomic instruction latency improved from {unoptimized_metric:.3f} to {optimized_metric:.3f} cycles ({cycle_latency_improvement:.1f}% reduction). "
 		else:
 			self.optimization_report += (
-				f"The optimized code shows {metric_improvement * 100:.3f}% slowdown in atomic contention. "
+				f"Atomic Contention Increase: Atomic contention increased by "
+				f"{abs(metric_improvement - 1) * 100:.1f}%. "
+				f"Average atomic latency worsened from {unoptimized_metric:.0f} to {optimized_metric:.0f} cycles "
+				f"({abs(cycle_latency_improvement):.1f}% increase - higher latency means more contention). "
 			)
-			self.optimization_report += f"Average atomic instruction latency increased from {unoptimized_metric:.3f} to {optimized_metric:.3f} cycles ({-1 * cycle_latency_improvement:.1f}% increase). "
 
+		# Format the performance improvement message
 		if speedup > 1:
-			self.optimization_report += f"The optimized implementation is {speedup:.3f}x faster overall, "
 			self.optimization_report += (
-				f"reducing execution time from {unoptimized_time / 1e6:.3f}ms to {optimized_time / 1e6:.3f}ms."
+				f"Performance Gain: Achieved {speedup:.2f}x speedup with execution time "
+				f"reduced from {unoptimized_time / 1e6:.2f}ms to {optimized_time / 1e6:.2f}ms "
+				f"({(speedup - 1) * 100:.1f}% faster)."
 			)
 		else:
-			self.optimization_report += f"The optimized implementation is {speedup:.3f}x slower overall, "
 			self.optimization_report += (
-				f"increasing execution time from {unoptimized_time / 1e6:.3f}ms to {optimized_time / 1e6:.3f}ms."
+				f"Performance Loss: Experienced {1 / speedup:.2f}x slowdown with execution time "
+				f"increased from {unoptimized_time / 1e6:.2f}ms to {optimized_time / 1e6:.2f}ms "
+				f"({(1 / speedup - 1) * 100:.1f}% slower)."
 			)
 
 		if not success or speedup < 1:

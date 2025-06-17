@@ -185,7 +185,9 @@ class memory_access(Formula_Base):
 
 			args = kernel.split("(")[1].split(")")[0]
 			self.bottleneck_report = (
-				f"Maestro detected uncoalesced memory accesses in the kernel `{kernel_name}` with arguments `{args}`."
+				f"Memory Access Pattern Detection: Maestro identified inefficient memory access patterns "
+				f"in kernel `{kernel_name}` with arguments `{args}`. Uncoalesced memory accesses occur when "
+				f"threads access memory in non-sequential patterns, reducing memory bandwidth utilization."
 			)
 		else:
 			pass
@@ -265,24 +267,35 @@ class memory_access(Formula_Base):
 		coal_improvement = optimized_coal / unoptimized_coal if optimized_coal != 0 else 1
 
 		self.optimization_report = ""
+
+		# Format the memory coalescing improvement message
 		if coal_improvement > 1:
-			self.optimization_report += f"The optimized code achieved {optimized_coal}% memory coalescing (up from {unoptimized_coal}%, {coal_improvement * 100:.3f}% improvement), "
-		else:
-			self.optimization_report += f"The optimized code achieved {optimized_coal}% memory coalescing (down from {unoptimized_coal}%, {coal_improvement * 100:.3f}% decrease), "
-
-		self.optimization_report += (
-			"where higher coalescing percentages indicate more efficient memory access patterns. "
-		)
-
-		if speedup > 1:
-			self.optimization_report += f"The optimized implementation is {speedup:.3f}x faster overall, "
 			self.optimization_report += (
-				f"reducing execution time from {unoptimized_time / 1e6:.3f}ms to {optimized_time / 1e6:.3f}ms."
+				f"Memory Coalescing Improvement: Successfully improved memory access patterns by "
+				f"{coal_improvement * 100:.1f}%. "
+				f"Coalescing efficiency increased from {unoptimized_coal:.1f}% to {optimized_coal:.1f}% "
+				f"(higher percentages indicate more efficient memory access patterns). "
 			)
 		else:
-			self.optimization_report += f"The optimized implementation is {speedup:.3f}x slower overall, "
 			self.optimization_report += (
-				f"increasing execution time from {unoptimized_time / 1e6:.3f}ms to {optimized_time / 1e6:.3f}ms."
+				f"Memory Coalescing Degradation: Memory access patterns worsened by "
+				f"{abs(coal_improvement - 1) * 100:.1f}%. "
+				f"Coalescing efficiency decreased from {unoptimized_coal:.1f}% to {optimized_coal:.1f}% "
+				f"(lower percentages indicate less efficient memory access patterns). "
+			)
+
+		# Format the performance improvement message
+		if speedup > 1:
+			self.optimization_report += (
+				f"Performance Gain: Achieved {speedup:.2f}x speedup with execution time "
+				f"reduced from {unoptimized_time / 1e6:.2f}ms to {optimized_time / 1e6:.2f}ms "
+				f"({(speedup - 1) * 100:.1f}% faster)."
+			)
+		else:
+			self.optimization_report += (
+				f"Performance Loss: Experienced {1 / speedup:.2f}x slowdown with execution time "
+				f"increased from {unoptimized_time / 1e6:.2f}ms to {optimized_time / 1e6:.2f}ms "
+				f"({(1 / speedup - 1) * 100:.1f}% slower)."
 			)
 
 		if not success or speedup < 1:

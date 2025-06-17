@@ -255,7 +255,9 @@ class bank_conflict(Formula_Base):
 
 			args = kernel.split("(")[1].split(")")[0]
 			self.bottleneck_report = (
-				f"Maestro detected bank conflicts in the kernel `{kernel_name}` with arguments `{args}`."
+				f"Bank Conflict Detection: Maestro identified shared memory bank conflicts in kernel "
+				f"`{kernel_name}` with arguments `{args}`. Bank conflicts occur when multiple threads "
+				f"access the same memory bank simultaneously, causing serialization and performance degradation."
 			)
 		else:
 			pass
@@ -334,29 +336,36 @@ class bank_conflict(Formula_Base):
 		) * 100
 
 		self.optimization_report = ""
+
+		# Format the conflict improvement message
 		if conflict_improvement_percentage > 1:
 			self.optimization_report += (
-				f"The optimized code reduced the LDS conflict ratio by {conflict_improvement_percentage:.3f}%. "
-				f"The initial implementation had a conflict ratio of {unoptimized_conflicts:.3f}, "
-				f"while the optimized version brought it down to {optimized_conflicts:.3f}. "
+				f"Bank Conflict Reduction: Successfully reduced shared memory bank conflicts by "
+				f"{conflict_improvement_percentage:.1f}%. "
+				f"Conflict ratio improved from {unoptimized_conflicts:.1f} to {optimized_conflicts:.1f} "
+				f"(lower values indicate fewer conflicts and better performance). "
 			)
 		else:
 			self.optimization_report += (
-				f"The new code increased the LDS conflict ratio by {conflict_improvement_percentage:.3f}%. "
-				f"The initial implementation had a conflict ratio of {unoptimized_conflicts:.3f}, "
-				f"while the optimized version brought it up to {optimized_conflicts:.3f}. "
+				f"Bank Conflict Increase: Bank conflicts increased by "
+				f"{abs(conflict_improvement_percentage):.1f}%. "
+				f"Conflict ratio worsened from {unoptimized_conflicts:.1f} to {optimized_conflicts:.1f} "
+				f"(higher values indicate more conflicts and worse performance). "
 			)
 
+		# Format the performance improvement message
 		if speedup > 1:
 			self.optimization_report += (
-				f"This translated to a {speedup:.3f}x speedup overall: execution time dropped from "
+				f"Performance Gain: Achieved {speedup:.2f}x speedup with execution time "
+				f"reduced from {unoptimized_time / 1_000_000:.2f}ms to {optimized_time / 1_000_000:.2f}ms "
+				f"({(speedup - 1) * 100:.1f}% faster)."
 			)
-			self.optimization_report += f"{unoptimized_time / 1_000_000:.3f} ms to {optimized_time / 1_000_000:.3f} ms."
 		else:
 			self.optimization_report += (
-				f"This translated to a {speedup:.3f}x slowdown overall: execution time increased from "
+				f"Performance Loss: Experienced {1 / speedup:.2f}x slowdown with execution time "
+				f"increased from {unoptimized_time / 1_000_000:.2f}ms to {optimized_time / 1_000_000:.2f}ms "
+				f"({(1 / speedup - 1) * 100:.1f}% slower)."
 			)
-			self.optimization_report += f"{unoptimized_time / 1_000_000:.3f} ms to {optimized_time / 1_000_000:.3f} ms."
 
 		if not success or speedup < 1:
 			self.current_summary = self.optimization_report
