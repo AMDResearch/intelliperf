@@ -22,6 +22,7 @@
 # SOFTWARE.
 ################################################################################
 
+import difflib
 import json
 import logging
 import os
@@ -44,8 +45,6 @@ class memory_access(Formula_Base):
 	):
 		super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
 
-		self._reference_app = self._application.clone()
-
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
 		self.only_consider_top_kernel = only_consider_top_kernel
 		self._instrumentation_results = None
@@ -56,6 +55,7 @@ class memory_access(Formula_Base):
 		self.optimization_report = None
 		self.bottleneck_report = None
 		self.current_summary = None
+		self.previous_source_code = None
 
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
@@ -162,15 +162,32 @@ class memory_access(Formula_Base):
 				return Result(success=False, error_report=f"Kernel file not found for kernel {kernel}.")
 
 			user_prompt = (
-				f"There is an uncoalesced memory access in the kernel {kernel} in the file {unoptimized_file_content}."
+				f"There is an uncoalesced memory access in the kernel {kernel} in the source code {unoptimized_file_content}."
 				f" Please fix the access pattern but do not change the semantics of the program."
 				" If you remove the copyright, your solution will be rejected."
 			)
 			if self.current_summary is not None:
 				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
+
+				# Split the strings into lines for proper diff computation
+				prev_lines = self.previous_source_code.splitlines(keepends=True)
+				curr_lines = unoptimized_file_content.splitlines(keepends=True)
+				cur_diff = difflib.unified_diff(prev_lines, curr_lines)
+				cur_diff = "".join(cur_diff)
+
+				logging.debug(f"Previous source code: {self.previous_source_code}")
+				logging.debug(f"Unoptimized file content: {unoptimized_file_content}")
+				logging.debug(f"Current diff: {cur_diff}")
+
+				user_prompt += f"\nThe diff between the current and previous code is: {cur_diff}"
+
+			self.previous_source_code = unoptimized_file_content
+
 			args = kernel.split("(")[1].split(")")[0]
 			self.bottleneck_report = (
-				f"Maestro detected uncoalesced memory accesses in the kernel `{kernel_name}` with arguments `{args}`."
+				f"Memory Access Pattern Detection: Maestro identified inefficient memory access patterns "
+				f"in kernel `{kernel_name}` with arguments `{args}`. Uncoalesced memory accesses occur when "
+				f"threads access memory in non-sequential patterns, reducing memory bandwidth utilization."
 			)
 		else:
 			pass
@@ -250,24 +267,35 @@ class memory_access(Formula_Base):
 		coal_improvement = optimized_coal / unoptimized_coal if optimized_coal != 0 else 1
 
 		self.optimization_report = ""
+
+		# Format the memory coalescing improvement message
 		if coal_improvement > 1:
-			self.optimization_report += f"The optimized code achieved {optimized_coal}% memory coalescing (up from {unoptimized_coal}%, {coal_improvement * 100:.3f}% improvement), "
-		else:
-			self.optimization_report += f"The optimized code achieved {optimized_coal}% memory coalescing (down from {unoptimized_coal}%, {coal_improvement * 100:.3f}% decrease), "
-
-		self.optimization_report += (
-			"where higher coalescing percentages indicate more efficient memory access patterns. "
-		)
-
-		if speedup > 1:
-			self.optimization_report += f"The optimized implementation is {speedup:.3f}x faster overall, "
 			self.optimization_report += (
-				f"reducing execution time from {unoptimized_time / 1e6:.3f}ms to {optimized_time / 1e6:.3f}ms."
+				f"Memory Coalescing Improvement: Successfully improved memory access patterns by "
+				f"{coal_improvement * 100:.1f}%. "
+				f"Coalescing efficiency increased from {unoptimized_coal:.1f}% to {optimized_coal:.1f}% "
+				f"(higher percentages indicate more efficient memory access patterns). "
 			)
 		else:
-			self.optimization_report += f"The optimized implementation is {speedup:.3f}x slower overall, "
 			self.optimization_report += (
-				f"increasing execution time from {unoptimized_time / 1e6:.3f}ms to {optimized_time / 1e6:.3f}ms."
+				f"Memory Coalescing Degradation: Memory access patterns worsened by "
+				f"{abs(coal_improvement - 1) * 100:.1f}%. "
+				f"Coalescing efficiency decreased from {unoptimized_coal:.1f}% to {optimized_coal:.1f}% "
+				f"(lower percentages indicate less efficient memory access patterns). "
+			)
+
+		# Format the performance improvement message
+		if speedup > 1:
+			self.optimization_report += (
+				f"Performance Gain: Achieved {speedup:.2f}x speedup with execution time "
+				f"reduced from {unoptimized_time / 1e6:.2f}ms to {optimized_time / 1e6:.2f}ms "
+				f"({(speedup - 1) * 100:.1f}% faster)."
+			)
+		else:
+			self.optimization_report += (
+				f"Performance Loss: Experienced {1 / speedup:.2f}x slowdown with execution time "
+				f"increased from {unoptimized_time / 1e6:.2f}ms to {optimized_time / 1e6:.2f}ms "
+				f"({(1 / speedup - 1) * 100:.1f}% slower)."
 			)
 
 		if not success or speedup < 1:

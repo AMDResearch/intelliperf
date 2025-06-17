@@ -22,6 +22,7 @@
 # SOFTWARE.
 ################################################################################
 
+import difflib
 import json
 import logging
 import os
@@ -44,8 +45,6 @@ class atomic_contention(Formula_Base):
 	):
 		super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
 
-		self._reference_app = self._application.clone()
-
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
 		self.only_consider_top_kernel = only_consider_top_kernel
 		self._instrumentation_results = None
@@ -56,6 +55,7 @@ class atomic_contention(Formula_Base):
 		self.optimization_report = None
 		self.bottleneck_report = None
 		self.current_summary = None
+		self.previous_source_code = None
 
 	def profile_pass(self) -> Result:
 		"""
@@ -164,15 +164,32 @@ class atomic_contention(Formula_Base):
 				return Result(success=False, error_report="Kernel file not found.")
 
 			user_prompt = (
-				f"There is atomic contention in the kernel {kernel} in the file {unoptimized_file_content}."
+				f"There is atomic contention in the kernel {kernel} in the source code {unoptimized_file_content}."
 				f" Please fix the contention but do not change the semantics of the program."
 				" If you remove the copyright, your solution will be rejected."
 			)
 			if self.current_summary is not None:
 				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
+
+				# Split the strings into lines for proper diff computation
+				prev_lines = self.previous_source_code.splitlines(keepends=True)
+				curr_lines = unoptimized_file_content.splitlines(keepends=True)
+				cur_diff = difflib.unified_diff(prev_lines, curr_lines)
+				cur_diff = "".join(cur_diff)
+
+				logging.debug(f"Previous source code: {self.previous_source_code}")
+				logging.debug(f"Unoptimized file content: {unoptimized_file_content}")
+				logging.debug(f"Current diff: {cur_diff}")
+
+				user_prompt += f"\nThe diff between the current and previous code is: {cur_diff}"
+
+			self.previous_source_code = unoptimized_file_content
+
 			args = kernel.split("(")[1].split(")")[0]
 			self.bottleneck_report = (
-				f"Maestro detected atomic contention in the kernel `{kernel_name}` with arguments `{args}`."
+				f"Atomic Contention Detection: Maestro identified high atomic contention in kernel "
+				f"`{kernel_name}` with arguments `{args}`. Atomic contention occurs when multiple threads "
+				f"compete for the same atomic operations, causing serialization and increased latency."
 			)
 
 		else:
@@ -264,26 +281,35 @@ class atomic_contention(Formula_Base):
 			(unoptimized_metric - optimized_metric) / unoptimized_metric * 100 if unoptimized_metric > 0 else 0
 		)
 		self.optimization_report = ""
+
+		# Format the atomic contention improvement message
 		if metric_improvement > 1:
 			self.optimization_report += (
-				f"The optimized code shows {metric_improvement * 100:.3f}% improvement in atomic contention. "
+				f"Atomic Contention Reduction: Successfully reduced atomic contention by "
+				f"{metric_improvement * 100:.1f}%. "
+				f"Average atomic latency improved from {unoptimized_metric:.0f} to {optimized_metric:.0f} cycles "
+				f"({cycle_latency_improvement:.1f}% reduction - lower latency means less contention). "
 			)
-			self.optimization_report += f"Average atomic instruction latency improved from {unoptimized_metric:.3f} to {optimized_metric:.3f} cycles ({cycle_latency_improvement:.1f}% reduction). "
 		else:
 			self.optimization_report += (
-				f"The optimized code shows {metric_improvement * 100:.3f}% slowdown in atomic contention. "
+				f"Atomic Contention Increase: Atomic contention increased by "
+				f"{abs(metric_improvement - 1) * 100:.1f}%. "
+				f"Average atomic latency worsened from {unoptimized_metric:.0f} to {optimized_metric:.0f} cycles "
+				f"({abs(cycle_latency_improvement):.1f}% increase - higher latency means more contention). "
 			)
-			self.optimization_report += f"Average atomic instruction latency increased from {unoptimized_metric:.3f} to {optimized_metric:.3f} cycles ({-1 * cycle_latency_improvement:.1f}% increase). "
 
+		# Format the performance improvement message
 		if speedup > 1:
-			self.optimization_report += f"The optimized implementation is {speedup:.3f}x faster overall, "
 			self.optimization_report += (
-				f"reducing execution time from {unoptimized_time / 1e6:.3f}ms to {optimized_time / 1e6:.3f}ms."
+				f"Performance Gain: Achieved {speedup:.2f}x speedup with execution time "
+				f"reduced from {unoptimized_time / 1e6:.2f}ms to {optimized_time / 1e6:.2f}ms "
+				f"({(speedup - 1) * 100:.1f}% faster)."
 			)
 		else:
-			self.optimization_report += f"The optimized implementation is {speedup:.3f}x slower overall, "
 			self.optimization_report += (
-				f"increasing execution time from {unoptimized_time / 1e6:.3f}ms to {optimized_time / 1e6:.3f}ms."
+				f"Performance Loss: Experienced {1 / speedup:.2f}x slowdown with execution time "
+				f"increased from {unoptimized_time / 1e6:.2f}ms to {optimized_time / 1e6:.2f}ms "
+				f"({(1 / speedup - 1) * 100:.1f}% slower)."
 			)
 
 		if not success or speedup < 1:
