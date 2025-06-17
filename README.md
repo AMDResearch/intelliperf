@@ -109,7 +109,8 @@ Maestro currently supports:
 
 - **MI300X**
 
-> **Note**: Maestro may work on other AMD GPUs with ROCm compatibility, but has only been tested on MI300X.
+> [!NOTE]
+> Maestro may work on other AMD GPUs with ROCm compatibility, but has only been tested on MI300X.
 
 ## Usage
 
