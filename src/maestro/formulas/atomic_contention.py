@@ -44,8 +44,6 @@ class atomic_contention(Formula_Base):
 	):
 		super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
 
-		self._reference_app = self._application.clone()
-
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
 		self.only_consider_top_kernel = only_consider_top_kernel
 		self._instrumentation_results = None
@@ -169,7 +167,10 @@ class atomic_contention(Formula_Base):
 				" If you remove the copyright, your solution will be rejected."
 			)
 			if self.current_summary is not None:
-				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
+				diff = self.compute_diff(kernel_file)
+				user_prompt += f"\nThe current summary is: {self.current_summary}"
+				user_prompt += f"\nThe diff between the current and reference code is: {diff}"
+
 			args = kernel.split("(")[1].split(")")[0]
 			self.bottleneck_report = (
 				f"Maestro detected atomic contention in the kernel `{kernel_name}` with arguments `{args}`."

@@ -44,8 +44,6 @@ class memory_access(Formula_Base):
 	):
 		super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
 
-		self._reference_app = self._application.clone()
-
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
 		self.only_consider_top_kernel = only_consider_top_kernel
 		self._instrumentation_results = None

@@ -33,6 +33,7 @@ from pprint import pformat
 import ml_dtypes
 import numpy as np
 import pandas as pd
+import difflib
 
 from accordo.python.code_gen import generate_header
 from accordo.python.communicate import get_kern_arg_data, send_response
@@ -82,6 +83,7 @@ class Formula_Base:
 		# Private
 		self.__name = name  # name of the run
 		self._application = Application(name, build_command, instrument_command, project_directory, app_cmd)
+		self._reference_app = self._application.clone()  # Create a reference copy for comparison
 
 		self._initial_profiler_results = None
 
@@ -104,7 +106,9 @@ class Formula_Base:
 		if success:
 			return Result(success=success, asset={"log": result})
 		else:
-			return Result(success=success, error_report="The application failed to build.")
+			return Result(
+				success=success, error_report="The application failed to build. The compiler output is: " + result
+			)
 
 	# ----------------------------------------------------
 	# Required methods to be implemented by child classes
@@ -210,12 +214,17 @@ class Formula_Base:
 				logging.debug(f"  {key0}[{i}]: {results[key0][i]}")
 				logging.debug(f"  {key1}[{i}]: {results[key1][i]}")
 				logging.debug(f"  Difference: {diff}")
-
+			else:
+				argument_name = kernel_args[i]
+				logging.debug(
+					f"Arrays at index {i} for '{key0}' and '{key1}' are close. The argument type is '{argument_name}'."
+				)
 		for i in range(len(results[key0])):
 			if not validate_arrays(results[key0][i], results[key1][i], accordo_absolute_tolerance):
+				argument_name = kernel_args[i]
 				return Result(
 					success=False,
-					error_report=f"The optimized code output does not match the unoptimized code output. Arrays at index {i} for '{key0}' and '{key1}' are NOT close.",
+					error_report=f"The optimized code output does not match the unoptimized code output. Values at index {i} for the '{argument_name}' pointer are NOT close.",
 				)
 		logging.debug("Validation succeeded.")
 		return Result(success=True)

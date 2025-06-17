@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import shutil
+import difflib
 
 from maestro.core.llm import LLM
 from maestro.formulas.formula_base import Formula_Base, Result, filter_json_field, get_kernel_name, write_results
@@ -48,8 +49,6 @@ class bank_conflict(Formula_Base):
 	):
 		super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
 
-		self._reference_app = self._application.clone()
-
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
 		self.only_consider_top_kernel = only_consider_top_kernel
 		self._instrumentation_results = None
@@ -60,6 +59,7 @@ class bank_conflict(Formula_Base):
 		self.optimization_report = None
 		self.bottleneck_report = None
 		self.current_summary = None
+		self.previous_source_code = None
 
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
@@ -232,12 +232,27 @@ class bank_conflict(Formula_Base):
 				return Result(success=False, error_report="Kernel file not found.")
 
 			user_prompt = (
-				f"There is a bank conflict in the kernel {kernel} in the file {unoptimized_file_content}."
+				f"There is a bank conflict in the kernel {kernel} in the source code {unoptimized_file_content}."
 				f" Please fix the conflict but do not change the semantics of the program."
 				" If you remove the copyright, your solution will be rejected."
 			)
 			if self.current_summary is not None:
 				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
+
+				# Split the strings into lines for proper diff computation
+				prev_lines = self.previous_source_code.splitlines(keepends=True)
+				curr_lines = unoptimized_file_content.splitlines(keepends=True)
+				cur_diff = difflib.unified_diff(prev_lines, curr_lines)
+				cur_diff = "".join(cur_diff)
+
+				logging.debug(f"Previous source code: {self.previous_source_code}")
+				logging.debug(f"Unoptimized file content: {unoptimized_file_content}")
+				logging.debug(f"Current diff: {cur_diff}")
+
+				user_prompt += f"\nThe diff between the current and previous code is: {cur_diff}"
+
+			self.previous_source_code = unoptimized_file_content
+
 			args = kernel.split("(")[1].split(")")[0]
 			self.bottleneck_report = (
 				f"Maestro detected bank conflicts in the kernel `{kernel_name}` with arguments `{args}`."
@@ -327,7 +342,7 @@ class bank_conflict(Formula_Base):
 			)
 		else:
 			self.optimization_report += (
-				f"The optimized code increased the LDS conflict ratio by {conflict_improvement_percentage:.3f}%. "
+				f"The new code increased the LDS conflict ratio by {conflict_improvement_percentage:.3f}%. "
 				f"The initial implementation had a conflict ratio of {unoptimized_conflicts:.3f}, "
 				f"while the optimized version brought it up to {optimized_conflicts:.3f}. "
 			)
