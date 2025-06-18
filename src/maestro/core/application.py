@@ -104,25 +104,24 @@ class Application:
 				"db",
 				"-n",
 				self.get_name(),
+				"--save",
+				f"{get_guided_tuning_path()}/maestro_workloads.csv",
 			],
 			working_directory=self.get_project_directory(),
 			additional_path=get_rocprofiler_path(),
 		)
 		exit_on_fail(success=success, message="Failed to generate the performance report card.", log=output)
 
-		matching_db_workloads = {}
-		for line in output.splitlines():
-			parts = line.split(maxsplit=1)
-			if len(parts) == 2 and not parts[0].startswith("GT"):
-				key, value = parts
-				matching_db_workloads[key] = value
-		logging.debug(f"Matching DB Workloads: {matching_db_workloads}")
+		df_maestro_workloads = pd.read_csv(f"{get_guided_tuning_path()}/maestro_workloads.csv")
+		logging.debug(f"Matching DB Workloads: {df_maestro_workloads}")
+		last_matching_id = df_maestro_workloads.iloc[-1]["id"]
+
 		success, output = capture_subprocess_output(
 			[
 				f"{get_guided_tuning_path()}/bin/gt",
 				"db",
 				"-w",
-				list(matching_db_workloads.keys())[-1],
+				last_matching_id,
 				"--save",
 				f"{get_guided_tuning_path()}/maestro_summary.csv",
 			],
@@ -140,7 +139,7 @@ class Application:
 				f"{get_guided_tuning_path()}/bin/gt",
 				"db",
 				"-w",
-				list(matching_db_workloads.keys())[-1],
+				last_matching_id,
 				"-k",
 				f"{'|'.join(top_n_kernels)}",
 				"--separate",
