@@ -1,12 +1,11 @@
 Bootstrap: docker
-From: ubuntu:22.04
+From: rocm/vllm-dev:nightly_aiter_integration_final_20250325
 
 %environment
-    # Locale
+    # Runtime environment inside the finished SIF
     export LANG=en_US.UTF-8
-
-    # ROCm globals
     export PATH=/opt/rocm/bin:$PATH
+<<<<<<< HEAD:apptainer/intelliperf.def
     export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
     export ROCM_PATH=/opt/rocm
 
@@ -17,82 +16,43 @@ From: ubuntu:22.04
 
 %files
     examples/bank_conflict/llm.c/requirements.txt /examples/bank_conflict/llm.c/requirements.txt
+=======
+    export MAESTRO_HOME={{ MAESTRO_HOME }}
+>>>>>>> 09ff03f (Update Apptainer build to match pyproject.toml install as in Dockerfile):apptainer/maestro.def
 
 %post
-    # Set locale
-    apt-get -y update
-    apt-get install -y locales
-    locale-gen en_US.UTF-8
-    export LANG=en_US.UTF-8
+    PATH=/opt/rocm/bin:$PATH
+    DEV_MODE={{ DEV_MODE }}
+    MAESTRO_HOME={{ MAESTRO_HOME }}
 
-    # Install dependencies
-    apt-get -y update
-    apt-get install -y software-properties-common
-    apt-get upgrade -y
-    apt-get install -y build-essential python3 python3-pip python3-setuptools python3-wheel git wget clang lld libzstd-dev libomp-dev vim libdwarf-dev
-    apt-get install -y locales
-    locale-gen en_US.UTF-8
-    python3 -m pip install --upgrade pip
-    python3 -m pip install 'cmake==3.22'
+    mkdir -p "${MAESTRO_HOME}"
+    # ----- 1. Packages -------------------------------------------------------
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        libzstd-dev \
+        python3-setuptools \
+        python3-wheel \
+        libdwarf-dev \
+        rocm-llvm-dev \
+        locales \
+        gdb \
+        ssh
+    locale-gen en_US.UTF-8 
+    rm -rf /var/lib/apt/lists/*
 
-    # Add GitHub trusted host
+    # ----- 2. Prepare SSH known_hosts for GitHub cloning ---------------------
     mkdir -p ~/.ssh
     touch ~/.ssh/known_hosts
     ssh-keyscan github.com >> ~/.ssh/known_hosts
     chmod 700 ~/.ssh
     chmod 644 ~/.ssh/known_hosts
-
-    # Install ROCm
-    apt-get -y update
-    wget https://repo.radeon.com/amdgpu-install/6.3.3/ubuntu/jammy/amdgpu-install_6.3.60303-1_all.deb
-    apt-get -y install ./amdgpu-install_6.3.60303-1_all.deb
-    apt-get -y update
-    apt-get install -y rocm-dev rocm-llvm-dev rocm-hip-runtime-dev rocm-smi-lib rocminfo rocthrust-dev rocprofiler-compute rocblas rocm-gdb gdb tmux
-    export PATH=/opt/rocm/bin:$PATH
-    export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
-    export ROCM_PATH=/opt/rocm
-
-    # Install rocprof-compute (via package manager)
-    # python3 -m pip install --ignore-installed blinker
-    # python3 -m pip install -r /opt/rocm/libexec/rocprofiler-compute/requirements.txt
-    # Install rocprof-compute (from feature branch)
     export SSH_AUTH_SOCK={{ SSH_AUTH_SOCK }}
-    cd /root
-    git clone -v https://github.com/ROCm/rocprofiler-compute.git
-    cd rocprofiler-compute
-    git checkout 41e73650d5cfc3dbd98e007d6279235578f8529a
-    python3 -m pip install --ignore-installed blinker
-    python3 -m pip install -r requirements.txt
-    cd src
-    export PATH=$PWD:$PATH
 
-    # Install Triton (version pinned)
-    cd /root
-    export TRITON_HOME=/root
-    git clone -v https://github.com/triton-lang/triton.git
-    cd triton
-    git checkout 6fa33ef1eecc97348d056688df84845db7d22507
-    python3 -m pip install ninja wheel pybind11
-    python3 -m pip install -e python
-
-    # Install omniprobe
-    echo "Building with CMAKE_BUILD_TYPE={{ CMAKE_BUILD_TYPE }}"
-    cd /root
-    git clone -v git@github.com:AARInternal/omniprobe.git
-    cd omniprobe
-    git checkout 8e63827f1cd17077cdf13aef7177eb311cc2c896
-    git submodule update --init --recursive
-    mkdir -p build 
-    cmake -DCMAKE_INSTALL_PREFIX=/opt/omniprobe\
-            -DCMAKE_PREFIX_PATH=${ROCM_PATH}\
-            -DTRITON_LLVM=/root/.triton/llvm/llvm-ubuntu-x64\
-            -DCMAKE_BUILD_TYPE={{ CMAKE_BUILD_TYPE }}\
-            -DCMAKE_VERBOSE_MAKEFILE=ON -S . -B build
-    cmake --build build --target install
-    export PATH=/opt/omniprobe/bin/logDuration:$PATH
-
-    # Install agents dependencies
-    python3 -m pip install openai
-
-    # Install examples dependencies
-    pip3 install --no-cache-dir -r /examples/bank_conflict/llm.c/requirements.txt
+    # ----- 3. Clone & install Maestro only if DEV_MODE == false --------------
+    cd "${MAESTRO_HOME}"
+    # During `apptainer build`, the host’s SSH agent keys are available if
+    # you run:  `APPTAINER_SSH=true apptainer build …`
+    git clone git@github.com:AMDResearch/maestro.git .
+    
+    pip install -e .
+    python3 scripts/install_tool.py --all

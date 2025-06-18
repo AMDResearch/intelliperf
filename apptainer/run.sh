@@ -38,12 +38,8 @@ while [[ $# -gt 0 ]]; do
             size=$2
             shift 2
             ;;
-        -d|--debug)
-            debug=1
-            shift
-            ;;
         *)
-            echo "Usage: $0 [-s size] [-d|--debug]"
+            echo "Usage: $0 [-s size]"
             exit 1
             ;;
     esac
@@ -59,9 +55,5 @@ fi
 echo "[Log] Utilize the directory /var/cache/intelliperf as a sandbox to store data you'd like to persist between container runs."
 
 # Run the container
-if [[ $debug -eq 1 ]]; then
-    image="apptainer/intelliperf_debug.sif"
-else
-    image="apptainer/intelliperf.sif"
-fi
-apptainer exec --bind $HOME/.ssh:/root/.ssh:ro --overlay ${overlay} --pwd "$working_dir" --cleanenv --env OPENAI_API_KEY=$OPENAI_API_KEY $image bash --rcfile /etc/bash.bashrc
+image="apptainer/intelliperf.sif"
+apptainer exec --overlay ${overlay} --pwd "$working_dir" --cleanenv --env OPENAI_API_KEY=$OPENAI_API_KEY $image bash --rcfile /etc/bash.bashrc
