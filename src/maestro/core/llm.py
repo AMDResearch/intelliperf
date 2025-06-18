@@ -25,37 +25,72 @@
 
 import requests
 
+# assume DSPy is installed as dspy
+from dspy import DSPClient, PromptOptimizer
 
 class LLM:
-	def __init__(
-		self,
-		api_key: str,
-		system_prompt: str,
-		deployment_id: str = "dvue-aoai-001-o4-mini",
-		server: str = "https://llm-api.amd.com/azure",
-	):
-		self.api_key = api_key
-		self.system_prompt = system_prompt
-		self.deployment_id = deployment_id
-		self.server = server
-		self.header = {"Ocp-Apim-Subscription-Key": api_key}
+    def __init__(
+        self,
+        api_key: str,
+        system_prompt: str,
+        deployment_id: str = "dvue-aoai-001-o4-mini",
+        server: str = "https://llm-api.amd.com/azure",
+    ):
+        """
+        - If `server` contains "amd.com", we use the old requests.post path.
+        - Otherwise we initialize a DSPy client for prompt optimization.
+        """
+        self.api_key = api_key
+        self.system_prompt = system_prompt
+        self.deployment_id = deployment_id
+        self.server = server
+        self.header = {"Ocp-Apim-Subscription-Key": api_key}
 
-	def ask(self, user_prompt: str) -> str:
-		body = {
-			"messages": [
-				{
-					"role": "system",
-					"content": self.system_prompt,
-				},
-				{"role": "user", "content": user_prompt},
-			],
-			"max_Tokens": 4096,
-			"max_Completion_Tokens": 4096,
-		}
+        # Decide whether to hit AMD’s endpoint directly or go via DSPy
+        self.use_amd = "amd.com" in server
 
-		response = requests.post(
-			url=f"{self.server}/engines/{self.deployment_id}/chat/completions",
-			json=body,
-			headers=self.header,
-		).json()
-		return response["choices"][0]["message"]["content"]
+        if not self.use_amd:
+            # build the DSPy model identifier, e.g. "openai/gpt-4o-mini"
+            model_id = f"{server.rstrip('/')}/{deployment_id}"
+            # DSPClient will handle the optimized request under the hood
+            self.dsp_client = DSPClient(api_key=api_key, model=model_id)
+            # separate optimizers for system vs. user prompts
+            self.sys_optimizer  = PromptOptimizer(role="system")
+            self.user_optimizer = PromptOptimizer(role="user")
+
+    def ask(self, user_prompt: str) -> str:
+        """
+        - For AMD: exactly the old behavior.
+        - Otherwise: run both prompts through DSPy’s optimizer, then call DSPy.
+        """
+        if self.use_amd:
+            body = {
+                "messages": [
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user",   "content": user_prompt},
+                ],
+                "max_Tokens": 4096,
+                "max_Completion_Tokens": 4096,
+            }
+            resp = requests.post(
+                url=f"{self.server}/engines/{self.deployment_id}/chat/completions",
+                json=body,
+                headers=self.header,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+
+        # optimize prompts separately
+        optimized_system = self.sys_optimizer.optimize(self.system_prompt)
+        optimized_user   = self.user_optimizer.optimize(user_prompt)
+
+        # now call DSPy’s chat endpoint
+        dsp_response = self.dsp_client.chat(
+            messages=[
+                {"role": "system", "content": optimized_system},
+                {"role": "user",   "content": optimized_user},
+            ],
+            max_tokens=4096,
+        )
+        # DSPy client returns a similar structure to OpenAI
+        return dsp_response.choices[0].message.content
