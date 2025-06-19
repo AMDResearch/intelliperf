@@ -25,8 +25,17 @@
 
 import requests
 
-# assume DSPy is installed as dspy
-from dspy import DSPClient, PromptOptimizer
+# first try your original import…
+try:
+    from dspy import DSPClient, PromptOptimizer
+except (ImportError, ModuleNotFoundError):
+    # …then fall back to `dsp`
+    try:
+        from dsp import DSPClient, PromptOptimizer
+    except (ImportError, ModuleNotFoundError):
+        DSPClient = None
+        PromptOptimizer = None
+
 
 class LLM:
     def __init__(
@@ -36,33 +45,28 @@ class LLM:
         deployment_id: str = "dvue-aoai-001-o4-mini",
         server: str = "https://llm-api.amd.com/azure",
     ):
-        """
-        - If `server` contains "amd.com", we use the old requests.post path.
-        - Otherwise we initialize a DSPy client for prompt optimization.
-        """
         self.api_key = api_key
         self.system_prompt = system_prompt
         self.deployment_id = deployment_id
-        self.server = server
+        self.server = server.rstrip("/")
         self.header = {"Ocp-Apim-Subscription-Key": api_key}
 
-        # Decide whether to hit AMD’s endpoint directly or go via DSPy
-        self.use_amd = "amd.com" in server
+        # route AMD traffic unchanged
+        self.use_amd = "amd.com" in self.server
 
         if not self.use_amd:
-            # build the DSPy model identifier, e.g. "openai/gpt-4o-mini"
-            model_id = f"{server.rstrip('/')}/{deployment_id}"
-            # DSPClient will handle the optimized request under the hood
+            if DSPClient is None or PromptOptimizer is None:
+                raise ImportError(
+                    "Could not import DSPClient/PromptOptimizer. "
+                    "Make sure you have installed the DSPy SDK (or `dsp`) and that "
+                    "these classes are exposed."
+                )
+            model_id = f"{self.server}/{self.deployment_id}"
             self.dsp_client = DSPClient(api_key=api_key, model=model_id)
-            # separate optimizers for system vs. user prompts
             self.sys_optimizer  = PromptOptimizer(role="system")
             self.user_optimizer = PromptOptimizer(role="user")
 
     def ask(self, user_prompt: str) -> str:
-        """
-        - For AMD: exactly the old behavior.
-        - Otherwise: run both prompts through DSPy’s optimizer, then call DSPy.
-        """
         if self.use_amd:
             body = {
                 "messages": [
@@ -80,17 +84,15 @@ class LLM:
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"]
 
-        # optimize prompts separately
+        # DSPy path
         optimized_system = self.sys_optimizer.optimize(self.system_prompt)
         optimized_user   = self.user_optimizer.optimize(user_prompt)
 
-        # now call DSPy’s chat endpoint
-        dsp_response = self.dsp_client.chat(
+        dsp_resp = self.dsp_client.chat(
             messages=[
                 {"role": "system", "content": optimized_system},
                 {"role": "user",   "content": optimized_user},
             ],
             max_tokens=4096,
         )
-        # DSPy client returns a similar structure to OpenAI
-        return dsp_response.choices[0].message.content
+        return dsp_resp.choices[0].message.content
