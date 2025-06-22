@@ -144,6 +144,8 @@ maestro -- python3 gemm.py
 | `--num_attempts` | Control optimization attempts (default: 10) |
 | `-o, --output_file` | Path to output file |
 | `-t, --accordo_absolute_tolerance` | Validation tolerance |
+| `-m, --model` | Specify the model to use for optimization (default: gpt-4o) |
+| `-r, --provider` | Specify the provider to use for optimization (default: openai) |
 
 ## Documentation
 
