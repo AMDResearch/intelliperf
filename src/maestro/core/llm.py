@@ -32,7 +32,7 @@ class LLM:
 		self,
 		api_key: str,
 		system_prompt: str,
-		deployment_id: str = "gpt-4o-mini",
+		deployment_id: str = "dvue-aoai-001-o4-mini",
 		server: str = "https://llm-api.amd.com/azure",
 	):
 		self.api_key = api_key
@@ -46,8 +46,7 @@ class LLM:
 			self.header = {"Ocp-Apim-Subscription-Key": api_key}
 		else:
 			self.use_amd = False
-			# Configure DSPy for OpenAI
-			self.lm = dspy.LM(f"openai/{deployment_id}", api_key=api_key)
+			self.lm = dspy.LM(f"{self.server}/{self.deployment_id}", api_key=api_key)
 			dspy.configure(lm=self.lm)
 
 	def ask(self, user_prompt: str) -> str:
@@ -66,11 +65,10 @@ class LLM:
 			resp.raise_for_status()
 			return resp.json()["choices"][0]["message"]["content"]
 
-			# DSPy path: use ChainOfThought with clear signature
+		# DSPy path: use ChainOfThought with clear signature
 		# Define signature mapping input prompt to optimized code
 		dspy.context(description=self.system_prompt)
 		signature = "prompt: str -> optimized_code: str"
 		chain = dspy.ChainOfThought(signature)
 		ct_response = chain(prompt=user_prompt)
-		# Return optimized code from 'answer' field
-		return getattr(ct_response, "answer", str(ct_response))
+		return getattr(ct_response, "optimized_code", str(ct_response))
