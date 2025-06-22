@@ -64,4 +64,4 @@ if [[ $debug -eq 1 ]]; then
 else
     image="apptainer/maestro.sif"
 fi
-apptainer exec --overlay ${overlay} --pwd "$working_dir" --cleanenv --env OPENAI_API_KEY=$OPENAI_API_KEY $image bash --rcfile /etc/bash.bashrc
+apptainer exec --bind $HOME/.ssh:/root/.ssh:ro --overlay ${overlay} --pwd "$working_dir" --cleanenv --env OPENAI_API_KEY=$OPENAI_API_KEY $image bash --rcfile /etc/bash.bashrc

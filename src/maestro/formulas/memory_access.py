@@ -22,7 +22,6 @@
 # SOFTWARE.
 ################################################################################
 
-import difflib
 import json
 import logging
 import os
@@ -164,22 +163,13 @@ class memory_access(Formula_Base):
 			user_prompt = (
 				f"There is an uncoalesced memory access in the kernel {kernel} in the source code {unoptimized_file_content}."
 				f" Please fix the access pattern but do not change the semantics of the program."
-				" If you remove the copyright, your solution will be rejected."
+				" Do not remove any comments or licenses."
+				" Do not include any markdown code blocks or text other than the code."
 			)
 			if self.current_summary is not None:
 				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
-
-				# Split the strings into lines for proper diff computation
-				prev_lines = self.previous_source_code.splitlines(keepends=True)
-				curr_lines = unoptimized_file_content.splitlines(keepends=True)
-				cur_diff = difflib.unified_diff(prev_lines, curr_lines)
-				cur_diff = "".join(cur_diff)
-
-				logging.debug(f"Previous source code: {self.previous_source_code}")
-				logging.debug(f"Unoptimized file content: {unoptimized_file_content}")
-				logging.debug(f"Current diff: {cur_diff}")
-
-				user_prompt += f"\nThe diff between the current and previous code is: {cur_diff}"
+				cur_diff = self.compute_diff(kernel_file)
+				user_prompt += f"\nThe diff between the current and initial code is: {cur_diff}"
 
 			self.previous_source_code = unoptimized_file_content
 
