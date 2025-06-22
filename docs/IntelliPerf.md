@@ -60,7 +60,7 @@ IntelliPerf executes a closed-loop process that systematically moves from high-l
 
 2.  **Analysis (`Guided Tuning` & `Omniprobe`)**: The performance counters are first analyzed by **`Guided Tuning`**, a tool that summarizes the data to identify the likely issue. **`Omniprobe`** then uses compiler-based instrumentation to pinpoint the specific source code line responsible for the bottleneck.
 
-3.  **Code Generation (`Omniwiser`)**: Armed with this data, **`Omniwiser`**, a novel component built for IntelliPerf, crafts a detailed, context-aware prompt for an LLM to generate an optimized version of the code.
+3.  **Code Generation (`Omniwiser`)**: Armed with this data, **`Omniwiser`**, a novel component built for IntelliPerf, crafts a detailed, context-aware prompt for existing public LLMs (such as OpenAI's GPTs, xAI, Claude, or others) to generate an optimized version of the code.
 
 4.  **Validation (`Accordo`)**: The LLM-generated code is then validated for both correctness and performance by **`Accordo`**, another novel tool developed for the IntelliPerf project.
 
