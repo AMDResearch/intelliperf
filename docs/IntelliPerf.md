@@ -93,13 +93,48 @@ Correctness validation is handled by Accordo, a specialized HSA Tools Library th
 
 ## Automated CI/CD Workflow
 
-IntelliPerf is designed to be served as a GitHub Action, enabling continuous, automated performance analysis in a CI/CD environment (Figure 4). When a successful optimization is found, IntelliPerf can automatically generate a pull request with the validated fix, including a summary of the bottleneck, and the measured performance improvement. The final pull request is the culmination of the entire automated workflow, presenting the developer with a ready-to-merge solution (Figure 5).
+IntelliPerf operates as a command-line tool that can be integrated into CI/CD pipelines through the **IntelliPerf Action** (maestro-action), a GitHub Action wrapper that handles the CI/CD integration and automated pull request creation. When a successful optimization is found, the IntelliPerf Action automatically generates a pull request with the validated fix, including a summary of the bottleneck, and the measured performance improvement. The final pull request is the culmination of the entire automated workflow, presenting the developer with a ready-to-merge solution (Figure 5).
+
+The following YAML snippet demonstrates how to integrate IntelliPerf into a GitHub Actions workflow. Key configuration parameters include:
+
+- **`formula`**: Specifies the performance bottleneck to target (e.g., `bankConflict`, `atomicContention`, `memoryAccess`)
+- **`docker_image`**: The container image containing the IntelliPerf toolchain
+- **`top_n`**: Number of top kernels to analyze for optimization
+- **`create_pr`**: Whether to automatically create pull requests with optimizations
+- **`build_command`**: Command to build the target application
+- **`instrument_command`**: Command to instrument the application for profiling
+- **`applications`**: JSON array specifying the commands to run and output file locations
 
 <p align="center">
-  <img src="assets/maestro_ci.png" alt="IntelliPerf CI/CD Workflow"><br>
-  <i>Figure 4: A GitHub Actions workflow snippet demonstrating how to integrate IntelliPerf using the maestro-action.</i>
-</p>
 
+```yaml
+      - name: Checkout maestro-action action
+        uses: actions/checkout@v3
+        with:
+          repository: AMDResearch/maestro-action
+          token: ${{ secrets.MAESTRO_ACTIONS_TOKEN }}
+          path: .github/actions/maestro-action
+
+      - name: Run Maestro Action for ${{ matrix.apps.name }}
+        uses: ./.github/actions/maestro-action
+        with:
+          formula: "${{ matrix.apps.formula }}"
+          docker_image: "maestro"
+          top_n: "40"
+          create_pr: "true"
+          maestro_actions_token: ${{ secrets.MAESTRO_ACTIONS_TOKEN }}
+          llm_gateway_key: ${{ secrets.LLM_GATEWAY_KEY }}
+          build_command: "${{ matrix.apps.build_command }}"
+          instrument_command: "${{ matrix.apps.instrument_command }}"
+          project_directory: "${{ matrix.apps.project_directory }}"
+          applications: |
+            [{
+              "command": "${{ matrix.apps.command }}",
+              "output_json": "${{ env.OUTPUT_JSON }}"
+            }]
+```
+  <i>Figure 4: GitHub Actions workflow configuration for integrating IntelliPerf using the IntelliPerf Action (maestro-action).</i>
+</p>
 
 <p align="center">
   <img src="assets/maestro_pr.png" alt="IntelliPerf PR Example"><br>
