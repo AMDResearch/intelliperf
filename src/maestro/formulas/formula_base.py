@@ -79,6 +79,8 @@ class Formula_Base:
 		project_directory: str,
 		app_cmd: list,
 		top_n: int,
+		model: str = "gpt-4o",
+		provider: str = "openai",
 	):
 		# Private
 		self.__name = name  # name of the run
@@ -90,6 +92,9 @@ class Formula_Base:
 		# Public
 		self.profiler: str = None
 		self.top_n: int = top_n
+
+		self.model = model
+		self.provider = provider
 
 		self.build()
 

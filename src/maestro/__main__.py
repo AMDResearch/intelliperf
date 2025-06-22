@@ -109,6 +109,22 @@ def maestro_parser():
 		metavar="",
 		help="Control the tolerance for the Accordo validation (default: 1e-6)",
 	)
+	optional_args.add_argument(
+		"-m",
+		"--model",
+		type=str,
+		default="gpt-4o",
+		metavar="",
+		help="Specify the model to use for optimization (default: gpt-4o-mini)",
+	)
+	optional_args.add_argument(
+		"-r",
+		"--provider",
+		type=str,
+		default="openai",
+		metavar="",
+		help="Specify the provider to use for optimization (default: openai)",
+	)
 
 	# Output arguments
 	optional_args.add_argument("-o", "--output_file", type=str, metavar="", help="Path to the output file")
@@ -180,6 +196,8 @@ def main():
 		project_directory=args.project_directory,
 		app_cmd=args.remaining,
 		top_n=args.top_n,
+		model=args.model,
+		provider=args.provider,
 	)
 
 	num_attempts = 0 if args.formula == "diagnoseOnly" else args.num_attempts
@@ -210,7 +228,6 @@ def main():
 		build_result = optimizer.build_pass(validate_build_result=False)
 		if not build_result:
 			build_result.report_out()
-			optimizer.summarize_previous_passes()
 			logging.warning(f"Build pass {attempt + 1} failed. Retrying...")
 			continue
 
@@ -218,14 +235,12 @@ def main():
 		correctness_result = optimizer.correctness_validation_pass(args.accordo_absolute_tolerance)
 		if not correctness_result:
 			correctness_result.report_out()
-			optimizer.summarize_previous_passes()
 			logging.warning(f"Correctness validation pass {attempt + 1} failed. Retrying...")
 			continue
 
 		performance_result = optimizer.performance_validation_pass()
 		if not performance_result:
 			performance_result.report_out()
-			optimizer.summarize_previous_passes()
 			logging.warning(f"Performance validation pass {attempt + 1} failed. Retrying...")
 			continue
 
