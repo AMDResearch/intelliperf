@@ -26,16 +26,16 @@ SOFTWARE.
 
 ## Abstract
 
-*The manual optimization of GPU kernels is a complex, time-consuming, and error-prone process that requires deep domain expertise, which is a scarce resource. This article introduces IntelliPerf, an automated performance engineering framework developed by AMD Research and Advanced Development (RAD) that systematizes and automates this workflow. IntelliPerf orchestrates a suite of profiling, instrumentation, and analysis tools (Figure 1) to automatically pinpoint performance bottlenecks, generate optimized code using Large Language Models (LLMs), and validate the results for both correctness and speed. By integrating seamlessly into a CI/CD pipeline, IntelliPerf enables continuous, automated performance improvement, effectively acting as an AI performance engineer. This work demonstrates a novel approach to combining program analysis with generative AI to address the challenges of GPU software optimization.*
+*Manual optimization of GPU kernels is a complex, time-consuming, and error-prone process that requires deep domain expertise, which remains a scarce resource. This article introduces IntelliPerf, an automated performance engineering framework developed by AMD Research and Advanced Development (RAD) that systematizes and automates this workflow. IntelliPerf orchestrates a suite of profiling, instrumentation, and analysis tools (Figure 1) to automatically pinpoint performance bottlenecks, generate optimized code using Large Language Models (LLMs), and validate the results for both correctness and performance. By integrating seamlessly into CI/CD pipelines, IntelliPerf enables continuous, automated performance improvement, effectively acting as an AI performance engineer. This work demonstrates a novel approach to combining program analysis with generative AI to address the challenges of GPU software optimization.*
 
 <p align="center">
-  <img src="assets/maestro_tools.png" alt="IntelliPerf Tool Ecosystem"><br>
+  <img src="assets/intelliperf_tools.png" alt="IntelliPerf Tool Ecosystem"><br>
   <i>Figure 1: The IntelliPerf toolchain, orchestrating a suite of existing and novel AMD tools for automated performance engineering.</i>
 </p>
 
 ## Introduction
 
-The performance of High-Performance Computing (HPC) and Machine Learning (ML) applications is increasingly dominated by the efficiency of their GPU kernels. However, optimizing these kernels is a significant challenge. The process requires a deep understanding of the underlying hardware architecture, a mastery of various low-level profiling tools, and the ability to manually rewrite code to resolve subtle bottlenecks such as memory access inefficiencies or contention issues. This expertise is rare, and the manual tuning cycle is a major bottleneck in software development, consuming significant engineering resources and delaying time-to-solution.
+The performance of High-Performance Computing (HPC) and Machine Learning (ML) applications is increasingly dominated by the efficiency of their GPU kernels. However, optimizing these kernels presents a significant challenge. The process requires a deep understanding of the underlying hardware architecture, mastery of various low-level profiling tools, and the ability to manually rewrite code to resolve subtle bottlenecks such as memory access inefficiencies or contention issues. This expertise is rare, and the manual tuning cycle represents a major bottleneck in software development, consuming significant engineering resources and delaying time-to-solution.
 
 Existing tools often address only isolated parts of this problem—a profiler may reveal a bottleneck but offers no path to resolution, while a static analyzer may flag potential issues without contextual performance data. This leaves a critical gap: the "last mile" of interpreting the data, forming a hypothesis, rewriting the code, and validating the change remains a purely manual effort.
 
@@ -56,7 +56,7 @@ This modular design is implemented through an object-oriented approach where a *
 IntelliPerf executes a closed-loop process that systematically moves from high-level profiling to a validated code change, as illustrated in Figure 2.
 
 <p align="center">
-  <img src="assets/maestro_loop.png" alt="IntelliPerf Loop"><br>
+  <img src="assets/intelliperf_loop.png" alt="IntelliPerf Loop"><br>
   <i>Figure 2: The multi-stage optimization loop executed by IntelliPerf.</i>
 </p>
 
@@ -97,7 +97,12 @@ Correctness validation is handled by Accordo, a specialized HSA Tools Library th
 
 ## Automated CI/CD Workflow
 
-IntelliPerf operates as a command-line tool that can be integrated into CI/CD pipelines through the **IntelliPerf Action** (maestro-action), a GitHub Action wrapper that handles the CI/CD integration and automated pull request creation. When a successful optimization is found, the IntelliPerf Action automatically generates a pull request with the validated fix, including a summary of the bottleneck, and the measured performance improvement. The final pull request is the culmination of the entire automated workflow, presenting the developer with a ready-to-merge solution (Figure 5).
+IntelliPerf operates as a command-line tool that can be integrated into CI/CD pipelines through the **IntelliPerf Action**, a GitHub Action wrapper that handles the CI/CD integration and automated pull request creation. When a successful optimization is found, the IntelliPerf Action automatically generates a pull request with the validated fix, including a summary of the bottleneck and the measured performance improvement. The final pull request is the culmination of the entire automated workflow, presenting the developer with a ready-to-merge solution (Figure 6).
+
+<p align="center">
+  <img src="assets/intelliperf_ci.png" alt="IntelliPerf CI/CD Integration"><br>
+  <i>Figure 4: IntelliPerf's integration into CI/CD pipelines, showing the automated workflow from code analysis to pull request generation.</i>
+</p>
 
 The following YAML snippet demonstrates how to integrate IntelliPerf into a GitHub Actions workflow. Key configuration parameters include:
 
@@ -111,21 +116,21 @@ The following YAML snippet demonstrates how to integrate IntelliPerf into a GitH
 
 
 ```yaml
-      - name: Checkout maestro-action action
+      - name: Checkout intelliperf-action action
         uses: actions/checkout@v3
         with:
-          repository: AMDResearch/maestro-action
-          token: ${{ secrets.MAESTRO_ACTIONS_TOKEN }}
-          path: .github/actions/maestro-action
+          repository: AMDResearch/intelliperf-action
+          token: ${{ secrets.INTELLIPERF_ACTIONS_TOKEN }}
+          path: .github/actions/intelliperf-action
 
-      - name: Run Maestro Action for ${{ matrix.apps.name }}
-        uses: ./.github/actions/maestro-action
+      - name: Run IntelliPerf Action for ${{ matrix.apps.name }}
+        uses: ./.github/actions/intelliperf-action
         with:
           formula: "${{ matrix.apps.formula }}"
-          docker_image: "maestro"
+          docker_image: "intelliperf"
           top_n: "40"
           create_pr: "true"
-          maestro_actions_token: ${{ secrets.MAESTRO_ACTIONS_TOKEN }}
+          intelliperf_actions_token: ${{ secrets.INTELLIPERF_ACTIONS_TOKEN }}
           llm_gateway_key: ${{ secrets.LLM_GATEWAY_KEY }}
           build_command: "${{ matrix.apps.build_command }}"
           instrument_command: "${{ matrix.apps.instrument_command }}"
@@ -137,12 +142,12 @@ The following YAML snippet demonstrates how to integrate IntelliPerf into a GitH
             }]
 ```
 <p align="center">
-  <i>Figure 4: GitHub Actions workflow configuration for integrating IntelliPerf using the IntelliPerf Action (maestro-action).</i>
+  <i>Figure 5: GitHub Actions workflow configuration for integrating IntelliPerf using the IntelliPerf Action.</i>
 </p>
 
 <p align="center">
-  <img src="assets/maestro_pr.png" alt="IntelliPerf PR Example"><br>
-  <i>Figure 5: An example of an automatically generated pull request containing a validated optimization.</i>
+  <img src="assets/intelliperf_pr.png" alt="IntelliPerf PR Example"><br>
+  <i>Figure 6: An example of an automatically generated pull request containing a validated optimization.</i>
 </p>
 
 ### Illustrative Example: Resolving Atomic Contention
@@ -189,8 +194,8 @@ IntelliPerf's formula-driven architecture is extensible. Future work will focus 
 *   Branch Divergence
 *   Memory Locality
 
-We also plan to extend support to other programming models, such as Triton, and to conduct a rigorous quantitative evaluation of IntelliPerf's effectiveness across a wide range of HPC and ML benchmarks and applications. Moreover, we are interested in supporting Radeon GPUs (RDNA( in addition to existing support to Compute GPUs (CDNA).
+We also plan to extend support to other programming models, such as Triton, and to conduct a rigorous quantitative evaluation of IntelliPerf's effectiveness across a wide range of HPC and ML benchmarks and applications. Moreover, we are interested in supporting Radeon GPUs (RDNA) in addition to existing support for Compute GPUs (CDNA).
 
 ## Conclusion
 
-IntelliPerf presents a significant step towards the automation of GPU performance engineering. By combining classical program analysis with the generative power of LLMs in a robust, closed-loop framework, it provides a scalable solution to a critical software development challenge. This approach not only accelerates the optimization cycle but also democratizes performance engineering, allowing non-expert developers to achieve expert-level results and freeing up domain experts to focus on more complex, architectural challenges.
+IntelliPerf represents a significant step towards the automation of GPU performance engineering. By combining classical program analysis with the generative power of LLMs in a robust, closed-loop framework, it provides a scalable solution to a critical software development challenge. This approach not only accelerates the optimization cycle but also democratizes performance engineering, allowing non-expert developers to achieve expert-level results and freeing up domain experts to focus on more complex, architectural challenges.
