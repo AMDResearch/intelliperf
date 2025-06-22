@@ -145,7 +145,7 @@ maestro -- python3 gemm.py
 | `-o, --output_file` | Path to output file |
 | `-t, --accordo_absolute_tolerance` | Validation tolerance |
 | `-m, --model` | Specify the model to use for optimization (default: gpt-4o) |
-| `-p, --provider` | Specify the provider to use for optimization (default: openai) |
+| `-r, --provider` | Specify the provider to use for optimization (default: openai) |
 
 ## Documentation
 
