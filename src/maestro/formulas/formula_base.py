@@ -33,6 +33,7 @@ from pprint import pformat
 import ml_dtypes
 import numpy as np
 import pandas as pd
+import difflib
 
 from accordo.python.code_gen import generate_header
 from accordo.python.communicate import get_kern_arg_data, send_response
@@ -97,16 +98,18 @@ class Formula_Base:
 			return Result(success=True, asset={"log": "No build script provided. Skipping build step."})
 		else:
 			success, result = self._application.build()
-			if validate_build_result:
+			if validate_build_result and not success:
 				logging.debug(
 					f"Exiting because of build failure: validate_build_result={validate_build_result}, success={success}, result={result}"
 				)
 				exit_on_fail(success=success, message=f"Failed to build {self.__name} application.", log=result)
+
 		if success:
 			return Result(success=success, asset={"log": result})
 		else:
 			return Result(
-				success=success, error_report="The application failed to build. The compiler output is: " + result
+				success=success,
+				error_report="The application contains compiler errors. Here is the compiler log: " + result,
 			)
 
 	# ----------------------------------------------------
@@ -256,6 +259,32 @@ class Formula_Base:
 		Summarizes the results of the previous passes for future prompts.
 		"""
 		pass
+
+	def compute_diff(self, filepath) -> str:
+		# Extract relative path from the full filepath
+		# If filepath is already relative to project directory, this will work correctly
+		# If filepath is absolute, we need to make it relative to the project directory
+		reference_project_dir = self._reference_app.get_project_directory()
+		optimized_project_dir = self._application.get_project_directory()
+
+		# If filepath is absolute, make it relative to the optimized project directory
+		if os.path.isabs(filepath):
+			# Get the relative path from the optimized project directory
+			relative_path = os.path.relpath(filepath, optimized_project_dir)
+		else:
+			# filepath is already relative
+			relative_path = filepath
+
+		reference_filepath = os.path.join(reference_project_dir, relative_path)
+		optimized_filepath = os.path.join(optimized_project_dir, relative_path)
+
+		with open(reference_filepath, "r") as f:
+			prev_lines = f.read().splitlines(keepends=True)
+		with open(optimized_filepath, "r") as f:
+			curr_lines = f.read().splitlines(keepends=True)
+		cur_diff = difflib.unified_diff(prev_lines, curr_lines)
+		cur_diff = "".join(cur_diff)
+		return cur_diff
 
 
 def write_results(json_results: dict, output_file: str = None):
