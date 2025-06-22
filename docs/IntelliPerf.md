@@ -105,7 +105,6 @@ The following YAML snippet demonstrates how to integrate IntelliPerf into a GitH
 - **`instrument_command`**: Command to instrument the application for profiling
 - **`applications`**: JSON array specifying the commands to run and output file locations
 
-<p align="center">
 
 ```yaml
       - name: Checkout maestro-action action
@@ -133,6 +132,7 @@ The following YAML snippet demonstrates how to integrate IntelliPerf into a GitH
               "output_json": "${{ env.OUTPUT_JSON }}"
             }]
 ```
+<p align="center">
   <i>Figure 4: GitHub Actions workflow configuration for integrating IntelliPerf using the IntelliPerf Action (maestro-action).</i>
 </p>
 
