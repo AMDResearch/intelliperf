@@ -24,12 +24,16 @@ SOFTWARE.
 
 # IntelliPerf: An Automated Framework for GPU Performance Engineering
 
+## Abstract
+
 *The manual optimization of GPU kernels is a complex, time-consuming, and error-prone process that requires deep domain expertise, which is a scarce resource. This article introduces IntelliPerf, an automated performance engineering framework developed by AMD Research and Advanced Development (RAD) that systematizes and automates this workflow. IntelliPerf orchestrates a suite of profiling, instrumentation, and analysis tools (Figure 1) to automatically pinpoint performance bottlenecks, generate optimized code using Large Language Models (LLMs), and validate the results for both correctness and speed. By integrating seamlessly into a CI/CD pipeline, IntelliPerf enables continuous, automated performance improvement, effectively acting as an AI performance engineer. This work demonstrates a novel approach to combining program analysis with generative AI to address the challenges of GPU software optimization.*
 
 <p align="center">
   <img src="assets/maestro_tools.png" alt="IntelliPerf Tool Ecosystem"><br>
   <i>Figure 1: The IntelliPerf toolchain, orchestrating a suite of existing and novel AMD tools for automated performance engineering.</i>
 </p>
+
+## Introduction
 
 The performance of High-Performance Computing (HPC) and Machine Learning (ML) applications is increasingly dominated by the efficiency of their GPU kernels. However, optimizing these kernels is a significant challenge. The process requires a deep understanding of the underlying hardware architecture, a mastery of various low-level profiling tools, and the ability to manually rewrite code to resolve subtle bottlenecks such as memory access inefficiencies or contention issues. This expertise is rare, and the manual tuning cycle is a major bottleneck in software development, consuming significant engineering resources and delaying time-to-solution.
 
