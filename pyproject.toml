@@ -39,7 +39,7 @@ python3 -m pip install -r requirements.txt
 
 [tool.guided-tuning]
 git = "git@github.com:AMDResearch/guided-tuning.git"
-branch = "629a237f90a8e1e7c21f4dabca14104cfb148614"
+branch = "50fae0ff351ce8f7bab51949df57dae18d92d2d5"
 build_command = """
 python3 -m pip install -r requirements.txt
 """
