@@ -118,7 +118,7 @@ def maestro_parser():
 		help="Specify the model to use for optimization (default: gpt-4o-mini)",
 	)
 	optional_args.add_argument(
-		"-p",
+		"-r",
 		"--provider",
 		type=str,
 		default="openai",
