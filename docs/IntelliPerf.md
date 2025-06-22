@@ -28,7 +28,7 @@ SOFTWARE.
 
 <p align="center">
   <img src="assets/maestro_tools.png" alt="IntelliPerf Tool Ecosystem"><br>
-  <i>Figure 1: The IntelliPerf toolchain, orchestrating a suite of AMD and novel tools for automated performance engineering.</i>
+  <i>Figure 1: The IntelliPerf toolchain, orchestrating a suite of existing and novel AMD tools for automated performance engineering.</i>
 </p>
 
 The performance of High-Performance Computing (HPC) applications is increasingly dominated by the efficiency of their GPU kernels. However, optimizing these kernels is a significant challenge. The process requires a deep understanding of the underlying hardware architecture, a mastery of various low-level profiling tools, and the ability to manually rewrite code to resolve subtle bottlenecks such as memory access inefficiencies or contention issues. This expertise is rare, and the manual tuning cycle is a major bottleneck in software development, consuming significant engineering resources and delaying time-to-solution.
