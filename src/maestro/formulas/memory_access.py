@@ -41,8 +41,10 @@ class memory_access(Formula_Base):
 		app_cmd: list,
 		top_n: int,
 		only_consider_top_kernel=False,
+		model: str = "gpt-4o",
+		provider: str = "openai",
 	):
-		super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
+		super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n, model, provider)
 
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
 		self.only_consider_top_kernel = only_consider_top_kernel
@@ -118,8 +120,8 @@ class memory_access(Formula_Base):
 			" Do not include any markdown code blocks or text other than the code."
 		)
 
-		provider = "https://llm-api.amd.com/azure"
-		model = "dvue-aoai-001-o4-mini"
+		provider = self.provider
+		model = self.model
 		llm = LLM(
 			api_key=llm_key,
 			system_prompt=system_prompt,
