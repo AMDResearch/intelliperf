@@ -4,7 +4,7 @@
 ## Bank Conflict Formula
 
 ```console
-maestro --project_directory=./examples\
+maestro -vvv --project_directory=./examples\
     --build_command=../scripts/build_examples.sh\
     --instrument_command="../scripts/build_examples.sh -i -c"\
     --formula=bankConflict -- ./build/bank_conflict/matrix_transpose 512 512
@@ -13,7 +13,7 @@ maestro --project_directory=./examples\
 ## Memory Access Forumla
 
 ```console
-maestro --project_directory=./examples\
+maestro -vvv --project_directory=./examples\
     --build_command=../scripts/build_examples.sh\
     --instrument_command="../scripts/build_examples.sh -i -c"\
     --formula=memoryAccess -- ./build/access_pattern/uncoalesced
@@ -22,7 +22,7 @@ maestro --project_directory=./examples\
 ## Atomic Contention Formula
 
 ```console
-maestro --project_directory=./examples\
+maestro -vvv --project_directory=./examples\
     --build_command=../scripts/build_examples.sh\
     --instrument_command="../scripts/build_examples.sh -i -c"\
     --formula=atomicContention -- ./build/contention/reduction

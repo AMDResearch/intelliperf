@@ -6,7 +6,6 @@ ARG DEV_MODE=false
 ARG MAESTRO_HOME=/maestro
 
 ENV LANG=en_US.UTF-8
-ENV GT_COLOR=0
 ENV PATH=/opt/rocm/bin:$PATH
 
 # Install dependencies

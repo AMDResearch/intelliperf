@@ -22,7 +22,7 @@
 # SOFTWARE.
 ################################################################################
 
-from formulas.formula_base import Formula_Base
+from maestro.formulas.formula_base import Formula_Base
 
 
 class diagnose_only(Formula_Base):
