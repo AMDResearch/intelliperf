@@ -150,7 +150,7 @@ IntelliPerf's formula-driven architecture is extensible. Future work will focus 
 *   Branch Divergence
 *   Memory Locality
 
-We also plan to extend support to other programming models, such as Triton, and to conduct a rigorous quantitative evaluation of IntelliPerf's effectiveness across a wide range of HPC benchmarks and applications.
+We also plan to extend support to other programming models, such as Triton, and to conduct a rigorous quantitative evaluation of IntelliPerf's effectiveness across a wide range of HPC and ML benchmarks and applications. Moreover, we are interested in supporting Radeon GPUs (RDNA( in addition to existing support to Compute GPUs (CDNA).
 
 ## Conclusion
 
