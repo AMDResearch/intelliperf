@@ -14,7 +14,6 @@ From: ubuntu:22.04
     export GT_TUNING=/root/guided-tuning
     export PATH=/opt/logduration/bin/logDuration:$PATH
     export PATH=/root/rocprofiler-compute/src:$PATH
-    export GT_COLOR=0 #Suppress verbose logger
 
 %files
     examples/bank_conflict/llm.c/requirements.txt /examples/bank_conflict/llm.c/requirements.txt
@@ -96,7 +95,7 @@ From: ubuntu:22.04
     cd /root
     git clone -v git@github.com:AARInternal/guided-tuning.git
     cd guided-tuning
-    git checkout 629a237f90a8e1e7c21f4dabca14104cfb148614
+    git checkout 50fae0ff351ce8f7bab51949df57dae18d92d2d5
     python3 -m pip install -r requirements.txt
 
     # Install agents dependencies
