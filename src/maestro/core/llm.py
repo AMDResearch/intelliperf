@@ -23,54 +23,54 @@
 ################################################################################
 
 
-import os
-import requests
 import dspy
+import requests
+
 
 class LLM:
-    def __init__(
-        self,
-        api_key: str,
-        system_prompt: str,
-        deployment_id: str = "gpt-4o-mini",
-        server: str = "https://llm-api.amd.com/azure",
-    ):
-        self.api_key = api_key
-        self.system_prompt = system_prompt
-        self.deployment_id = deployment_id
-        self.server = server.rstrip("/")
+	def __init__(
+		self,
+		api_key: str,
+		system_prompt: str,
+		deployment_id: str = "gpt-4o-mini",
+		server: str = "https://llm-api.amd.com/azure",
+	):
+		self.api_key = api_key
+		self.system_prompt = system_prompt
+		self.deployment_id = deployment_id
+		self.server = server.rstrip("/")
 
-        # Determine provider
-        if "amd.com" in self.server:
-            self.use_amd = True
-            self.header = {"Ocp-Apim-Subscription-Key": api_key}
-        else:
-            self.use_amd = False
-            # Configure DSPy for OpenAI
-            self.lm = dspy.LM(f"openai/{deployment_id}", api_key=api_key)
-            dspy.configure(lm=self.lm)
+		# Determine provider
+		if "amd.com" in self.server:
+			self.use_amd = True
+			self.header = {"Ocp-Apim-Subscription-Key": api_key}
+		else:
+			self.use_amd = False
+			# Configure DSPy for OpenAI
+			self.lm = dspy.LM(f"openai/{deployment_id}", api_key=api_key)
+			dspy.configure(lm=self.lm)
 
-    def ask(self, user_prompt: str) -> str:
-        if self.use_amd:
-            # AMD/Azure REST call
-            body = {
-                "messages": [
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user",   "content": user_prompt},
-                ],
-                "max_Tokens": 4096,
-                "max_Completion_Tokens": 4096,
-            }
-            url = f"{self.server}/engines/{self.deployment_id}/chat/completions"
-            resp = requests.post(url, json=body, headers=self.header)
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+	def ask(self, user_prompt: str) -> str:
+		if self.use_amd:
+			# AMD/Azure REST call
+			body = {
+				"messages": [
+					{"role": "system", "content": self.system_prompt},
+					{"role": "user", "content": user_prompt},
+				],
+				"max_Tokens": 4096,
+				"max_Completion_Tokens": 4096,
+			}
+			url = f"{self.server}/engines/{self.deployment_id}/chat/completions"
+			resp = requests.post(url, json=body, headers=self.header)
+			resp.raise_for_status()
+			return resp.json()["choices"][0]["message"]["content"]
 
-                # DSPy path: use ChainOfThought with clear signature
-        # Define signature mapping input prompt to optimized code
-        dspy.context(description=self.system_prompt)
-        signature = "prompt: str -> optimized_code: str"
-        chain = dspy.ChainOfThought(signature)
-        ct_response = chain(prompt=user_prompt)
-        # Return optimized code from 'answer' field
-        return getattr(ct_response, 'answer', str(ct_response))
+			# DSPy path: use ChainOfThought with clear signature
+		# Define signature mapping input prompt to optimized code
+		dspy.context(description=self.system_prompt)
+		signature = "prompt: str -> optimized_code: str"
+		chain = dspy.ChainOfThought(signature)
+		ct_response = chain(prompt=user_prompt)
+		# Return optimized code from 'answer' field
+		return getattr(ct_response, "answer", str(ct_response))
