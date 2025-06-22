@@ -62,7 +62,7 @@ IntelliPerf executes a closed-loop process that systematically moves from high-l
 
 3.  **Code Generation (`Omniwiser`)**: Armed with this data, **`Omniwiser`**, a novel component built for IntelliPerf, crafts a detailed, context-aware prompt for existing public LLMs (such as OpenAI's GPTs, xAI, Claude, or others) to generate an optimized version of the code.
 
-4.  **Validation (`Accordo`)**: The LLM-generated code is then validated for both correctness and performance by **`Accordo`**, another novel tool developed for the IntelliPerf project.
+4.  **Validation (`Accordo`)**: The LLM-generated code is then validated for both correctness and performance by **`Accordo`**, another novel tool developed for the IntelliPerf project. Accordo operates as an HSA Tools Library that intercepts kernel execution, captures output buffers through HIP IPC mechanisms, and performs automated side-by-side comparison with the reference implementation using user-defined tolerances.
 
 ## Key Technologies
 
@@ -74,7 +74,17 @@ The interaction with the LLM is not a simple one-shot request. IntelliPerf emplo
 
 ### Accordo: Automated Runtime Validation
 
-Correctness validation is handled by Accordo, a tool that operates as an HSA Tools Library. This allows it to intercept ROCm runtime calls and inspect GPU memory to compare the output of the optimized kernel against the original, all without any application code changes (Figure 3). To robustly handle floating-point arithmetic, Accordo supports a user-defined absolute tolerance for comparisons.
+Correctness validation is handled by Accordo, a specialized HSA Tools Library that performs automated side-by-side comparison of kernel outputs without requiring any application code changes. The validation process works through a sophisticated inter-process communication mechanism:
+
+**Setup and Execution**: IntelliPerf launches the unoptimized application with Accordo configured as the HSA Tools Library via environment variables. Accordo then intercepts all memory allocations, kernel dispatches, and other necessary ROCm runtime APIs. IntelliPerf communicates the target kernel identifier, argument layout (order and types), and communication pipes to Accordo.
+
+**Kernel Interception**: When Accordo detects the target kernel dispatch, it executes the kernel and waits for completion. After kernel execution, Accordo exports inter-process handles (IPC) using HIP's memory export mechanism to the parent IntelliPerf process, enabling cross-process memory access.
+
+**Memory Comparison**: The IntelliPerf process copies memory from kernel argument pointers for both the reference and optimized implementations. Accordo performs a side-by-side comparison of all non-const pointer arguments (output buffers) using a user-defined tolerance to handle floating-point arithmetic variations. This targeted approach ensures validation focuses only on the kernel's actual outputs while maintaining minimal performance overhead.
+
+**Error Handling**: The entire validation process operates within IntelliPerf's optimization loop with timeout mechanisms. Any runtime errors from LLM-generated code are treated as optimization failures, triggering the iterative feedback loop to generate improved solutions.
+
+**Performance Considerations**: Accordo is only enabled during correctness validation phases, not during profiling runs, and specifically targets only non-const pointer arguments to minimize overhead while ensuring comprehensive validation coverage.
 
 <p align="center">
   <img src="assets/accordo.png" alt="Accordo Validation"><br>
