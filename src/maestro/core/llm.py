@@ -32,21 +32,21 @@ class LLM:
 		self,
 		api_key: str,
 		system_prompt: str,
-		deployment_id: str = "dvue-aoai-001-o4-mini",
-		server: str = "https://llm-api.amd.com/azure",
+		model: str = "dvue-aoai-001-o4-mini",
+		provider: str = "https://llm-api.amd.com/azure",
 	):
 		self.api_key = api_key
 		self.system_prompt = system_prompt
-		self.deployment_id = deployment_id
-		self.server = server.rstrip("/")
+		self.model = model
+		self.provider = provider.rstrip("/")
 
 		# Determine provider
-		if "amd.com" in self.server:
+		if "amd.com" in self.provider:
 			self.use_amd = True
 			self.header = {"Ocp-Apim-Subscription-Key": api_key}
 		else:
 			self.use_amd = False
-			self.lm = dspy.LM(f"{self.server}/{self.deployment_id}", api_key=api_key)
+			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key)
 			dspy.configure(lm=self.lm)
 
 	def ask(self, user_prompt: str) -> str:
@@ -60,7 +60,7 @@ class LLM:
 				"max_Tokens": 4096,
 				"max_Completion_Tokens": 4096,
 			}
-			url = f"{self.server}/engines/{self.deployment_id}/chat/completions"
+			url = f"{self.provider}/engines/{self.model}/chat/completions"
 			resp = requests.post(url, json=body, headers=self.header)
 			resp.raise_for_status()
 			return resp.json()["choices"][0]["message"]["content"]

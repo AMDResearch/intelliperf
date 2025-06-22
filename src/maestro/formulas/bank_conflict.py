@@ -186,13 +186,13 @@ class bank_conflict(Formula_Base):
 			" Do not include any markdown code blocks or text other than the code."
 		)
 
-		server = "https://llm-api.amd.com/azure"
-		deployment_id = "dvue-aoai-001-o4-mini"
+		provider = "https://llm-api.amd.com/azure"
+		model = "dvue-aoai-001-o4-mini"
 		llm = LLM(
 			api_key=llm_key,
 			system_prompt=system_prompt,
-			deployment_id=deployment_id,
-			server=server,
+			model=model,
+			provider=provider,
 		)
 
 		kernel_to_optimize = self.get_top_kernel()
