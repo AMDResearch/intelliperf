@@ -7,7 +7,7 @@
 maestro -vvv --project_directory=./examples\
     --build_command=../scripts/build_examples.sh\
     --instrument_command="../scripts/build_examples.sh -i -c"\
-    --formula=bankConflict -- ./build/bank_conflict/matrix_transpose 512 512
+    --formula=bankConflict -- ./build/bank_conflict/matrix_transpose 1024 1024
 ```
 
 ## Memory Access Forumla
