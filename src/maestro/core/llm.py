@@ -74,5 +74,3 @@ class LLM:
         ct_response = chain(prompt=user_prompt)
         # Return optimized code from 'answer' field
         return getattr(ct_response, 'answer', str(ct_response))
-
-		return str(dsp_resp)
