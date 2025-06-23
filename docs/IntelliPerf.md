@@ -49,7 +49,7 @@ IntelliPerf is designed as a modular, extensible system that can be configured t
 
 At its core, IntelliPerf is built on a "formula-driven" architecture. Each common GPU performance issue is abstracted into a **formula**. Users can select a specific bottleneck to target, such as `bankConflict`, `atomicContention`, or `memoryAccess`, through a configuration option.
 
-This modular design is implemented through an object-oriented approach where a **base formula** defines a universal, multi-stage optimization workflow. **Specialized formulas** then inherit from this base and implement the specific logic for a particular bottleneck, such as the exact performance counters to query and the precise prompts to send to the AI.
+This modular design is implemented through an object-oriented approach where a **base formula** defines a universal, multi-stage optimization workflow. **Specialized formulas** then inherit from this base and implement the specific logic for a particular bottleneck, such as the exact performance counters to query and the precise prompts to send to the LLM.
 
 ### The Multi-Stage Optimization Loop
 
