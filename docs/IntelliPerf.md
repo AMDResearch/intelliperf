@@ -82,7 +82,7 @@ Correctness validation is handled by Accordo, a specialized HSA Tools Library th
 
 **Setup and Execution**: IntelliPerf launches the unoptimized application with Accordo configured as the HSA Tools Library via environment variables. Accordo then intercepts all memory allocations, kernel dispatches, and other necessary ROCm runtime APIs. IntelliPerf communicates the target kernel identifier, argument layout (order and types), and communication pipes to Accordo.
 
-**Kernel Interception**: When Accordo detects the target kernel dispatch, it executes the kernel and waits for completion. After kernel execution, Accordo exports inter-process handles (IPC) using HIP's memory export mechanism to the parent IntelliPerf process, enabling cross-process memory access.
+**Kernel Interception**: When Accordo detects the target kernel dispatch, it executes the kernel and waits for completion. After kernel execution, Accordo exports IPC handles using HIP's memory export mechanism to the parent IntelliPerf process, enabling cross-process memory access.
 
 **Memory Comparison**: The IntelliPerf process copies memory from kernel argument pointers for both the reference and optimized implementations. Accordo performs a side-by-side comparison of all non-const pointer arguments (output buffers) using a user-defined tolerance to handle floating-point arithmetic variations. This targeted approach ensures validation focuses only on the kernel's actual outputs while maintaining minimal performance overhead.
 
