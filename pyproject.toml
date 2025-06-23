@@ -12,7 +12,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 
 # Python dependencies 
-dependencies = ["tomli", "openai>=1.0.0", "tabulate", "ml_dtypes", "dspy"]
+dependencies = ["tomli", "openai>=1.0.0", "tabulate", "ml_dtypes", "dspy", "pandas", "duckdb", "rich"]
 
 
 [tool.setuptools]
@@ -34,13 +34,6 @@ git = "git@github.com:ROCm/rocprofiler-compute.git"
 branch = "41e73650d5cfc3dbd98e007d6279235578f8529a"
 build_command = """
 python3 -m pip install --ignore-installed blinker &&
-python3 -m pip install -r requirements.txt
-"""
-
-[tool.guided-tuning]
-git = "git@github.com:AMDResearch/guided-tuning.git"
-branch = "50fae0ff351ce8f7bab51949df57dae18d92d2d5"
-build_command = """
 python3 -m pip install -r requirements.txt
 """
 
