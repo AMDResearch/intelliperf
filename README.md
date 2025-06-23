@@ -26,6 +26,10 @@ SOFTWARE.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+> [!IMPORTANT]  
+> This project is intended for research purposes only and is provided by AMD Research and Advanced Development team. 
+This is not a product. Use it at your own risk and discretion.
+
 ![Maestro](./images/maestro.png)
 
 ## Overview
