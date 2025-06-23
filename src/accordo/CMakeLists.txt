@@ -28,7 +28,7 @@ project(
     accordo
     VERSION       0.1.0
     DESCRIPTION   "Accordo"
-    HOMEPAGE_URL  "https://github.com/AARInternal/maestro"
+    HOMEPAGE_URL  "https://github.com/AARInternal/intelliperf"
     LANGUAGES     HIP CXX C
 )
 

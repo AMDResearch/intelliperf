@@ -22,32 +22,51 @@
 # SOFTWARE.
 ################################################################################
 
-import os
-from pathlib import Path
-
-from maestro.utils.process import exit_on_fail
+from intelliperf.formulas.formula_base import Formula_Base
 
 
-def get_guided_tuning_path():
-	if os.environ.get("GT_TUNING"):
-		return Path(os.environ["GT_TUNING"]).resolve()
-	return (Path(__file__).resolve().parent / "../../../external/guided-tuning").resolve()
+class diagnose_only(Formula_Base):
+	def __init__(self, name, build_command, instrument_command, project_directory, app_cmd, top_n):
+		super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
 
+	def profile_pass(self):
+		"""
+		Profile the application using guided-tuning and collect bank conflict data
 
-def get_accordo_path():
-	return (Path(__file__).resolve().parent / "../../accordo").resolve()
+		Returns:
+		    Result: DataFrame containing the performance report card
+		"""
+		return super().profile_pass()
 
+	def instrument_pass(self):
+		return super().instrument_pass()
 
-def get_rocprofiler_path():
-	return (Path(__file__).resolve().parent / "../../../external/rocprofiler-compute/src").resolve()
+	def optimize_pass(self):
+		return super().optimize_pass()
 
+	def compile_pass(self):
+		return super().compile_pass()
 
-def get_nexus_path():
-	return (Path(__file__).resolve().parent / "../../../external/nexus").resolve()
+	def correctness_validation_pass(self):
+		"""
+		Validate the optimized kernel by comparing the output with the reference kernel
 
+		Returns:
+		    Result: Validation status
+		"""
+		return super().correctness_validation_pass()
 
-def get_llm_api_key():
-	llm_key = os.environ.get("LLM_GATEWAY_KEY")
-	if not llm_key:
-		exit_on_fail(success=False, message="Missing LLM API key. Please set the LLM_GATEWAY_KEY environment variable.")
-	return llm_key
+	def performance_validation_pass(self):
+		return super().performance_validation_pass()
+
+	def source_code_pass(self):
+		return super().source_code_pass()
+
+	def summarize_previous_passes(self):
+		return super().summarize_previous_passes()
+
+	def write_results(self, output_file: str = None):
+		"""
+		Writes the results to the output file.
+		"""
+		super().write_results(output_file)

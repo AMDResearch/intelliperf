@@ -26,9 +26,15 @@ import json
 import logging
 import os
 
-from maestro.core.llm import LLM
-from maestro.formulas.formula_base import Formula_Base, Result, filter_json_field, get_kernel_name, write_results
-from maestro.utils.env import get_llm_api_key
+from intelliperf.core.llm import LLM
+from intelliperf.formulas.formula_base import (
+	Formula_Base,
+	Result,
+	filter_json_field,
+	get_kernel_name,
+	write_results,
+)
+from intelliperf.utils.env import get_llm_api_key
 
 
 class atomic_contention(Formula_Base):
@@ -44,7 +50,16 @@ class atomic_contention(Formula_Base):
 		model: str = "gpt-4o",
 		provider: str = "openai",
 	):
-		super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n, model, provider)
+		super().__init__(
+			name,
+			build_command,
+			instrument_command,
+			project_directory,
+			app_cmd,
+			top_n,
+			model,
+			provider,
+		)
 
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
 		self.only_consider_top_kernel = only_consider_top_kernel
@@ -183,7 +198,7 @@ class atomic_contention(Formula_Base):
 
 			args = kernel.split("(")[1].split(")")[0]
 			self.bottleneck_report = (
-				f"Atomic Contention Detection: Maestro identified high atomic contention in kernel "
+				f"Atomic Contention Detection: IntelliPerf identified high atomic contention in kernel "
 				f"`{kernel_name}` with arguments `{args}`. Atomic contention occurs when multiple threads "
 				f"compete for the same atomic operations, causing serialization and increased latency."
 			)
@@ -250,7 +265,9 @@ class atomic_contention(Formula_Base):
 		    Result: Validation status
 		"""
 		unoptimized_results = filter_json_field(
-			self._initial_profiler_results, field="kernel", comparison_func=lambda x: x == self.current_kernel_signature
+			self._initial_profiler_results,
+			field="kernel",
+			comparison_func=lambda x: x == self.current_kernel_signature,
 		)
 
 		unoptimized_time = unoptimized_results[0]["durations"]["ns"]
@@ -263,7 +280,9 @@ class atomic_contention(Formula_Base):
 		self._optimization_results = self._application.profile(top_n=self.top_n)
 
 		optimized_results = filter_json_field(
-			self._optimization_results, field="kernel", comparison_func=lambda x: x == self.current_kernel_signature
+			self._optimization_results,
+			field="kernel",
+			comparison_func=lambda x: x == self.current_kernel_signature,
 		)
 
 		optimized_time = optimized_results[0]["durations"]["ns"]

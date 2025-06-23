@@ -49,7 +49,7 @@ SOFTWARE.
 #include <hip/hip_runtime.h>
 #include "KernelArguments.hpp"
 
-namespace maestro {
+namespace intelliperf {
 
 std::mutex accordo::mutex_{};
 std::shared_mutex accordo::stop_mutex_{};
@@ -570,7 +570,7 @@ hsa_status_t accordo::hsa_queue_create(hsa_agent_t agent,
                                        uint32_t private_segment_size,
                                        uint32_t group_segment_size,
                                        hsa_queue_t** queue) {
-  LOG_DETAIL("Creating maestro-rt queue");
+  LOG_DETAIL("Creating intelliperf-rt queue");
 
   hsa_status_t result = HSA_STATUS_SUCCESS;
   auto instance = get_instance();
@@ -607,10 +607,10 @@ hsa_status_t accordo::hsa_queue_create(hsa_agent_t agent,
   return result;
 }
 hsa_status_t accordo::hsa_queue_destroy(hsa_queue_t* queue) {
-  LOG_DETAIL("Destroying maestro-rt queue");
+  LOG_DETAIL("Destroying intelliperf-rt queue");
   return hsa_core_call(singleton_, hsa_queue_destroy, queue);
 }
-}  // namespace maestro
+}  // namespace intelliperf
 
 extern "C" {
 
@@ -618,12 +618,12 @@ PUBLIC_API bool OnLoad(HsaApiTable* table,
                        uint64_t runtime_version,
                        uint64_t failed_tool_count,
                        const char* const* failed_tool_names) {
-  LOG_DETAIL("Creating maestro-rt singleton");
+  LOG_DETAIL("Creating intelliperf-rt singleton");
 
-  maestro::accordo* hook = maestro::accordo::get_instance(
+  intelliperf::accordo* hook = intelliperf::accordo::get_instance(
       table, runtime_version, failed_tool_count, failed_tool_names);
 
-  LOG_DETAIL("Creating maestro-rt singleton completed");
+  LOG_DETAIL("Creating intelliperf-rt singleton completed");
 
   return true;
 }

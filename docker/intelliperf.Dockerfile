@@ -3,7 +3,7 @@
 FROM rocm/vllm-dev:nightly_aiter_integration_final_20250325
 
 ARG DEV_MODE=false
-ARG MAESTRO_HOME=/maestro
+ARG INTELLIPERF_HOME=/intelliperf
 
 ENV LANG=en_US.UTF-8
 ENV PATH=/opt/rocm/bin:$PATH
@@ -27,11 +27,11 @@ RUN mkdir -p ~/.ssh && \
     chmod 644 ~/.ssh/known_hosts
 
 # Set the working directory
-WORKDIR $MAESTRO_HOME
+WORKDIR $INTELLIPERF_HOME
 
-# Clone Maestro only in non-dev mode
+# Clone IntelliPerf only in non-dev mode
 RUN --mount=type=ssh bash -c 'if [ "$DEV_MODE" = "false" ]; then \
-    git clone git@github.com:AMDResearch/maestro.git . ; \
+    git clone git@github.com:AMDResearch/intelliperf.git . ; \
     pip install -e .; \
     python3 scripts/install_tool.py --all; \
     fi'

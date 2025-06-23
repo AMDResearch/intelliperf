@@ -24,25 +24,29 @@
 ################################################################################
 
 
-def maestro_parser():
+def intelliperf_parser():
 	import argparse
 
 	parser = argparse.ArgumentParser(
-		description="Optimize and analyze the given application based on available Maestro formulas.",
-		prog="maestro",
+		description="Optimize and analyze the given application based on available IntelliPerf formulas.",
+		prog="intelliperf",
 		formatter_class=lambda prog: argparse.RawTextHelpFormatter(prog, max_help_position=30),
 		usage="""
-        maestro [options] -- <profile_cmd>
+        intelliperf [options] -- <profile_cmd>
 
         Example:
-        # Run maestro to optimize bank conflicts in a HIP app
-        maestro -b ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas_gemm
-        # Run maestro to diagnose a Triton app
-        maestro -- python3 gemm.py
+        # Run intelliperf to optimize bank conflicts in a HIP app
+        intelliperf -b ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas_gemm
+        # Run intelliperf to diagnose a Triton app
+        intelliperf -- python3 gemm.py
         """,
 	)
 	parser.add_argument(
-		"-v", "--verbose", action="count", default=0, help="Increase verbosity level (e.g., -v, -vv, -vvv)."
+		"-v",
+		"--verbose",
+		action="count",
+		default=0,
+		help="Increase verbosity level (e.g., -v, -vv, -vvv).",
 	)
 
 	# Required arguments group
@@ -146,9 +150,9 @@ def maestro_parser():
 
 
 def main():
-	args = maestro_parser()
+	args = intelliperf_parser()
 
-	# Generate a name for the Maestro run using timestamp
+	# Generate a name for the IntelliPerf run using timestamp
 	from datetime import datetime
 
 	generated_name = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
@@ -158,29 +162,29 @@ def main():
 
 	logging.raiseExceptions = True
 	if args.verbose == 1:
-		logging.basicConfig(level=logging.INFO, format="[MAESTRO] %(levelname)s: %(message)s")
+		logging.basicConfig(level=logging.INFO, format="[INTELLIPERF] %(levelname)s: %(message)s")
 	elif args.verbose == 2:
-		logging.basicConfig(level=logging.DEBUG, format="[MAESTRO] %(levelname)s: %(message)s")
+		logging.basicConfig(level=logging.DEBUG, format="[INTELLIPERF] %(levelname)s: %(message)s")
 	elif args.verbose >= 3:
-		logging.basicConfig(level=logging.NOTSET, format="[MAESTRO] %(levelname)s: %(message)s")
+		logging.basicConfig(level=logging.NOTSET, format="[INTELLIPERF] %(levelname)s: %(message)s")
 	else:
-		logging.basicConfig(level=logging.WARNING, format="[MAESTRO] %(levelname)s: %(message)s")
+		logging.basicConfig(level=logging.WARNING, format="[INTELLIPERF] %(levelname)s: %(message)s")
 
-	# Create an optimizer based on available Maestro formulas.
+	# Create an optimizer based on available IntelliPerf formulas.
 	if args.formula == "bankConflict":
-		from maestro.formulas.bank_conflict import bank_conflict
+		from intelliperf.formulas.bank_conflict import bank_conflict
 
 		formula = bank_conflict
 	elif args.formula == "diagnoseOnly":
-		from maestro.formulas.diagnose_only import diagnose_only
+		from intelliperf.formulas.diagnose_only import diagnose_only
 
 		formula = diagnose_only
 	elif args.formula == "memoryAccess":
-		from maestro.formulas.memory_access import memory_access
+		from intelliperf.formulas.memory_access import memory_access
 
 		formula = memory_access
 	elif args.formula == "atomicContention":
-		from maestro.formulas.atomic_contention import atomic_contention
+		from intelliperf.formulas.atomic_contention import atomic_contention
 
 		formula = atomic_contention
 	else:

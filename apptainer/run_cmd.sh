@@ -56,20 +56,20 @@ done
 workload=$(date +"%Y%m%d%H%M%S")
 
 # Create filesystem image overlay, if it doesn't exist
-overlay="/tmp/maestro_overlay_$(whoami)_$workload.img"
+overlay="/tmp/intelliperf_overlay_$(whoami)_$workload.img"
 if [ ! -f $overlay ]; then
     echo "[Log] Overlay image ${overlay} does not exist. Creating overlay of ${size} MiB..."
-    apptainer overlay create --size ${size} --create-dir /var/cache/maestro ${overlay}
+    apptainer overlay create --size ${size} --create-dir /var/cache/intelliperf ${overlay}
 else
     echo "[Log] Overlay image ${overlay} already exists. Using this one."
 fi
-echo "[Log] Utilize the directory /var/cache/maestro as a sandbox to store data you'd like to persist between container runs."
+echo "[Log] Utilize the directory /var/cache/intelliperf as a sandbox to store data you'd like to persist between container runs."
 
 # Run the container
 if [[ $debug -eq 1 ]]; then
-    image="apptainer/maestro_debug.sif"
+    image="apptainer/intelliperf_debug.sif"
 else
-    image="apptainer/maestro.sif"
+    image="apptainer/intelliperf.sif"
 fi
 echo "cmd: $cmd"
 apptainer exec --overlay "${overlay}"\
