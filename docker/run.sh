@@ -23,7 +23,7 @@
 # SOFTWARE.
 ################################################################################
 
-name="maestro"
+name="intelliperf"
 
 docker run -it --rm \
     --name "$name" \

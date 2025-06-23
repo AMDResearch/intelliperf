@@ -22,9 +22,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 -->
 
-# Contributing to Maestro
+# Contributing to IntelliPerf
 
-Thank you for your interest in contributing to Maestro! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to IntelliPerf! This document provides guidelines and instructions for contributing to the project.
 
 ## Development Setup
 
@@ -49,8 +49,8 @@ We provide both Apptainer and Docker images containing all the dependencies. To 
 
 1. **Clone the Repository**:
    ```bash
-   git clone git@github.com:AMDResearch/maestro.git
-   cd maestro
+   git clone git@github.com:AMDResearch/intelliperf.git
+   cd intelliperf
    ```
 
 2. **Install Development Dependencies**:
@@ -101,4 +101,4 @@ pre-commit run --all-files
 
 ## License
 
-By contributing to Maestro, you agree that your contributions will be licensed under the project's MIT License. 
+By contributing to IntelliPerf, you agree that your contributions will be licensed under the project's MIT License. 

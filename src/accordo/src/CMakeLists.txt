@@ -66,8 +66,8 @@ target_sources(accordo
         ${CMAKE_CURRENT_SOURCE_DIR}/accordo.hip
 )
 
-maestro_compiler_warnings(accordo)
-maestro_compiler_options(accordo)
+intelliperf_compiler_warnings(accordo)
+intelliperf_compiler_options(accordo)
 
 target_link_libraries(accordo
     PUBLIC

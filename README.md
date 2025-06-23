@@ -22,15 +22,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 -->
 
-# Maestro: Orchestrating the Omniverse
+# IntelliPerf: The Performance Maestro
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-![Maestro](./images/maestro.png)
+> [!IMPORTANT]  
+> This project is intended for research purposes only and is provided by AMD Research and Advanced Development team. 
+This is not a product. Use it at your own risk and discretion.
+
+![IntelliPerf](./images/intelliperf.png)
 
 ## Overview
 
-**Maestro** is a tool that reports and optimizes performance bottlenecks in an automated workflow. Given a target application, our tool generates kernel report cards containing performance metrics and their source code object alongside suggestions for code improvements. Maestro orchestrates existing Omni-tools such as [rocprofiler-compute](https://github.com/ROCm/rocprofiler-compute), and [guided-tuning](https://github.com/AMDResearch/guided-tuning) in addition to new ones like _Accordo_ for correctness validation and [nexus](https://github.com/AMDResearch/nexus) for code object back to source code mapping.
+**IntelliPerf** is a tool that reports and optimizes performance bottlenecks in an automated workflow. Given a target application, our tool generates kernel report cards containing performance metrics and their source code object alongside suggestions for code improvements. IntelliPerf orchestrates existing Omni-tools such as [rocprofiler-compute](https://github.com/ROCm/rocprofiler-compute), and [guided-tuning](./external/guided-tuning/) in addition to new ones like [_Accordo_](src/accordo/) for correctness validation and [nexus](https://github.com/AMDResearch/nexus) for code object back to source code mapping.
 
 ### Key Features
 
@@ -79,11 +83,11 @@ We provide both Apptainer and Docker images for easy setup:
 
 1. **Clone the Repository**:
    ```bash
-   git clone git@github.com:AMDResearch/maestro.git
-   cd maestro
+   git clone git@github.com:AMDResearch/intelliperf.git
+   cd intelliperf
    ```
 
-2. **Install Maestro**:
+2. **Install IntelliPerf**:
    ```bash
    pip install -e .
    ```
@@ -101,33 +105,33 @@ Set the following environment variable for AI-powered optimization:
 export LLM_GATEWAY_KEY="your_api_key_here"
 ```
 
-Required for bank conflicts, memory access patterns, and atomic contention optimization.
+Required for bank conflicts, memory access patterns, and atomic contention optimization. The AI-powered optimization supports various language models and providers through the `--provider` and `--model` command line arguments. The key should be the backend key for the specified provider.
 
 ## Supported GPUs
 
-Maestro currently supports:
+IntelliPerf currently supports:
 
 - **MI300X**
 
 > [!NOTE]
-> Maestro may work on other AMD GPUs with ROCm compatibility, but has only been tested on MI300X.
+> IntelliPerf may work on other AMD GPUs with ROCm compatibility, but has only been tested on MI300X.
 
 ## Usage
 
-Maestro can be used to analyze and optimize your GPU applications:
+IntelliPerf can be used to analyze and optimize your GPU applications:
 
 ```bash
-maestro [options] -- <profile_cmd>
+intelliperf [options] -- <profile_cmd>
 ```
 
 ### Examples
 
 ```bash
 # Optimize bank conflicts in a HIP application
-maestro -b ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas_gemm
+intelliperf -b ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas_gemm
 
 # Diagnose a Triton application
-maestro -- python3 gemm.py
+intelliperf -- python3 gemm.py
 ```
 
 ### Command Line Options
@@ -144,6 +148,8 @@ maestro -- python3 gemm.py
 | `--num_attempts` | Control optimization attempts (default: 10) |
 | `-o, --output_file` | Path to output file |
 | `-t, --accordo_absolute_tolerance` | Validation tolerance |
+| `-m, --model` | Specify the model to use for optimization (default: gpt-4o) |
+| `-r, --provider` | Specify the provider to use for optimization (default: openai) |
 
 ## Documentation
 
@@ -157,7 +163,7 @@ We welcome contributions! Please see our [Contributing Guide](docs/CONTRIBUTING.
 ## Support
 
 For support, please:
-1. Open an [issue](https://github.com/AMDResearch/maestro/issues)
+1. Open an [issue](https://github.com/AMDResearch/intelliperf/issues/new)
 2. Contact the development team
 
 ## License
