@@ -78,7 +78,7 @@ The interaction with the LLM is not a simple one-shot request. IntelliPerf emplo
 
 ### Accordo: Automated Runtime Validation
 
-Correctness validation is handled by Accordo, a specialized HSA Tools Library that performs automated side-by-side comparison of kernel outputs without requiring any application code changes. The validation process works through a sophisticated inter-process communication mechanism:
+Correctness validation is handled by Accordo, a specialized HSA Tools Library that performs automated side-by-side comparison of kernel outputs without requiring any application code changes. The validation process works through a sophisticated inter-process communication (IPC) mechanism:
 
 **Setup and Execution**: IntelliPerf launches the unoptimized application with Accordo configured as the HSA Tools Library via environment variables. Accordo then intercepts all memory allocations, kernel dispatches, and other necessary ROCm runtime APIs. IntelliPerf communicates the target kernel identifier, argument layout (order and types), and communication pipes to Accordo.
 
