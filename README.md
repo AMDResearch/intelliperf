@@ -163,7 +163,7 @@ We welcome contributions! Please see our [Contributing Guide](docs/CONTRIBUTING.
 ## Support
 
 For support, please:
-1. Open an [issue](https://github.com/AMDResearch/intelliperf/issues/new)
+1. Open an [issue](https://github.com/AMDResearch/intelliperf/issues/new/choose)
 2. Contact the development team
 
 ## License
