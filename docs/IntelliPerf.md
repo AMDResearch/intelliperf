@@ -60,7 +60,7 @@ IntelliPerf executes a closed-loop process that systematically moves from high-l
   <i>Figure 2: The multi-stage optimization loop executed by IntelliPerf.</i>
 </p>
 
-1.  **Profiling (`rocprofv3`)**: The process begins with a timing run to identify the most time-consuming kernel in the application. A second, more detailed run then collects a rich set of hardware performance counters relevant to the chosen formula.
+1.  **Profiling (`rocprofv3`)**: The process begins with a timing run to identify the most time-consuming kernel in the application (ranked by wallclock time). A second, more detailed run then collects a rich set of hardware performance counters relevant to the chosen formula. IntelliPerf considers the top N kernels but optimizes the first one that exhibits the specific bottleneck being targeted.
 
 2.  **Analysis (`Guided Tuning` & `Omniprobe`)**: The performance counters are first analyzed by **`Guided Tuning`**, a tool that summarizes the data to identify the likely issue. **`Omniprobe`** then uses compiler-based instrumentation to pinpoint the specific source code line responsible for the bottleneck.
 
@@ -108,7 +108,7 @@ The following YAML snippet demonstrates how to integrate IntelliPerf into a GitH
 
 - **`formula`**: Specifies the performance bottleneck to target (e.g., `bankConflict`, `atomicContention`, `memoryAccess`)
 - **`docker_image`**: The container image containing the IntelliPerf toolchain
-- **`top_n`**: Number of top kernels to analyze for optimization
+- **`top_n`**: Number of top kernels to consider for analysis (ranked by wallclock time), with optimization applied to the first kernel that exhibits the specific bottleneck being targeted
 - **`create_pr`**: Whether to automatically create pull requests with optimizations
 - **`build_command`**: Command to build the target application
 - **`instrument_command`**: Command to instrument the application for profiling
