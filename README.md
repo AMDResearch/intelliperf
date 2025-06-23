@@ -24,7 +24,7 @@ SOFTWARE.
 
 # IntelliPerf: The Performance Maestro
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/AMDResearch/intelliperf/actions/workflows/lint.yml) 
 
 > [!IMPORTANT]  
 > This project is intended for research purposes only and is provided by AMD Research and Advanced Development team. 
@@ -34,18 +34,16 @@ This is not a product. Use it at your own risk and discretion.
 
 ## Overview
 
-**IntelliPerf** is a tool that reports and optimizes performance bottlenecks in an automated workflow. Given a target application, our tool generates kernel report cards containing performance metrics and their source code object alongside suggestions for code improvements. IntelliPerf orchestrates existing Omni-tools such as [rocprofiler-compute](https://github.com/ROCm/rocprofiler-compute), and [guided-tuning](./external/guided-tuning/) in addition to new ones like [_Accordo_](src/accordo/) for correctness validation and [nexus](https://github.com/AMDResearch/nexus) for code object back to source code mapping.
+**IntelliPerf** is an automated performance engineering framework that addresses the complex challenge of GPU kernel optimization. Manual optimization requires deep domain expertise and is time-consuming, error-prone, and resource-intensive. IntelliPerf systematizes this workflow by orchestrating a comprehensive toolchain that automatically profiles applications using [rocprofiler-compute](https://github.com/ROCm/rocprofiler-compute), identifies high-level bottlenecks with [Guided Tuning](./external/guided-tuning/), pinpoints specific source code lines using [Omniprobe](https://github.com/AARInternal/logduration), generates optimized code through Large Language Models (LLMs), and validates results using [Accordo](src/accordo/) for correctness and performance. Built on a modular "formula-driven" architecture, it targets specific bottlenecks like bank conflicts, memory access patterns, and atomic contention through a sophisticated multi-stage optimization loop that includes profiling, analysis, code generation, and automated validation.
 
 ### Key Features
 
-* **AI-Powered Optimization**: Automatically identifies and optimizes common performance bottlenecks using Large Language Models
-* **Precise Analysis**: Pinpoints performance issues down to specific source code lines
-* **Comprehensive Coverage**: Supports multiple bottleneck types:
-  - Bank conflicts
-  - Memory access patterns
-  - Atomic contention
-  - And more to come...
-* **Diagnostic Mode**: Run in diagnose-only mode to analyze performance without making code changes
+* **AI-Powered Optimization**: Generates optimized code using LLMs with iterative feedback for performance improvements
+* **Precise Analysis**: Pinpoints performance issues down to specific source code lines using compiler-based instrumentation
+* **Automated Validation**: Validates both correctness and performance improvements through runtime comparison
+* **Comprehensive Coverage**: Supports multiple bottleneck types (bank conflicts, memory access, atomic contention)
+* **CI/CD Integration**: Seamless workflow integration with automated pull request generation
+* **Extensible Architecture**: Formula-driven design for easy addition of new optimization targets
 
 ## Installation
 
@@ -80,6 +78,9 @@ We provide both Apptainer and Docker images for easy setup:
    ```
 
 ### Installation from Source
+
+> [!NOTE]
+> Due to the complex dependency chain, IntelliPerf currently supports development mode installation only. Future versions will support standard pip installation.
 
 1. **Clone the Repository**:
    ```bash
