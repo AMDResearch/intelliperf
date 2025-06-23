@@ -39,18 +39,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Container name
-name="maestro"
+name="intelliperf"
 
 # Script directories
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 parent_dir="$(dirname "$script_dir")"
 cur_dir=$(pwd)
 
-# Set MAESTRO_HOME based on dev mode
+# Set INTELLIPERF_HOME based on dev mode
 if [ "$dev_mode" = true ]; then
-    maestro_home="$cur_dir"
+    intelliperf_home="$cur_dir"
 else
-    maestro_home="/maestro"
+    intelliperf_home="/intelliperf"
 fi
 
 pushd "$script_dir"
@@ -73,8 +73,8 @@ docker build \
     --ssh default \
     -t "$name" \
     --build-arg DEV_MODE="$dev_mode" \
-    --build-arg MAESTRO_HOME="$maestro_home" \
-    -f "$script_dir/maestro.Dockerfile" \
+    --build-arg INTELLIPERF_HOME="$intelliperf_home" \
+    -f "$script_dir/intelliperf.Dockerfile" \
     .
 
 popd

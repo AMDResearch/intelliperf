@@ -39,7 +39,7 @@ extern "C" {
 extern char** environ;
 }
 
-namespace maestro {
+namespace intelliperf {
 
 namespace detail {
 
@@ -117,14 +117,14 @@ inline void log_message(const LogLevel level,
   }
 }
 }  // namespace detail
-}  // namespace maestro
+}  // namespace intelliperf
 
 #define LOG_DETAIL(msg, ...)    \
-  maestro::detail::log_message( \
-      maestro::detail::LogLevel::DETAIL, __FILE__, __LINE__, msg, ##__VA_ARGS__)
+  intelliperf::detail::log_message( \
+      intelliperf::detail::LogLevel::DETAIL, __FILE__, __LINE__, msg, ##__VA_ARGS__)
 #define LOG_INFO(msg, ...)      \
-  maestro::detail::log_message( \
-      maestro::detail::LogLevel::INFO, __FILE__, __LINE__, msg, ##__VA_ARGS__)
+  intelliperf::detail::log_message( \
+      intelliperf::detail::LogLevel::INFO, __FILE__, __LINE__, msg, ##__VA_ARGS__)
 #define LOG_ERROR(msg, ...)     \
-  maestro::detail::log_message( \
-      maestro::detail::LogLevel::ERROR, __FILE__, __LINE__, msg, ##__VA_ARGS__)
+  intelliperf::detail::log_message( \
+      intelliperf::detail::LogLevel::ERROR, __FILE__, __LINE__, msg, ##__VA_ARGS__)

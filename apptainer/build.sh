@@ -53,13 +53,13 @@ ssh_auth_sock_path=$(readlink -f "$SSH_AUTH_SOCK")
 #   --build-arg SSH_AUTH_SOCK=$SSH_AUTH_SOCK is used to pass the SSH agent socket to the container
 #   (advantage of this method is that the key is at no point copied to the container image.)
 #   If your SSH_AUTH_SOCK will not already bound to the container, and is available at /run/..., add `--bind /run` to the build command
-definition="apptainer/maestro.def"
+definition="apptainer/intelliperf.def"
 
 if [[ $debug -eq 1 ]]; then
-    image="apptainer/maestro_debug.sif"
+    image="apptainer/intelliperf_debug.sif"
     cmake_build_type="Debug"
 else
-    image="apptainer/maestro.sif"
+    image="apptainer/intelliperf.sif"
     cmake_build_type="Release"
 fi
 

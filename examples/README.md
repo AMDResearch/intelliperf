@@ -4,7 +4,7 @@
 ## Bank Conflict Formula
 
 ```console
-maestro -vvv --project_directory=./examples\
+intelliperf -vvv --project_directory=./examples\
     --build_command=../scripts/build_examples.sh\
     --instrument_command="../scripts/build_examples.sh -i -c"\
     --formula=bankConflict -- ./build/bank_conflict/matrix_transpose 1024 1024
@@ -13,7 +13,7 @@ maestro -vvv --project_directory=./examples\
 ## Memory Access Forumla
 
 ```console
-maestro -vvv --project_directory=./examples\
+intelliperf -vvv --project_directory=./examples\
     --build_command=../scripts/build_examples.sh\
     --instrument_command="../scripts/build_examples.sh -i -c"\
     --formula=memoryAccess -- ./build/access_pattern/uncoalesced
@@ -22,7 +22,7 @@ maestro -vvv --project_directory=./examples\
 ## Atomic Contention Formula
 
 ```console
-maestro -vvv --project_directory=./examples\
+intelliperf -vvv --project_directory=./examples\
     --build_command=../scripts/build_examples.sh\
     --instrument_command="../scripts/build_examples.sh -i -c"\
     --formula=atomicContention -- ./build/contention/reduction
@@ -613,12 +613,12 @@ After running, you will get an output similar to:
           "global_store_short v[0:1], v3, off                         // 000000009198: DC688000 007F0300 "
         ],
         "files": [
-          "/home/AMD/muhaawad/git/amd/audacious/maestro/examples/access_pattern/uncoalesced/uncoalesced.hip",
-          "/home/AMD/muhaawad/git/amd/audacious/maestro/examples/access_pattern/uncoalesced/uncoalesced.hip",
-          "/home/AMD/muhaawad/git/amd/audacious/maestro/examples/access_pattern/uncoalesced/uncoalesced.hip",
-          "/home/AMD/muhaawad/git/amd/audacious/maestro/examples/access_pattern/uncoalesced/uncoalesced.hip",
-          "/home/AMD/muhaawad/git/amd/audacious/maestro/examples/access_pattern/uncoalesced/uncoalesced.hip",
-          "/home/AMD/muhaawad/git/amd/audacious/maestro/examples/access_pattern/uncoalesced/uncoalesced.hip",
+          "/home/AMD/muhaawad/git/amd/audacious/intelliperf/examples/access_pattern/uncoalesced/uncoalesced.hip",
+          "/home/AMD/muhaawad/git/amd/audacious/intelliperf/examples/access_pattern/uncoalesced/uncoalesced.hip",
+          "/home/AMD/muhaawad/git/amd/audacious/intelliperf/examples/access_pattern/uncoalesced/uncoalesced.hip",
+          "/home/AMD/muhaawad/git/amd/audacious/intelliperf/examples/access_pattern/uncoalesced/uncoalesced.hip",
+          "/home/AMD/muhaawad/git/amd/audacious/intelliperf/examples/access_pattern/uncoalesced/uncoalesced.hip",
+          "/home/AMD/muhaawad/git/amd/audacious/intelliperf/examples/access_pattern/uncoalesced/uncoalesced.hip",
           "/opt/rocm-6.3.1/lib/llvm/bin/../../../include/hip/amd_detail/amd_hip_runtime.h",
           "/opt/rocm-6.3.1/lib/llvm/bin/../../../include/hip/amd_detail/amd_hip_runtime.h"
         ],
@@ -647,7 +647,7 @@ After running, you will get an output similar to:
     }
   ],
   "report_message": "Memory Coalescing Improvement: Successfully improved memory access patterns by 250.0%. Coalescing efficiency increased from 40.0% to 100.0% (higher percentages indicate more efficient memory access patterns). Performance Gain: Achieved 1.40x speedup with execution time reduced from 0.01ms to 0.01ms (39.9% faster).",
-  "bottleneck_report": "Memory Access Pattern Detection: Maestro identified inefficient memory access patterns in kernel `void matrix_transpose` with arguments `__hip_bfloat16 const*, __hip_bfloat16*, int, int`. Uncoalesced memory accesses occur when threads access memory in non-sequential patterns, reducing memory bandwidth utilization.",
+  "bottleneck_report": "Memory Access Pattern Detection: IntelliPerf identified inefficient memory access patterns in kernel `void matrix_transpose` with arguments `__hip_bfloat16 const*, __hip_bfloat16*, int, int`. Uncoalesced memory accesses occur when threads access memory in non-sequential patterns, reducing memory bandwidth utilization.",
   "formula": "memoryAccess"
 }
 ```
