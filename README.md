@@ -26,11 +26,15 @@ SOFTWARE.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+> [!IMPORTANT]  
+> This project is intended for research purposes only and is provided by AMD Research and Advanced Development team. 
+This is not a product. Use it at your own risk and discretion.
+
 ![Maestro](./images/maestro.png)
 
 ## Overview
 
-**Maestro** is a tool that reports and optimizes performance bottlenecks in an automated workflow. Given a target application, our tool generates kernel report cards containing performance metrics and their source code object alongside suggestions for code improvements. Maestro orchestrates existing Omni-tools such as [rocprofiler-compute](https://github.com/ROCm/rocprofiler-compute), and [guided-tuning](https://github.com/AMDResearch/guided-tuning) in addition to new ones like _Accordo_ for correctness validation and [nexus](https://github.com/AMDResearch/nexus) for code object back to source code mapping.
+**Maestro** is a tool that reports and optimizes performance bottlenecks in an automated workflow. Given a target application, our tool generates kernel report cards containing performance metrics and their source code object alongside suggestions for code improvements. Maestro orchestrates existing Omni-tools such as [rocprofiler-compute](https://github.com/ROCm/rocprofiler-compute), and [guided-tuning](./external/guided-tuning/) in addition to new ones like [_Accordo_](src/accordo/) for correctness validation and [nexus](https://github.com/AMDResearch/nexus) for code object back to source code mapping.
 
 ### Key Features
 
@@ -101,7 +105,7 @@ Set the following environment variable for AI-powered optimization:
 export LLM_GATEWAY_KEY="your_api_key_here"
 ```
 
-Required for bank conflicts, memory access patterns, and atomic contention optimization.
+Required for bank conflicts, memory access patterns, and atomic contention optimization. The AI-powered optimization supports various language models and providers through the `--provider` and `--model` command line arguments. The key should be the backend key for the specified provider.
 
 ## Supported GPUs
 
@@ -158,7 +162,7 @@ We welcome contributions! Please see our [Contributing Guide](docs/CONTRIBUTING.
 ## Support
 
 For support, please:
-1. Open an [issue](https://github.com/AMDResearch/maestro/issues)
+1. Open an [issue](https://github.com/AMDResearch/maestro/issues/new)
 2. Contact the development team
 
 ## License
