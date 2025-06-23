@@ -1,5 +1,5 @@
 [project]
-name = "maestro"
+name = "intelliperf"
 version = "0.0.1"
 description = "Automated bottleneck detection and solution orchestration"
 authors = [
@@ -20,10 +20,10 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["maestro", "accordo"]
+include = ["intelliperf", "accordo"]
 
 [project.scripts]
-maestro = "maestro.__main__:main"
+intelliperf = "intelliperf.__main__:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]

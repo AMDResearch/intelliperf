@@ -38,9 +38,9 @@ import pandas as pd
 from accordo.python.code_gen import generate_header
 from accordo.python.communicate import get_kern_arg_data, send_response
 from accordo.python.utils import run_subprocess
-from maestro.core.application import Application
-from maestro.utils.env import get_accordo_path
-from maestro.utils.process import exit_on_fail
+from intelliperf.core.application import Application
+from intelliperf.utils.env import get_accordo_path
+from intelliperf.utils.process import exit_on_fail
 
 
 class Result:
@@ -100,14 +100,21 @@ class Formula_Base:
 
 	def build(self, validate_build_result=True):
 		if not self._application.get_build_command():
-			return Result(success=True, asset={"log": "No build script provided. Skipping build step."})
+			return Result(
+				success=True,
+				asset={"log": "No build script provided. Skipping build step."},
+			)
 		else:
 			success, result = self._application.build()
 			if validate_build_result and not success:
 				logging.debug(
 					f"Exiting because of build failure: validate_build_result={validate_build_result}, success={success}, result={result}"
 				)
-				exit_on_fail(success=success, message=f"Failed to build {self.__name} application.", log=result)
+				exit_on_fail(
+					success=success,
+					message=f"Failed to build {self.__name} application.",
+					log=result,
+				)
 
 		if success:
 			return Result(success=success, asset={"log": result})
@@ -253,7 +260,13 @@ class Formula_Base:
 		# In-place append of source info
 		for entry in self._initial_profiler_results:
 			kernel_name = entry["kernel"]
-			empty = {"assembly": [], "files": [], "hip": [], "lines": [], "signature": ""}
+			empty = {
+				"assembly": [],
+				"files": [],
+				"hip": [],
+				"lines": [],
+				"signature": "",
+			}
 			entry["source"] = df_results["kernels"].get(kernel_name, empty)
 
 		return Result(success=True, asset=self._initial_profiler_results)
@@ -351,12 +364,12 @@ def validate_arrays(arr1, arr2, tolerance):
 	Validate if two arrays are close enough, with special handling for bfloat16.
 
 	Args:
-		arr1: First array to compare
-		arr2: Second array to compare
-		tolerance: Absolute tolerance for comparison
+	        arr1: First array to compare
+	        arr2: Second array to compare
+	        tolerance: Absolute tolerance for comparison
 
 	Returns:
-		bool: True if arrays are close enough, False otherwise
+	        bool: True if arrays are close enough, False otherwise
 	"""
 	# Check if either array is bfloat16
 	if arr1.dtype == ml_dtypes.bfloat16 or arr2.dtype == ml_dtypes.bfloat16:

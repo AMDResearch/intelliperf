@@ -31,13 +31,24 @@ import tempfile
 
 import pandas as pd
 
-from maestro.utils import process
-from maestro.utils.env import get_guided_tuning_path, get_nexus_path, get_rocprofiler_path
-from maestro.utils.process import capture_subprocess_output, exit_on_fail
+from intelliperf.utils import process
+from intelliperf.utils.env import (
+	get_guided_tuning_path,
+	get_nexus_path,
+	get_rocprofiler_path,
+)
+from intelliperf.utils.process import capture_subprocess_output, exit_on_fail
 
 
 class Application:
-	def __init__(self, name: str, build_command: list, instrument_command: list, project_directory: str, app_cmd: list):
+	def __init__(
+		self,
+		name: str,
+		build_command: list,
+		instrument_command: list,
+		project_directory: str,
+		app_cmd: list,
+	):
 		self.name = name
 
 		self.build_command = build_command if isinstance(build_command, list) else build_command.split()
@@ -105,16 +116,20 @@ class Application:
 				"-n",
 				self.get_name(),
 				"--save",
-				f"{get_guided_tuning_path()}/maestro_workloads.csv",
+				f"{get_guided_tuning_path()}/intelliperf_workloads.csv",
 			],
 			working_directory=self.get_project_directory(),
 			additional_path=get_rocprofiler_path(),
 		)
-		exit_on_fail(success=success, message="Failed to generate the performance report card.", log=output)
+		exit_on_fail(
+			success=success,
+			message="Failed to generate the performance report card.",
+			log=output,
+		)
 
-		df_maestro_workloads = pd.read_csv(f"{get_guided_tuning_path()}/maestro_workloads.csv")
-		logging.debug(f"Matching DB Workloads: {df_maestro_workloads}")
-		last_matching_id = df_maestro_workloads.iloc[-1]["id"]
+		df_intelliperf_workloads = pd.read_csv(f"{get_guided_tuning_path()}/intelliperf_workloads.csv")
+		logging.debug(f"Matching DB Workloads: {df_intelliperf_workloads}")
+		last_matching_id = df_intelliperf_workloads.iloc[-1]["id"]
 
 		success, output = capture_subprocess_output(
 			[
@@ -123,14 +138,18 @@ class Application:
 				"-w",
 				str(last_matching_id),
 				"--save",
-				f"{get_guided_tuning_path()}/maestro_summary.csv",
+				f"{get_guided_tuning_path()}/intelliperf_summary.csv",
 			],
 			working_directory=self.get_project_directory(),
 			additional_path=get_rocprofiler_path(),
 		)
 		# Handle critical error
-		exit_on_fail(success=success, message="Failed to generate the performance report card.", log=output)
-		df_results = pd.read_csv(f"{get_guided_tuning_path()}/maestro_summary.csv")
+		exit_on_fail(
+			success=success,
+			message="Failed to generate the performance report card.",
+			log=output,
+		)
+		df_results = pd.read_csv(f"{get_guided_tuning_path()}/intelliperf_summary.csv")
 		# Create a targeted report card
 		top_n_kernels = list(df_results.head(top_n)["Kernel"])
 		logging.debug(f"top_n_kernels: {top_n_kernels}")
@@ -144,12 +163,12 @@ class Application:
 				f"{'|'.join(top_n_kernels)}",
 				"--separate",
 				"--save",
-				f"{get_guided_tuning_path()}/maestro_report_card.json",
+				f"{get_guided_tuning_path()}/intelliperf_report_card.json",
 			],
 			working_directory=self.get_project_directory(),
 			additional_path=get_rocprofiler_path(),
 		)
-		df_results = json.loads(open(f"{get_guided_tuning_path()}/maestro_report_card.json").read())
+		df_results = json.loads(open(f"{get_guided_tuning_path()}/intelliperf_report_card.json").read())
 		return df_results
 
 	def run(self):
@@ -189,7 +208,13 @@ class Application:
 		shutil.copytree(self.project_directory, temp_dir, dirs_exist_ok=True)
 		logging.debug(f"Copied project from {self.project_directory} to {temp_dir}")
 
-		return Application(self.name + "_clone", self.build_command, self.instrument_command, temp_dir, self.app_cmd)
+		return Application(
+			self.name + "_clone",
+			self.build_command,
+			self.instrument_command,
+			temp_dir,
+			self.app_cmd,
+		)
 
 	def collect_source_code(self):
 		nexus_directory = get_nexus_path()
@@ -202,7 +227,11 @@ class Application:
 			env["HSA_TOOLS_LIB"] = lib
 			env["NEXUS_LOG_LEVEL"] = "2"
 			env["NEXUS_OUTPUT_FILE"] = json_result_file
-			capture_subprocess_output(self.get_app_cmd(), new_env=env, working_directory=self.get_project_directory())
+			capture_subprocess_output(
+				self.get_app_cmd(),
+				new_env=env,
+				working_directory=self.get_project_directory(),
+			)
 
 			if os.path.exists(json_result_file):
 				df_results = json.loads(open(json_result_file).read())

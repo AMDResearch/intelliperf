@@ -49,7 +49,7 @@ SOFTWARE.
 #define hsa_core_call(instance, FUNC, ...) \
   instance->rocr_api_table_.core_->FUNC##_fn(__VA_ARGS__)
 
-namespace maestro {
+namespace intelliperf {
 
 struct hsa_executable_symbol_hasher {
   std::size_t operator()(const hsa_executable_symbol_t& symbol) const {
@@ -299,4 +299,4 @@ class accordo {
   std::mutex mm_mutex_;
 };
 
-}  // namespace maestro
+}  // namespace intelliperf
