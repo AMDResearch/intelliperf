@@ -26,51 +26,47 @@ from intelliperf.formulas.formula_base import Formula_Base
 
 
 class diagnose_only(Formula_Base):
-    def __init__(
-        self, name, build_command, instrument_command, project_directory, app_cmd, top_n
-    ):
-        super().__init__(
-            name, build_command, instrument_command, project_directory, app_cmd, top_n
-        )
+	def __init__(self, name, build_command, instrument_command, project_directory, app_cmd, top_n):
+		super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
 
-    def profile_pass(self):
-        """
-        Profile the application using guided-tuning and collect bank conflict data
+	def profile_pass(self):
+		"""
+		Profile the application using guided-tuning and collect bank conflict data
 
-        Returns:
-            Result: DataFrame containing the performance report card
-        """
-        return super().profile_pass()
+		Returns:
+		    Result: DataFrame containing the performance report card
+		"""
+		return super().profile_pass()
 
-    def instrument_pass(self):
-        return super().instrument_pass()
+	def instrument_pass(self):
+		return super().instrument_pass()
 
-    def optimize_pass(self):
-        return super().optimize_pass()
+	def optimize_pass(self):
+		return super().optimize_pass()
 
-    def compile_pass(self):
-        return super().compile_pass()
+	def compile_pass(self):
+		return super().compile_pass()
 
-    def correctness_validation_pass(self):
-        """
-        Validate the optimized kernel by comparing the output with the reference kernel
+	def correctness_validation_pass(self):
+		"""
+		Validate the optimized kernel by comparing the output with the reference kernel
 
-        Returns:
-            Result: Validation status
-        """
-        return super().correctness_validation_pass()
+		Returns:
+		    Result: Validation status
+		"""
+		return super().correctness_validation_pass()
 
-    def performance_validation_pass(self):
-        return super().performance_validation_pass()
+	def performance_validation_pass(self):
+		return super().performance_validation_pass()
 
-    def source_code_pass(self):
-        return super().source_code_pass()
+	def source_code_pass(self):
+		return super().source_code_pass()
 
-    def summarize_previous_passes(self):
-        return super().summarize_previous_passes()
+	def summarize_previous_passes(self):
+		return super().summarize_previous_passes()
 
-    def write_results(self, output_file: str = None):
-        """
-        Writes the results to the output file.
-        """
-        super().write_results(output_file)
+	def write_results(self, output_file: str = None):
+		"""
+		Writes the results to the output file.
+		"""
+		super().write_results(output_file)

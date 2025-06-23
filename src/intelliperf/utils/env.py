@@ -29,32 +29,28 @@ from intelliperf.utils.process import exit_on_fail
 
 
 def get_guided_tuning_path():
-    if os.environ.get("GT_TUNING"):
-        return Path(os.environ["GT_TUNING"]).resolve()
-    return (
-        Path(__file__).resolve().parent / "../../../external/guided-tuning"
-    ).resolve()
+	if os.environ.get("GT_TUNING"):
+		return Path(os.environ["GT_TUNING"]).resolve()
+	return (Path(__file__).resolve().parent / "../../../external/guided-tuning").resolve()
 
 
 def get_accordo_path():
-    return (Path(__file__).resolve().parent / "../../accordo").resolve()
+	return (Path(__file__).resolve().parent / "../../accordo").resolve()
 
 
 def get_rocprofiler_path():
-    return (
-        Path(__file__).resolve().parent / "../../../external/rocprofiler-compute/src"
-    ).resolve()
+	return (Path(__file__).resolve().parent / "../../../external/rocprofiler-compute/src").resolve()
 
 
 def get_nexus_path():
-    return (Path(__file__).resolve().parent / "../../../external/nexus").resolve()
+	return (Path(__file__).resolve().parent / "../../../external/nexus").resolve()
 
 
 def get_llm_api_key():
-    llm_key = os.environ.get("LLM_GATEWAY_KEY")
-    if not llm_key:
-        exit_on_fail(
-            success=False,
-            message="Missing LLM API key. Please set the LLM_GATEWAY_KEY environment variable.",
-        )
-    return llm_key
+	llm_key = os.environ.get("LLM_GATEWAY_KEY")
+	if not llm_key:
+		exit_on_fail(
+			success=False,
+			message="Missing LLM API key. Please set the LLM_GATEWAY_KEY environment variable.",
+		)
+	return llm_key
