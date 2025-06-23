@@ -91,13 +91,6 @@ From: ubuntu:22.04
     cmake --build build --target install
     export PATH=/opt/logduration/bin/logDuration:$PATH
 
-    # Install guided-tuning (version pinned)
-    cd /root
-    git clone -v git@github.com:AARInternal/guided-tuning.git
-    cd guided-tuning
-    git checkout 50fae0ff351ce8f7bab51949df57dae18d92d2d5
-    python3 -m pip install -r requirements.txt
-
     # Install agents dependencies
     python3 -m pip install openai
 
