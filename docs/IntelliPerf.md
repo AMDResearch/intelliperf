@@ -35,7 +35,7 @@ SOFTWARE.
 
 ## Introduction
 
-The performance of High-Performance Computing (HPC) and Machine Learning (ML) applications is increasingly dominated by the efficiency of their GPU kernels. However, optimizing these kernels presents a significant challenge. The process requires a deep understanding of the underlying hardware architecture, mastery of various low-level profiling tools, and the ability to manually rewrite code to resolve subtle bottlenecks such as memory access inefficiencies or contention issues. This expertise is rare, and the manual tuning cycle represents a major bottleneck in software development, consuming significant engineering resources and delaying time-to-solution.
+The performance of High-Performance Computing (HPC) and Machine Learning (ML) applications is increasingly dominated by the efficiency of their GPU kernels. However, optimizing these kernels presents a significant challenge. The process requires a deep understanding of the underlying hardware architecture, mastery of various low-level profiling tools, and the ability to manually rewrite kernel source to resolve subtle bottlenecks such as memory access inefficiencies or contention issues. This expertise is rare, and the manual tuning cycle represents a major bottleneck in software development, consuming significant engineering resources and delaying time-to-solution.
 
 Existing tools often address only isolated parts of this problem—a profiler may reveal a bottleneck but offers no path to resolution, while a static analyzer may flag potential issues without contextual performance data. This leaves a critical gap: the "last mile" of interpreting the data, forming a hypothesis, rewriting the code, and validating the change remains a purely manual effort.
 
