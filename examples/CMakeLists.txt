@@ -37,8 +37,8 @@ function(add_example name source_file)
             -fpass-plugin=${OMNIPROBE_PATH}/lib/libAMDGCNSubmitAddressMessages-rocm.so
         )
         # Must include debug information to get line numbers
-        target_compile_options(${name} PRIVATE -g)
     endif()
+    target_compile_options(${name} PRIVATE -g)    
 endfunction()
 
 add_subdirectory(bank_conflict)
