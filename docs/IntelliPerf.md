@@ -66,7 +66,7 @@ IntelliPerf executes a closed-loop process that systematically moves from high-l
 
 3.  **Code Generation (`Omniwiser`)**: Armed with this data, **`Omniwiser`**, a novel component built for IntelliPerf, crafts a detailed, context-aware prompt for existing public LLMs (such as OpenAI's GPTs, xAI, Claude, or others) to generate an optimized version of the code.
 
-4.  **Validation (`Accordo`)**: The LLM-generated code is then validated for both correctness and performance by **`Accordo`**, another novel tool developed for the IntelliPerf project. Accordo operates as an HSA Tools Library that intercepts kernel execution, captures output buffers through HIP IPC mechanisms, and performs automated side-by-side comparison with the reference implementation using user-defined tolerances.
+4.  **Validation (`Accordo`)**: The LLM-generated code is then validated for both correctness and performance by **`Accordo`**, another novel tool developed for the IntelliPerf project. Accordo operates as an Heterogenous System Architecture (HSA) Tools Library that intercepts kernel execution, captures output buffers through HIP IPC mechanisms, and performs automated side-by-side comparison with the reference implementation using user-defined tolerances.
 
 ## Key Technologies
 
