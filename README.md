@@ -162,7 +162,7 @@ We welcome contributions! Please see our [Contributing Guide](docs/CONTRIBUTING.
 ## Support
 
 For support, please:
-1. Open an [issue](https://github.com/AMDResearch/maestro/issues)
+1. Open an [issue](https://github.com/AMDResearch/maestro/issues/new)
 2. Contact the development team
 
 ## License
