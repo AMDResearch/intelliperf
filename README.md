@@ -154,6 +154,7 @@ intelliperf -- python3 gemm.py
 
 ## Documentation
 
+- [IntelliPerf Technical Paper](docs/IntelliPerf.md) - Detailed technical overview of the IntelliPerf framework
 - [Running Examples](examples/README.md)
 
 ## Contributing
