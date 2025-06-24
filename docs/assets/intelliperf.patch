@@ -1,0 +1,62 @@
+From 6007586d1e4ea703eb8573e59da9e321beb06da6 Mon Sep 17 00:00:00 2001
+From: "github-actions[bot]" <github-actions[bot]@users.noreply.github.com>
+Date: Sun, 8 Jun 2025 02:51:20 -0400
+Subject: [PATCH] Update files based on Maestro analysis
+
+---
+ examples/contention/reduction/reduction.hip | 30 ++++++++++++++++-----
+ 1 file changed, 23 insertions(+), 7 deletions(-)
+
+diff --git a/examples/contention/reduction/reduction.hip b/examples/contention/reduction/reduction.hip
+index c6d2948..7273688 100644
+--- a/examples/contention/reduction/reduction.hip
++++ b/examples/contention/reduction/reduction.hip
+@@ -18,8 +18,8 @@ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+-SOFTWARE.
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++THE SOFTWARE.
+ ****************************************************************************/
+ 
+ #include <thrust/device_vector.h>
+@@ -28,10 +28,26 @@ SOFTWARE.
+ #include <iostream>
+ 
+ __global__ void reduction_kernel(const float* input, float* result, std::size_t count) {
+-  const auto thread_id = threadIdx.x + blockIdx.x * blockDim.x;
+-  if (thread_id < count) {
+-    const auto value = input[thread_id];
+-    atomicAdd(result, value / (thread_id + 1));
++  extern __shared__ float sdata[];
++  const unsigned int tid = threadIdx.x;
++  const unsigned int idx = blockIdx.x * blockDim.x + tid;
++  // load input into shared memory
++  float val = 0.0f;
++  if (idx < count) {
++    val = input[idx] / (idx + 1);
++  }
++  sdata[tid] = val;
++  __syncthreads();
++  // do reduction in shared memory
++  for (unsigned int s = blockDim.x / 2; s > 0; s >>= 1) {
++    if (tid < s) {
++      sdata[tid] += sdata[tid + s];
++    }
++    __syncthreads();
++  }
++  // write result for this block to global memory
++  if (tid == 0) {
++    atomicAdd(result, sdata[0]);
+   }
+ }
+ 
+@@ -59,4 +75,4 @@ int main() {
+   }
+   std::cout << std::endl;
+   return 0;
+-}
++}
+\ No newline at end of file
