@@ -107,7 +107,7 @@ def main():
 	import argparse
 
 	parser = argparse.ArgumentParser()
-	parser.add_argument("tool", nargs="?", help="Tool name (e.g., logduration)")
+	parser.add_argument("tool", nargs="?", help="Tool name (e.g., omniprobe)")
 	parser.add_argument("-a", "--all", action="store_true", help="Install all tools listed in [tool.*]")
 	parser.add_argument("-c", "--clean", action="store_true", help="Clean before installing")
 	args = parser.parse_args()

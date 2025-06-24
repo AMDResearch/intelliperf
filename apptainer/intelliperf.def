@@ -12,7 +12,7 @@ From: ubuntu:22.04
 
     # Misc globals
     export GT_TUNING=/root/guided-tuning
-    export PATH=/opt/logduration/bin/logDuration:$PATH
+    export PATH=/opt/omniprobe/bin/logDuration:$PATH
     export PATH=/root/rocprofiler-compute/src:$PATH
 
 %files
@@ -75,21 +75,21 @@ From: ubuntu:22.04
     python3 -m pip install ninja wheel pybind11
     python3 -m pip install -e python
 
-    # Install logduration
+    # Install omniprobe
     echo "Building with CMAKE_BUILD_TYPE={{ CMAKE_BUILD_TYPE }}"
     cd /root
-    git clone -v git@github.com:AARInternal/logduration.git
-    cd logduration
+    git clone -v git@github.com:AARInternal/omniprobe.git
+    cd omniprobe
     git checkout 8e63827f1cd17077cdf13aef7177eb311cc2c896
     git submodule update --init --recursive
     mkdir -p build 
-    cmake -DCMAKE_INSTALL_PREFIX=/opt/logduration\
+    cmake -DCMAKE_INSTALL_PREFIX=/opt/omniprobe\
             -DCMAKE_PREFIX_PATH=${ROCM_PATH}\
             -DTRITON_LLVM=/root/.triton/llvm/llvm-ubuntu-x64\
             -DCMAKE_BUILD_TYPE={{ CMAKE_BUILD_TYPE }}\
             -DCMAKE_VERBOSE_MAKEFILE=ON -S . -B build
     cmake --build build --target install
-    export PATH=/opt/logduration/bin/logDuration:$PATH
+    export PATH=/opt/omniprobe/bin/logDuration:$PATH
 
     # Install agents dependencies
     python3 -m pip install openai
