@@ -81,6 +81,7 @@ class Formula_Base:
 		top_n: int,
 		model: str = "gpt-4o",
 		provider: str = "openai",
+		in_place: bool = False,
 	):
 		# Private
 		self.__name = name  # name of the run
@@ -95,6 +96,8 @@ class Formula_Base:
 
 		self.model = model
 		self.provider = provider
+		self.in_place = in_place
+		self.current_kernel_files = []
 
 		self.build()
 
@@ -278,31 +281,61 @@ class Formula_Base:
 		"""
 		pass
 
-	def compute_diff(self, filepath) -> str:
-		# Extract relative path from the full filepath
-		# If filepath is already relative to project directory, this will work correctly
-		# If filepath is absolute, we need to make it relative to the project directory
-		reference_project_dir = self._reference_app.get_project_directory()
-		optimized_project_dir = self._application.get_project_directory()
+	def compute_diff(self, filepaths: list[str]) -> str:
+		diffs = []
+		for filepath in filepaths:
+			# Extract relative path from the full filepath
+			# If filepath is already relative to project directory, this will work correctly
+			# If filepath is absolute, we need to make it relative to the project directory
+			reference_project_dir = self._reference_app.get_project_directory()
+			optimized_project_dir = self._application.get_project_directory()
 
-		# If filepath is absolute, make it relative to the optimized project directory
-		if os.path.isabs(filepath):
-			# Get the relative path from the optimized project directory
-			relative_path = os.path.relpath(filepath, optimized_project_dir)
-		else:
-			# filepath is already relative
-			relative_path = filepath
+			# If filepath is absolute, make it relative to the optimized project directory
+			if os.path.isabs(filepath):
+				# Get the relative path from the optimized project directory
+				relative_path = os.path.relpath(filepath, optimized_project_dir)
+			else:
+				# filepath is already relative
+				relative_path = filepath
 
-		reference_filepath = os.path.join(reference_project_dir, relative_path)
-		optimized_filepath = os.path.join(optimized_project_dir, relative_path)
+			reference_filepath = os.path.join(reference_project_dir, relative_path)
+			optimized_filepath = os.path.join(optimized_project_dir, relative_path)
 
-		with open(reference_filepath, "r") as f:
-			prev_lines = f.read().splitlines(keepends=True)
-		with open(optimized_filepath, "r") as f:
-			curr_lines = f.read().splitlines(keepends=True)
-		cur_diff = difflib.unified_diff(prev_lines, curr_lines)
-		cur_diff = "".join(cur_diff)
-		return cur_diff
+			with open(reference_filepath, "r") as f:
+				prev_lines = f.read().splitlines(keepends=True)
+			with open(optimized_filepath, "r") as f:
+				curr_lines = f.read().splitlines(keepends=True)
+			cur_diff = difflib.unified_diff(prev_lines, curr_lines)
+			cur_diff = "".join(cur_diff)
+			diffs.append(cur_diff)
+		return "\n".join(diffs)
+
+	def reset_source(self, filepaths: list[str]):
+		for filepath in filepaths:
+			relative_path = os.path.relpath(filepath, self._application.get_project_directory())
+			reference_filepath = os.path.join(self._reference_app.get_project_directory(), relative_path)
+			optimized_filepath = os.path.join(self._application.get_project_directory(), relative_path)
+			with open(reference_filepath, "r") as f:
+				reference_content = f.read()
+			with open(optimized_filepath, "w") as f:
+				f.write(reference_content)
+
+	def write_results_base(self, additional_results: dict, output_file: str = None):
+		"""
+		Writes the results to the output file.
+		"""
+		# create a new json contining optimized and unoptimized results
+		results = {
+			"optimized": self._optimization_results,
+			"initial": self._initial_profiler_results,
+			"report_message": self.optimization_report,
+			"bottleneck_report": self.bottleneck_report,
+			**additional_results,
+			"diff": self.compute_diff(self.current_kernel_files),
+		}
+		if not self.in_place:
+			self.reset_source(self.current_kernel_files)
+		write_results(results, output_file)
 
 
 def write_results(json_results: dict, output_file: str = None):
