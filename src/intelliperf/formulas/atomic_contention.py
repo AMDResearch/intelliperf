@@ -302,14 +302,14 @@ class atomic_contention(Formula_Base):
 		if metric_improvement > 1:
 			self.optimization_report += (
 				f"Atomic Contention Reduction: Successfully reduced atomic contention by "
-				f"{metric_improvement * 100:.1f}%. "
+				f"{metric_improvement:.2f}x. "
 				f"Average atomic latency improved from {unoptimized_metric:.0f} to {optimized_metric:.0f} cycles "
 				f"({cycle_latency_improvement:.1f}% reduction - lower latency means less contention). "
 			)
 		else:
 			self.optimization_report += (
 				f"Atomic Contention Increase: Atomic contention increased by "
-				f"{abs(metric_improvement - 1) * 100:.1f}%. "
+				f"{1 / metric_improvement:.2f}x. "
 				f"Average atomic latency worsened from {unoptimized_metric:.0f} to {optimized_metric:.0f} cycles "
 				f"({abs(cycle_latency_improvement):.1f}% increase - higher latency means more contention). "
 			)

@@ -292,14 +292,14 @@ class memory_access(Formula_Base):
 		if coal_improvement > 1:
 			self.optimization_report += (
 				f"Memory Coalescing Improvement: Successfully improved memory access patterns by "
-				f"{coal_improvement * 100:.1f}%. "
+				f"{coal_improvement:.2f}x. "
 				f"Coalescing efficiency increased from {unoptimized_coal:.1f}% to {optimized_coal:.1f}% "
 				f"(higher percentages indicate more efficient memory access patterns). "
 			)
 		else:
 			self.optimization_report += (
 				f"Memory Coalescing Degradation: Memory access patterns worsened by "
-				f"{abs(coal_improvement - 1) * 100:.1f}%. "
+				f"{1 / coal_improvement:.2f}x. "
 				f"Coalescing efficiency decreased from {unoptimized_coal:.1f}% to {optimized_coal:.1f}% "
 				f"(lower percentages indicate less efficient memory access patterns). "
 			)
