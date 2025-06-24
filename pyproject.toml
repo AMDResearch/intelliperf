@@ -38,8 +38,8 @@ python3 -m pip install -r requirements.txt
 """
 
 
-[tool.logduration]
-git = "git@github.com:AMDResearch/logduration.git"
+[tool.omniprobe]
+git = "git@github.com:AMDResearch/omniprobe.git"
 branch = "8e63827f1cd17077cdf13aef7177eb311cc2c896"
 build_command = """
 export CC=${ROCM_PATH}/bin/hipcc
