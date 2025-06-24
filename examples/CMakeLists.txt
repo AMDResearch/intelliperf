@@ -31,7 +31,7 @@ function(add_example name source_file)
     add_executable(${name} ${source_file})
     # CMake instrumentation integration example
     if(INSTRUMENT)
-        set(OMNIPROBE_PATH ${CMAKE_SOURCE_DIR}/../external/logduration/install)
+        set(OMNIPROBE_PATH ${CMAKE_SOURCE_DIR}/../external/omniprobe/install)
         # Use the plugin to instrument the code
         target_compile_options(${name} PRIVATE 
             -fpass-plugin=${OMNIPROBE_PATH}/lib/libAMDGCNSubmitAddressMessages-rocm.so
