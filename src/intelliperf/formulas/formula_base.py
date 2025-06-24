@@ -85,6 +85,11 @@ class Formula_Base:
 	):
 		# Private
 		self.__name = name  # name of the run
+		logging.debug(f"name: {name}")
+		logging.debug(f"build_command: {build_command}")
+		logging.debug(f"instrument_command: {instrument_command}")
+		logging.debug(f"project_directory: {project_directory}")
+		logging.debug(f"app_cmd: {app_cmd}")
 		self._application = Application(name, build_command, instrument_command, project_directory, app_cmd)
 		self._reference_app = self._application.clone()  # Create a reference copy for comparison
 
@@ -320,21 +325,27 @@ class Formula_Base:
 			with open(optimized_filepath, "w") as f:
 				f.write(reference_content)
 
-	def write_results_base(self, additional_results: dict, output_file: str = None):
+	def write_results(self, output_file: str = None, additional_results: dict = {}, diagnose_only: bool = False):
 		"""
 		Writes the results to the output file.
 		"""
 		# create a new json contining optimized and unoptimized results
-		results = {
-			"optimized": self._optimization_results,
-			"initial": self._initial_profiler_results,
-			"report_message": self.optimization_report,
-			"bottleneck_report": self.bottleneck_report,
-			**additional_results,
-			"diff": self.compute_diff(self.current_kernel_files),
-		}
-		if not self.in_place:
-			self.reset_source(self.current_kernel_files)
+		if diagnose_only:
+			results = {
+				"initial": self._initial_profiler_results,
+				**additional_results,
+			}
+		else:
+			results = {
+				"optimized": self._optimization_results,
+				"initial": self._initial_profiler_results,
+				"report_message": self.optimization_report,
+				"bottleneck_report": self.bottleneck_report,
+				**additional_results,
+				"diff": self.compute_diff(self.current_kernel_files),
+			}
+			if not self.in_place:
+				self.reset_source(self.current_kernel_files)
 		write_results(results, output_file)
 
 

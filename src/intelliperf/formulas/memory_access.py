@@ -45,6 +45,7 @@ class memory_access(Formula_Base):
 		project_directory: str,
 		app_cmd: list,
 		top_n: int,
+		only_consider_top_kernel=False,
 		model: str = "gpt-4o",
 		provider: str = "openai",
 		in_place: bool = False,
@@ -61,6 +62,8 @@ class memory_access(Formula_Base):
 			in_place,
 		)
 
+		# This temp option allows us to toggle if we want a full or partial instrumentation report
+		self.only_consider_top_kernel = only_consider_top_kernel
 		self._instrumentation_results = None
 		self.current_kernel = None
 		self.current_args = None
@@ -326,9 +329,9 @@ class memory_access(Formula_Base):
 		"""
 		Writes the results to the output file.
 		"""
-		super().write_results_base(
-			{"formula": "memoryAccess"},
-			output_file,
+		super().write_results(
+			output_file=output_file,
+			additional_results={"formula": "memoryAccess"},
 		)
 
 	def summarize_previous_passes(self):

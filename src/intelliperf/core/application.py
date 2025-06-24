@@ -50,27 +50,25 @@ class Application:
 		app_cmd: list,
 	):
 		self.name = name
-
-		self.build_command = build_command if isinstance(build_command, list) else build_command.split()
-		self.instrument_command = (
-			instrument_command if isinstance(instrument_command, list) else instrument_command.split()
-		)
+		self.build_command = None
+		self.instrument_command = None
 		self.app_cmd = app_cmd
 		self.project_directory = project_directory
 
-		logging.debug(f"App name: {self.name}")
-		logging.debug(f"App build command: {self.build_command}")
-		logging.debug(f"App instrument command: {self.instrument_command}")
-		logging.debug(f"App project directory: {self.project_directory}")
-		logging.debug(f"App app command: {self.app_cmd}")
+		if build_command is not None:
+			self.build_command = build_command if isinstance(build_command, list) else build_command.split()
+		if instrument_command is not None:
+			self.instrument_command = (
+				instrument_command if isinstance(instrument_command, list) else instrument_command.split()
+			)
 
 	def build(self, instrumented=False):
 		"""Builds the application, optionally with instrumentation."""
-		if instrumented:
+		if instrumented and self.instrument_command is not None:
 			return process.capture_subprocess_output(
 				self.instrument_command, working_directory=self.get_project_directory()
 			)
-		else:
+		elif self.build_command is not None:
 			return process.capture_subprocess_output(self.build_command, working_directory=self.get_project_directory())
 
 	def profile(self, top_n: int):
@@ -200,7 +198,8 @@ class Application:
 
 	def clone(self):
 		if not self.project_directory:
-			raise ValueError("Cannot clone application without project directory")
+			logging.debug("Skipping cloning application without project directory")
+			return
 
 		temp_dir = tempfile.mkdtemp()
 		logging.info(f"Creating temporary project directory: {temp_dir}")

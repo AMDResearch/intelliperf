@@ -404,9 +404,9 @@ class bank_conflict(Formula_Base):
 		"""
 		Writes the results to the output file.
 		"""
-		super().write_results_base(
-			{"formula": "bankConflict"},
-			output_file,
+		super().write_results(
+			output_file=output_file,
+			additional_results={"formula": "bankConflict"},
 		)
 
 	def summarize_previous_passes(self):

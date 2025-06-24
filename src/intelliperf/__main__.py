@@ -257,17 +257,18 @@ def main():
 
 		# If the optimization is successful, exit the loop
 		if performance_result:
-			# Write the results to the output file
-			print("writing results")
-			optimizer.write_results(args.output_file)
-			import sys
+			break
 
-			sys.exit(0)
+	if args.formula == "diagnoseOnly" or performance_result:
+		optimizer.write_results(args.output_file)
+		import sys
 
-	logging.error("Optimization was not successful. Exiting.")
-	import sys
+		sys.exit(0)
+	else:
+		logging.error("Optimization was not successful. Exiting.")
+		import sys
 
-	sys.exit(1)
+		sys.exit(1)
 
 
 if __name__ == "__main__":
