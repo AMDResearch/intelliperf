@@ -28,6 +28,11 @@ intelliperf -vvv --project_directory=./examples\
     --formula=atomicContention -- ./build/contention/reduction
 ```
 
+## Diagnose Only Formula
+```console
+./scripts/build_examples.sh 
+intelliperf -vvv --formula=diagnoseOnly -- ./examples/build/contention/reduction
+```
 
 ## Example output:
 
