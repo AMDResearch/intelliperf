@@ -32,7 +32,6 @@ from intelliperf.formulas.formula_base import (
 	Result,
 	filter_json_field,
 	get_kernel_name,
-	write_results,
 )
 from intelliperf.utils.env import get_llm_api_key
 
@@ -49,6 +48,7 @@ class memory_access(Formula_Base):
 		only_consider_top_kernel=False,
 		model: str = "gpt-4o",
 		provider: str = "openai",
+		in_place: bool = False,
 	):
 		super().__init__(
 			name,
@@ -59,6 +59,7 @@ class memory_access(Formula_Base):
 			top_n,
 			model,
 			provider,
+			in_place,
 		)
 
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
@@ -191,7 +192,7 @@ class memory_access(Formula_Base):
 			)
 			if self.current_summary is not None:
 				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
-				cur_diff = self.compute_diff(kernel_file)
+				cur_diff = self.compute_diff([kernel_file])
 				user_prompt += f"\nThe diff between the current and initial code is: {cur_diff}"
 
 			self.previous_source_code = unoptimized_file_content
@@ -216,6 +217,8 @@ class memory_access(Formula_Base):
 		self.current_kernel = kernel.split("(")[0]
 		self.current_args = kernel.split("(")[1].split(")")[0].split(",")
 		self.current_kernel_signature = kernel
+
+		self.current_kernel_files = [kernel_file]
 		try:
 			optimized_file_content = llm.ask(user_prompt).strip()
 			with open(kernel_file, "w") as f:
@@ -326,15 +329,10 @@ class memory_access(Formula_Base):
 		"""
 		Writes the results to the output file.
 		"""
-		# create a new json contining optimized and unoptimized results
-		results = {
-			"optimized": self._optimization_results,
-			"initial": self._initial_profiler_results,
-			"report_message": self.optimization_report,
-			"bottleneck_report": self.bottleneck_report,
-			"formula": "memoryAccess",
-		}
-		write_results(results, output_file)
+		super().write_results(
+			output_file=output_file,
+			additional_results={"formula": "memoryAccess"},
+		)
 
 	def summarize_previous_passes(self):
 		"""

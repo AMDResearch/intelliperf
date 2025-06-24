@@ -32,7 +32,6 @@ from intelliperf.formulas.formula_base import (
 	Result,
 	filter_json_field,
 	get_kernel_name,
-	write_results,
 )
 from intelliperf.utils.env import get_llm_api_key
 
@@ -46,9 +45,9 @@ class atomic_contention(Formula_Base):
 		project_directory: str,
 		app_cmd: list,
 		top_n: int,
-		only_consider_top_kernel=False,
 		model: str = "gpt-4o",
 		provider: str = "openai",
+		in_place: bool = False,
 	):
 		super().__init__(
 			name,
@@ -59,10 +58,9 @@ class atomic_contention(Formula_Base):
 			top_n,
 			model,
 			provider,
+			in_place,
 		)
 
-		# This temp option allows us to toggle if we want a full or partial instrumentation report
-		self.only_consider_top_kernel = only_consider_top_kernel
 		self._instrumentation_results = None
 		self.current_kernel = None
 		self.current_args = None
@@ -190,7 +188,7 @@ class atomic_contention(Formula_Base):
 				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
 
 				# Split the strings into lines for proper diff computation
-				cur_diff = self.compute_diff(kernel_file)
+				cur_diff = self.compute_diff([kernel_file])
 
 				user_prompt += f"\nThe diff between the current and initial code is: {cur_diff}"
 
@@ -210,6 +208,8 @@ class atomic_contention(Formula_Base):
 			return Result(success=False, error_report="Failed to extract the kernel name.")
 		if kernel_file is None:
 			return Result(success=False, error_report="Failed to extract the kernel file path.")
+
+		self.current_kernel_files = [kernel_file]
 
 		logging.debug(f"LLM prompt: {user_prompt}")
 		logging.debug(f"System prompt: {system_prompt}")
@@ -340,15 +340,10 @@ class atomic_contention(Formula_Base):
 		"""
 		Writes the results to the output file.
 		"""
-		# create a new json contining optimized and unoptimized results
-		results = {
-			"optimized": self._optimization_results,
-			"initial": self._initial_profiler_results,
-			"report_message": self.optimization_report,
-			"bottleneck_report": self.bottleneck_report,
-			"formula": "atomicContention",
-		}
-		write_results(results, output_file)
+		super().write_results(
+			output_file=output_file,
+			additional_results={"formula": "atomicContention"},
+		)
 
 	def summarize_previous_passes(self):
 		"""

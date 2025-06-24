@@ -129,6 +129,12 @@ def intelliperf_parser():
 		metavar="",
 		help="Specify the provider to use for optimization (default: openai)",
 	)
+	optional_args.add_argument(
+		"-l",
+		"--in_place",
+		action="store_true",
+		help="Modify source files in place during optimization (default: false)",
+	)
 
 	# Output arguments
 	optional_args.add_argument("-o", "--output_file", type=str, metavar="", help="Path to the output file")
@@ -202,6 +208,7 @@ def main():
 		top_n=args.top_n,
 		model=args.model,
 		provider=args.provider,
+		in_place=args.in_place,
 	)
 
 	num_attempts = 0 if args.formula == "diagnoseOnly" else args.num_attempts
@@ -250,16 +257,18 @@ def main():
 
 		# If the optimization is successful, exit the loop
 		if performance_result:
-			# Write the results to the output file
-			optimizer.write_results(args.output_file)
-			import sys
+			break
 
-			sys.exit(0)
+	if args.formula == "diagnoseOnly" or performance_result:
+		optimizer.write_results(args.output_file)
+		import sys
 
-	logging.error("Optimization was not successful. Exiting.")
-	import sys
+		sys.exit(0)
+	else:
+		logging.error("Optimization was not successful. Exiting.")
+		import sys
 
-	sys.exit(1)
+		sys.exit(1)
 
 
 if __name__ == "__main__":

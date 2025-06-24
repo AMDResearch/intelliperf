@@ -26,8 +26,29 @@ from intelliperf.formulas.formula_base import Formula_Base
 
 
 class diagnose_only(Formula_Base):
-	def __init__(self, name, build_command, instrument_command, project_directory, app_cmd, top_n):
-		super().__init__(name, build_command, instrument_command, project_directory, app_cmd, top_n)
+	def __init__(
+		self,
+		name,
+		build_command,
+		instrument_command,
+		project_directory,
+		app_cmd,
+		top_n,
+		model,
+		provider,
+		in_place,
+	):
+		super().__init__(
+			name,
+			build_command,
+			instrument_command,
+			project_directory,
+			app_cmd,
+			top_n,
+			model,
+			provider,
+			in_place,
+		)
 
 	def profile_pass(self):
 		"""
@@ -69,4 +90,4 @@ class diagnose_only(Formula_Base):
 		"""
 		Writes the results to the output file.
 		"""
-		super().write_results(output_file)
+		super().write_results(output_file=output_file, diagnose_only=True)
