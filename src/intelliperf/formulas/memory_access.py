@@ -34,6 +34,7 @@ from intelliperf.formulas.formula_base import (
 	get_kernel_name,
 )
 from intelliperf.utils.env import get_llm_api_key
+from intelliperf.core import gpu_spec
 
 
 class memory_access(Formula_Base):
@@ -190,6 +191,32 @@ class memory_access(Formula_Base):
 				" Do not remove any comments or licenses."
 				" Do not include any markdown code blocks or text other than the code."
 			)
+
+			spec = gpu_spec.GPUSpec()
+			device_name = "MI200"
+			lds_kb      = spec.get_lds_size()            # shared‐memory per block
+			regs        = spec.get_register_file_size()  # registers per block
+			warp        = spec.get_warp_size()           # threads per warp
+			hbm_mb      = spec.get_hbm_size()            # total global memory
+			l1_kb       = spec.get_l1_cache_size()       # constant memory (L1) size
+			l2_kb       = spec.get_l2_cache_size()       # L2 cache size
+			cus         = spec.get_num_cus()             # compute units (SMs)
+			atomic_ns   = spec.get_atomic_latency()      # avg atomic-add latency
+
+			hardware_prompt = (
+				f"Here are the hardware characteristics of the underlying {device_name}:\n"
+				f"- Shared memory per block: {lds_kb:.1f} KB\n"
+				f"- Register file size per block: {regs} registers\n"
+				f"- Warp size: {warp} threads per warp\n"
+				f"- HBM (global memory) size: {hbm_mb:.1f} MB\n"
+				f"- L1 cache (constant memory) size: {l1_kb:.1f} KB\n"
+				f"- L2 cache size: {l2_kb:.1f} KB\n"
+				f"- Compute units (multiprocessors): {cus}\n"
+				f"- Average atomic-add latency: {atomic_ns} ns"
+			)
+
+			user_prompt = f"{user_prompt}\n\n{hardware_prompt}"
+
 			if self.current_summary is not None:
 				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
 				cur_diff = self.compute_diff([kernel_file])
