@@ -166,8 +166,8 @@ def get_device():
 def get_cu_count(device_id=None):
     if device_id is None:
         device_id = get_device()
-    # HIP_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT == 63
-    attr = 63
+
+    attr = HipDeviceAttribute.hipDeviceAttributeMultiprocessorCount
     cu_count = ctypes.c_int()
     hip_try(hip_runtime.hipDeviceGetAttribute(
         ctypes.byref(cu_count),
@@ -180,8 +180,8 @@ def get_cu_count(device_id=None):
 def get_wall_clock_rate(device_id=None):
     if device_id is None:
         device_id = get_device()
-    # HIP_DEVICE_ATTRIBUTE_WALL_CLOCK_RATE == 10017
-    attr = 10017
+
+    attr = HipDeviceAttribute.hipDeviceAttributeWallClockRate
     rate = ctypes.c_int()
     hip_try(hip_runtime.hipDeviceGetAttribute(
         ctypes.byref(rate),
@@ -191,11 +191,11 @@ def get_wall_clock_rate(device_id=None):
     return rate.value
 
 
-def get_max_shared_memory_per_block(device_id=None):
+def get_max_shared_memory_per_block_kb(device_id=None):
     if device_id is None:
         device_id = get_device()
-    # HIP_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK == 74
-    attr = 74
+
+    attr = HipDeviceAttribute.hipDeviceAttributeMaxSharedMemoryPerBlock
     lds = ctypes.c_int()
     hip_try(hip_runtime.hipDeviceGetAttribute(
         ctypes.byref(lds),
@@ -209,8 +209,8 @@ def get_max_shared_memory_per_block(device_id=None):
 def get_max_registers_per_block(device_id=None):
     if device_id is None:
         device_id = get_device()
-    # HIP_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_BLOCK == 75
-    attr = 75
+
+    attr = HipDeviceAttribute.hipDeviceAttributeMaxRegistersPerBlock
     regs = ctypes.c_int()
     hip_try(hip_runtime.hipDeviceGetAttribute(
         ctypes.byref(regs),
@@ -223,7 +223,7 @@ def get_max_registers_per_block(device_id=None):
 def get_warp_size(device_id=None):
     if device_id is None:
         device_id = get_device()
-    # HIP_DEVICE_ATTRIBUTE_WARP_SIZE == 33
+
     attr = HipDeviceAttribute.hipDeviceAttributeWarpSize
     warp = ctypes.c_int()
     hip_try(hip_runtime.hipDeviceGetAttribute(
@@ -234,7 +234,7 @@ def get_warp_size(device_id=None):
     return warp.value
 
 
-def get_hbm_size(device_id=None):
+def get_hbm_size_mb(device_id=None):
     if device_id is None:
         device_id = get_device()
     free_mem = ctypes.c_size_t()
@@ -248,11 +248,11 @@ def get_hbm_size(device_id=None):
     return total_mem.value / (1024.0 * 1024.0)
 
 
-def get_total_constant_memory(device_id=None):
+def get_total_constant_memory_kb(device_id=None):
     if device_id is None:
         device_id = get_device()
-    # HIP_DEVICE_ATTRIBUTE_TOTAL_CONSTANT_MEMORY == 39
-    attr = 39
+
+    attr = HipDeviceAttribute.hipDeviceAttributeTotalConstantMemory
     const_mem = ctypes.c_int()
     hip_try(hip_runtime.hipDeviceGetAttribute(
         ctypes.byref(const_mem),
@@ -263,11 +263,11 @@ def get_total_constant_memory(device_id=None):
     return const_mem.value / 1024.0
 
 
-def get_l2_cache_size(device_id=None):
+def get_l2_cache_size_kb(device_id=None):
     if device_id is None:
         device_id = get_device()
-    # HIP_DEVICE_ATTRIBUTE_L2_CACHE_SIZE == 82
-    attr = 19
+
+    attr = HipDeviceAttribute.hipDeviceAttributeL2CacheSize
     l2 = ctypes.c_int()
     hip_try(hip_runtime.hipDeviceGetAttribute(
         ctypes.byref(l2),
@@ -277,7 +277,7 @@ def get_l2_cache_size(device_id=None):
     # return KB
     return l2.value / 1024.0
 
-def measure_atomic_latency(device_id=None, iters=1000000, block_size=256):
+def measure_atomic_latency_ns(device_id=None, iters=1000000, block_size=256):
 
     return 1000
 
@@ -296,9 +296,9 @@ class GPUSpec:
 
     def get_lds_size(self):
         """Return LDS/shared-memory-per-block size in KB."""
-        return get_max_shared_memory_per_block(self.device_id)
+        return get_max_shared_memory_per_block_kb(self.device_id)
 
-    def get_register_file_size(self):
+    def get_max_registers_per_block(self):
         """Return register file size (registers per block)."""
         return get_max_registers_per_block(self.device_id)
 
@@ -308,15 +308,15 @@ class GPUSpec:
 
     def get_hbm_size(self):
         """Return HBM (global memory) size in MB."""
-        return get_hbm_size(self.device_id)
+        return get_hbm_size_mb(self.device_id)
 
     def get_l1_cache_size(self):
         """Return total constant memory size in KB (proxy for L1 cache)."""
-        return get_total_constant_memory(self.device_id)
+        return get_total_constant_memory_kb(self.device_id)
 
     def get_l2_cache_size(self):
         """Return L2 cache size in KB."""
-        return get_l2_cache_size(self.device_id)
+        return get_l2_cache_size_kb(self.device_id)
 
     def get_num_cus(self):
         """Return number of compute units (multiprocessors)."""
@@ -324,4 +324,4 @@ class GPUSpec:
 
     def get_atomic_latency(self):
         """Return average atomic-add latency in nanoseconds."""
-        return measure_atomic_latency(self.device_id)
+        return measure_atomic_latency_ns(self.device_id)
