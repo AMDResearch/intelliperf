@@ -190,6 +190,7 @@ class memory_access(Formula_Base):
 				" Do not remove any comments or licenses."
 				" Do not include any markdown code blocks or text other than the code."
 			)
+
 			if self.current_summary is not None:
 				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
 				cur_diff = self.compute_diff([kernel_file])
