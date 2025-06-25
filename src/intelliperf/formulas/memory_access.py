@@ -34,7 +34,6 @@ from intelliperf.formulas.formula_base import (
 	get_kernel_name,
 )
 from intelliperf.utils.env import get_llm_api_key
-from intelliperf.core import gpu_spec
 
 
 class memory_access(Formula_Base):
