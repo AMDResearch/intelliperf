@@ -278,11 +278,6 @@ def get_l2_cache_size(device_id=None):
     return l2.value / 1024.0
 
 def measure_atomic_latency(device_id=None, iters=1000000, block_size=256):
-    """
-    Run a device kernel that performs 'iters' atomic-adds on a single counter
-    and return average latency per atomic in nanoseconds.
-    Requires precompiled HSACO module 'atomic_bench.hsaco'.
-    """
 
     return 1000
 
@@ -291,7 +286,7 @@ class GPUSpec:
     """
     Query GPU specs directly via HIP runtime API.
     """
-    
+
     def __init__(self, device_id=None):
         if device_id is None:
             device_id = get_device()
