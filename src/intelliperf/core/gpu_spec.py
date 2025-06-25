@@ -283,6 +283,7 @@ def measure_atomic_latency(device_id=None, iters=1000000, block_size=256):
     and return average latency per atomic in nanoseconds.
     Requires precompiled HSACO module 'atomic_bench.hsaco'.
     """
+
     return 1000
 
 
@@ -290,6 +291,7 @@ class GPUSpec:
     """
     Query GPU specs directly via HIP runtime API.
     """
+    
     def __init__(self, device_id=None):
         if device_id is None:
             device_id = get_device()
