@@ -106,7 +106,7 @@ jobs:
           ssh-keyscan -H github.com >> ~/.ssh/known_hosts
           
           # Set LLM API key
-          export OPENAI_API_KEY='${{ secrets.LLM_API_KEY }}'
+          export LLM_GATEWAY_KEY='${{ secrets.LLM_GATEWAY_KEY  }}'
           
           export ROCM_PATH=/opt/rocm
           export PATH=\$ROCM_PATH/bin:\$PATH
