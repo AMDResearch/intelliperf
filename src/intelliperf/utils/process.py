@@ -40,6 +40,54 @@ def exit_on_fail(success: bool, message: str, log: str = ""):
 def capture_subprocess_output(
 	subprocess_args: list, working_directory: str = None, new_env=None, additional_path=None
 ) -> tuple:
+	"""
+	Simple version that just runs the process and waits for completion.
+	"""
+	verbose = logging.getLogger().getEffectiveLevel() <= logging.DEBUG
+
+	logging.debug(f"Running the command: {' '.join(subprocess_args)}")
+
+	if working_directory is not None:
+		logging.debug(f"Working directory: {working_directory}")
+
+	# Create the environment
+	env = new_env.copy() if new_env else os.environ.copy()
+	if working_directory is not None:
+		env["PWD"] = working_directory
+
+	if additional_path is not None:
+		env["PATH"] = str(additional_path) + ":" + env["PATH"]
+
+	logging.debug(f"PATH: {env['PATH']}")
+
+	# Run the process and wait for completion
+	try:
+		result = subprocess.run(
+			subprocess_args,
+			cwd=working_directory,
+			env=env,
+			capture_output=True,
+			text=True,
+			encoding="utf-8",
+			errors="replace"
+		)
+		
+		success = result.returncode == 0
+		output = result.stdout + result.stderr
+		
+		if verbose:
+			print(output)
+		
+		return (success, output)
+		
+	except Exception as e:
+		logging.error(f"Failed to run command: {e}")
+		return (False, str(e))
+
+
+def capture_subprocess_output_v0(
+	subprocess_args: list, working_directory: str = None, new_env=None, additional_path=None
+) -> tuple:
 	verbose = logging.getLogger().getEffectiveLevel() <= logging.DEBUG
 
 	logging.debug(f"Running the command: {' '.join(subprocess_args)}")

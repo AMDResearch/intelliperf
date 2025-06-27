@@ -215,7 +215,7 @@ class Formula_Base:
 			logging.debug(f"ipc_file_name: {ipc_file_name}")
 
 			# Wait and verify binary exists before execution
-			max_wait_time = 30  # seconds
+			max_wait_time = 60  # seconds
 			wait_interval = 1  # seconds
 			waited_time = 0
 
