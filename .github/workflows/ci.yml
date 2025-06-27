@@ -1,0 +1,130 @@
+name: IntelliPerf CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-intelliperf:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install doctl
+      uses: digitalocean/action-doctl@v2
+      with:
+        token: ${{ secrets.DEV_CLOUD_KEY }}
+
+    - name: Install jq
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+
+    - name: Create Droplet
+      id: create
+      run: |
+        DROPLET_NAME="intelliperf-$(date +%s)"
+        
+        # Create droplet and capture JSON output
+        DROPLET_JSON=$(doctl compute droplet create \
+          --image 188571990 \
+          --size gpu-mi300x1-192gb \
+          --region atl1 \
+          --ssh-keys ${{ secrets.SSH_KEY_ID }} \
+          "$DROPLET_NAME" \
+          -o json \
+          --wait)
+        
+        # Check if droplet creation was successful
+        if [ $? -ne 0 ]; then
+          echo "❌ Failed to create droplet"
+          exit 1
+        fi
+        
+        # Extract droplet ID and IP
+        DROPLET_ID=$(echo "$DROPLET_JSON" | jq -r '.[0].id')
+        PUBLIC_IP=$(echo "$DROPLET_JSON" | jq -r '.[0].networks.v4[] | select(.type=="public") | .ip_address')
+        
+        # Set outputs for other steps
+        echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
+        echo "public_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+        
+        echo "✅ Droplet created successfully!"
+
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ steps.create.outputs.public_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+    - name: Wait for SSH to be ready
+      run: |
+        echo "⏳ Waiting for SSH to be ready..."
+        for i in {1..30}; do
+          if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }} "echo 'SSH ready'" 2>/dev/null; then
+            echo "✅ SSH is ready!"
+            break
+          fi
+          echo "Attempt $i/30: SSH not ready yet, waiting 10 seconds..."
+          sleep 10
+        done
+
+    - name: Install IntelliPerf
+      run: |
+        echo "🚀IntelliPerf installation..."
+        ssh -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }} "
+          set -e
+          
+          # Remove any stale dpkg locks at the very beginning
+          sudo rm -f /var/lib/apt/lists/lock
+          sudo rm -f /var/cache/apt/archives/lock
+          sudo rm -f /var/lib/dpkg/lock*
+          
+          # Setup SSH key for git access
+          mkdir -p ~/.ssh
+          echo '${{ secrets.SSH_PRIVATE_KEY }}' > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+          
+          export ROCM_PATH=/opt/rocm
+          export PATH=\$ROCM_PATH/bin:\$PATH
+          export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
+          
+          echo 'PATH: ' \$PATH
+          echo 'LD_LIBRARY_PATH: ' \$LD_LIBRARY_PATH
+          
+          sudo apt-get update
+          sudo apt-get install -y python3-venv rocm-llvm-dev libzstd-dev libdwarf-dev locales git cmake
+          sudo locale-gen en_US.UTF-8
+          
+          # Clone the repository
+          git clone git@github.com:AMDResearch/intelliperf.git
+          cd intelliperf
+          
+          python3 -m venv intelliperf_env
+          source intelliperf_env/bin/activate
+          pip install --upgrade pip
+          
+          pip install -e .
+          
+          python3 scripts/install_tool.py --all
+          
+          rocminfo
+          
+          pip list | grep intelliperf || echo 'IntelliPerf not found in pip list'
+        "
+
+    - name: Auto-destroy droplet after use
+      if: always()
+      run: |
+        echo "🗑️ Auto-destroying droplet ${{ steps.create.outputs.droplet_id }}..."
+        doctl compute droplet delete ${{ steps.create.outputs.droplet_id }} --force
+        echo "✅ Droplet auto-destroyed successfully!"
