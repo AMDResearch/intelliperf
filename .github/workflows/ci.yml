@@ -113,9 +113,9 @@ jobs:
           pip list | grep intelliperf || echo 'IntelliPerf not found in pip list'
         "
 
-    - name: Auto-destroy droplet after use
-      if: always()
-      run: |
-        echo "🗑️ Auto-destroying droplet ${{ steps.create.outputs.droplet_id }}..."
-        doctl compute droplet delete ${{ steps.create.outputs.droplet_id }} --force
-        echo "✅ Droplet auto-destroyed successfully!"
+    #- name: Auto-destroy droplet after use
+   #   if: always()
+   #   run: |
+   #     echo "🗑️ Auto-destroying droplet ${{ steps.create.outputs.droplet_id }}..."
+  #      doctl compute droplet delete ${{ steps.create.outputs.droplet_id }} --force
+   #     echo "✅ Droplet auto-destroyed successfully!"
