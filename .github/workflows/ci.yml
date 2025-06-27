@@ -1,9 +1,13 @@
-name: AMD Developer Cloud CI
+name: IntelliPerf CI
 
 on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test-intelliperf:
@@ -29,7 +33,6 @@ jobs:
         DROPLET_NAME="intelliperf-$(date +%s)"
         
         # Create droplet and capture JSON output
-        echo "🚀 Creating droplet..."
         DROPLET_JSON=$(doctl compute droplet create \
           --image 188571990 \
           --size gpu-mi300x1-192gb \
@@ -38,9 +41,6 @@ jobs:
           "$DROPLET_NAME" \
           -o json \
           --wait)
-        
-        echo "📄 Raw droplet JSON output:"
-        echo "$DROPLET_JSON"
         
         # Check if droplet creation was successful
         if [ $? -ne 0 ]; then
@@ -56,13 +56,7 @@ jobs:
         echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
         echo "public_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
         
-        # Save droplet info to file
-        echo "$DROPLET_JSON" > droplet_info.json
-        
         echo "✅ Droplet created successfully!"
-        echo "ID: $DROPLET_ID"
-        echo "Public IP: $PUBLIC_IP"
-        echo "Name: $DROPLET_NAME"
 
     - name: Setup SSH key
       run: |
@@ -85,7 +79,7 @@ jobs:
 
     - name: Setup AMD Developer Cloud and Install IntelliPerf
       run: |
-        echo "🚀 Complete AMD Developer Cloud setup and IntelliPerf installation..."
+        echo "🚀IntelliPerf installation..."
         ssh -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }} "
           set -e
           
