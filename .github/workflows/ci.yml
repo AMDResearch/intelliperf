@@ -77,7 +77,7 @@ jobs:
           sleep 10
         done
 
-    - name: Setup AMD Developer Cloud and Install IntelliPerf
+    - name: Install IntelliPerf
       run: |
         echo "🚀IntelliPerf installation..."
         ssh -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }} "
