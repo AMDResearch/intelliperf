@@ -113,6 +113,7 @@ jobs:
           # Clone the repository
           git clone git@github.com:AMDResearch/intelliperf.git
           cd intelliperf
+          git checkout ${{ github.sha }}
           
           python3 -m venv intelliperf_env
           source intelliperf_env/bin/activate
