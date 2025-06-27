@@ -1,0 +1,89 @@
+name: DigitalOcean GPU Droplet CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      droplet_name:
+        description: 'Droplet name'
+        required: false
+        default: 'rocm-jupyter-gpu-mi300x1-192gb-devcloud-atl1'
+
+jobs:
+  manage-droplet:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install doctl
+      uses: digitalocean/action-doctl@v2
+      with:
+        token: ${{ secrets.DEV_CLOUD_KEY }}
+
+    - name: Install jq
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+
+    - name: Create Droplet
+      id: create
+      run: |
+        # Create droplet and capture JSON output
+        DROPLET_JSON=$(doctl compute droplet create \
+          --image 188571990 \
+          --size gpu-mi300x1-192gb \
+          --region atl1 \
+          --ssh-keys ${{ secrets.SSH_KEY_ID }} \
+          ${{ inputs.droplet_name }} \
+          -o json \
+          --wait)
+        
+        # Extract droplet ID and IP
+        DROPLET_ID=$(echo "$DROPLET_JSON" | jq -r '.[0].id')
+        PUBLIC_IP=$(echo "$DROPLET_JSON" | jq -r '.[0].networks.v4[] | select(.type=="public") | .ip_address')
+        
+        # Set outputs for other steps
+        echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
+        echo "public_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
+        
+        # Save droplet info to file
+        echo "$DROPLET_JSON" > droplet_info.json
+        
+        echo "✅ Droplet created successfully!"
+        echo "ID: $DROPLET_ID"
+        echo "Public IP: $PUBLIC_IP"
+        echo "Name: ${{ inputs.droplet_name }}"
+
+    - name: Setup SSH key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ steps.create.outputs.public_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+    - name: Wait for SSH to be ready
+      run: |
+        echo "⏳ Waiting for SSH to be ready..."
+        for i in {1..30}; do
+          if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }} "echo 'SSH ready'" 2>/dev/null; then
+            echo "✅ SSH is ready!"
+            break
+          fi
+          echo "Attempt $i/30: SSH not ready yet, waiting 10 seconds..."
+          sleep 10
+        done
+
+    - name: Run commands on droplet
+      run: |
+        echo "🚀 Running commands on droplet..."
+        ssh -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }} "
+          echo '📝 Running: rocminfo'
+          rocminfo
+        "
+
+    - name: Auto-destroy droplet after use
+      run: |
+        echo "🗑️ Auto-destroying droplet ${{ steps.create.outputs.droplet_id }}..."
+        doctl compute droplet delete ${{ steps.create.outputs.droplet_id }} --force
+        echo "✅ Droplet auto-destroyed successfully!"
