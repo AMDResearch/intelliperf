@@ -97,7 +97,7 @@ jobs:
           sudo locale-gen en_US.UTF-8
           
           # Clone the repository
-          git clone https://github.com/AMDResearch/intelliperf.git
+          git clone git@github.com:AMDResearch/intelliperf.git
           cd intelliperf
           
           python3 -m venv intelliperf_env
