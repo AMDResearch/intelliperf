@@ -102,7 +102,7 @@ jobs:
           echo 'LD_LIBRARY_PATH: ' $LD_LIBRARY_PATH
           
           sudo apt-get update
-          sudo apt-get install -y python3-venv rocm-llvm-dev libzstd-dev libdwarf-dev locales git
+          sudo apt-get install -y python3-venv rocm-llvm-dev libzstd-dev libdwarf-dev locales git cmake
           sudo locale-gen en_US.UTF-8
           
           # Clone the repository
