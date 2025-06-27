@@ -89,6 +89,11 @@ jobs:
         ssh -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }} "
           set -e
           
+          # Remove any stale dpkg locks at the very beginning
+          sudo rm -f /var/lib/apt/lists/lock
+          sudo rm -f /var/cache/apt/archives/lock
+          sudo rm -f /var/lib/dpkg/lock*
+          
           export ROCM_PATH=/opt/rocm
           export PATH=\$ROCM_PATH/bin:\$PATH
           export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
