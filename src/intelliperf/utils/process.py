@@ -44,8 +44,6 @@ def capture_subprocess_output(
 	verbose = logging.getLogger().getEffectiveLevel() <= logging.DEBUG
 
 	logging.debug(f"Running the command: {' '.join(subprocess_args)}")
-	if new_env is not None:
-		logging.debug("Inside the environment:\n%s", json.dumps(new_env, indent=2))
 
 	if working_directory is not None:
 		logging.debug(f"Working directory: {working_directory}")
