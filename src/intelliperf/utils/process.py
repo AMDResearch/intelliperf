@@ -115,4 +115,7 @@ def capture_subprocess_output(
 	output = buf.getvalue()
 	buf.close()
 
+	# Execute a sync to ensure the output is written to disk
+	subprocess.run(["sync"])
+
 	return (success, output)
