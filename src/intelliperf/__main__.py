@@ -266,9 +266,8 @@ def main():
 	except Exception as e:
 		logging.error(f"Error writing results: {e}")
 		import sys
+
 		sys.exit(1)
-	
-	
 
 
 if __name__ == "__main__":
