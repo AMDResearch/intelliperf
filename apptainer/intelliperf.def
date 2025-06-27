@@ -80,7 +80,7 @@ From: ubuntu:22.04
     cd /root
     git clone -v git@github.com:AARInternal/omniprobe.git
     cd omniprobe
-    git checkout 8e63827f1cd17077cdf13aef7177eb311cc2c896
+    git checkout 9083730ab0da50114c767773df49cb1d2165ba7f
     git submodule update --init --recursive
     mkdir -p build 
     cmake -DCMAKE_INSTALL_PREFIX=/opt/omniprobe\
