@@ -73,7 +73,7 @@ class memory_access(Formula_Base):
 		self.bottleneck_report = None
 		self.current_summary = None
 		self.previous_source_code = None
-
+		self.success = False
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
 		Build the application and store the summary.
@@ -324,6 +324,7 @@ class memory_access(Formula_Base):
 			return Result(success=False, error_report=self.optimization_report)
 		logging.info(self.optimization_report)
 
+		self.success = True
 		return Result(success=True, asset={"log": self.optimization_report})
 
 	def write_results(self, output_file: str = None):
@@ -332,7 +333,7 @@ class memory_access(Formula_Base):
 		"""
 		super().write_results(
 			output_file=output_file,
-			additional_results={"formula": "memoryAccess"},
+			additional_results={"formula": "memoryAccess", "success": self.success},
 		)
 
 	def summarize_previous_passes(self):

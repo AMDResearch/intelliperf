@@ -213,6 +213,26 @@ class Formula_Base:
 			logging.debug(f"binary_with_args: {binary_with_args}")
 			logging.debug(f"kernel_args: {kernel_args}")
 			logging.debug(f"ipc_file_name: {ipc_file_name}")
+			
+			# Wait and verify binary exists before execution
+			max_wait_time = 30  # seconds
+			wait_interval = 1   # seconds
+			waited_time = 0
+			
+			while not os.path.exists(binary) and waited_time < max_wait_time:
+				logging.debug(f"Binary {binary} not found, waiting {wait_interval}s... (waited {waited_time}s)")
+				time.sleep(wait_interval)
+				waited_time += wait_interval
+			
+			if not os.path.exists(binary):
+				logging.error(f"Binary {binary} not found after waiting {max_wait_time} seconds")
+				return Result(
+					success=False,
+					error_report=f"Binary {binary} not found after build. Build may have failed.",
+				)
+			
+			logging.debug(f"Binary {binary} found, proceeding with execution")
+			
 			original_dir = os.getcwd()
 			os.chdir(project_directory)
 			os.posix_spawn(binary, binary_with_args, env)
