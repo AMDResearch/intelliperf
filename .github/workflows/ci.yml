@@ -2,13 +2,8 @@ name: AMD Developer Cloud CI
 
 on:
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
   workflow_dispatch:
-    inputs:
-      droplet_name:
-        description: 'Droplet name'
-        required: false
-        default: 'rocm-jupyter-gpu-mi300x1-192gb-devcloud-atl1'
 
 jobs:
   manage-droplet:
@@ -31,15 +26,27 @@ jobs:
     - name: Create Droplet
       id: create
       run: |
+        DROPLET_NAME="intelliperf-$(date +%s)"
+        
         # Create droplet and capture JSON output
+        echo "🚀 Creating droplet..."
         DROPLET_JSON=$(doctl compute droplet create \
           --image 188571990 \
           --size gpu-mi300x1-192gb \
           --region atl1 \
           --ssh-keys ${{ secrets.SSH_KEY_ID }} \
-          ${{ inputs.droplet_name }} \
+          "$DROPLET_NAME" \
           -o json \
           --wait)
+        
+        echo "📄 Raw droplet JSON output:"
+        echo "$DROPLET_JSON"
+        
+        # Check if droplet creation was successful
+        if [ $? -ne 0 ]; then
+          echo "❌ Failed to create droplet"
+          exit 1
+        fi
         
         # Extract droplet ID and IP
         DROPLET_ID=$(echo "$DROPLET_JSON" | jq -r '.[0].id')
@@ -55,7 +62,7 @@ jobs:
         echo "✅ Droplet created successfully!"
         echo "ID: $DROPLET_ID"
         echo "Public IP: $PUBLIC_IP"
-        echo "Name: ${{ inputs.droplet_name }}"
+        echo "Name: $DROPLET_NAME"
 
     - name: Setup SSH key
       run: |
@@ -101,7 +108,6 @@ jobs:
           rocminfo
           
           pip list | grep intelliperf || echo 'IntelliPerf not found in pip list'
-
         "
 
     - name: Auto-destroy droplet after use
