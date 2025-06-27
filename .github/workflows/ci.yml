@@ -88,6 +88,12 @@ jobs:
           sudo rm -f /var/cache/apt/archives/lock
           sudo rm -f /var/lib/dpkg/lock*
           
+          # Setup SSH key for git access
+          mkdir -p ~/.ssh
+          echo '${{ secrets.SSH_PRIVATE_KEY }}' > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+          
           export ROCM_PATH=/opt/rocm
           export PATH=\$ROCM_PATH/bin:\$PATH
           export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
