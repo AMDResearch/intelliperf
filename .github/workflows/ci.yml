@@ -94,8 +94,12 @@ jobs:
           export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
           
           sudo apt-get update
-          sudo apt-get install -y python3-venv rocm-llvm-dev libzstd-dev libdwarf-dev locales
+          sudo apt-get install -y python3-venv rocm-llvm-dev libzstd-dev libdwarf-dev locales git
           sudo locale-gen en_US.UTF-8
+          
+          # Clone the repository
+          git clone https://github.com/AMDResearch/intelliperf.git
+          cd intelliperf
           
           python3 -m venv intelliperf_env
           source intelliperf_env/bin/activate
