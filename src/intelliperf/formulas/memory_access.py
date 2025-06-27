@@ -74,6 +74,7 @@ class memory_access(Formula_Base):
 		self.current_summary = None
 		self.previous_source_code = None
 		self.success = False
+
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
 		Build the application and store the summary.
