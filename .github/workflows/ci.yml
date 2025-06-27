@@ -95,8 +95,11 @@ jobs:
           ssh-keyscan -H github.com >> ~/.ssh/known_hosts
           
           export ROCM_PATH=/opt/rocm
-          export PATH=\$ROCM_PATH/bin:\$PATH
-          export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
+          export PATH=$ROCM_PATH/bin:$PATH
+          export LD_LIBRARY_PATH=$ROCM_PATH/lib:$LD_LIBRARY_PATH
+          
+          echo 'PATH: ' $PATH
+          echo 'LD_LIBRARY_PATH: ' $LD_LIBRARY_PATH
           
           sudo apt-get update
           sudo apt-get install -y python3-venv rocm-llvm-dev libzstd-dev libdwarf-dev locales git
