@@ -1,6 +1,8 @@
-name: DigitalOcean GPU Droplet CI
+name: AMD Developer Cloud CI
 
 on:
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
     inputs:
       droplet_name:
@@ -74,15 +76,36 @@ jobs:
           sleep 10
         done
 
-    - name: Run commands on droplet
+    - name: Setup AMD Developer Cloud and Install IntelliPerf
       run: |
-        echo "🚀 Running commands on droplet..."
+        echo "🚀 Complete AMD Developer Cloud setup and IntelliPerf installation..."
         ssh -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }} "
-          echo '📝 Running: rocminfo'
+          set -e
+          
+          export ROCM_PATH=/opt/rocm
+          export PATH=\$ROCM_PATH/bin:\$PATH
+          export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
+          
+          apt-get update
+          apt-get install -y python3-venv rocm-llvm-dev libzstd-dev libdwarf-dev locales
+          locale-gen en_US.UTF-8
+          
+          python3 -m venv intelliperf_env
+          source intelliperf_env/bin/activate
+          pip install --upgrade pip
+          
+          pip install -e .
+          
+          python3 scripts/install_tool.py --all
+          
           rocminfo
+          
+          pip list | grep intelliperf || echo 'IntelliPerf not found in pip list'
+
         "
 
     - name: Auto-destroy droplet after use
+      if: always()
       run: |
         echo "🗑️ Auto-destroying droplet ${{ steps.create.outputs.droplet_id }}..."
         doctl compute droplet delete ${{ steps.create.outputs.droplet_id }} --force
