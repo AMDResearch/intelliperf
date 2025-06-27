@@ -243,15 +243,26 @@ def v3_json_to_csv(json_file_path, csv_file_path):
         wg = dispatch_info["workgroup_size"]
         row["Workgroup_Size"] = wg["x"] * wg["y"] * wg["z"]
 
-        row["LDS_Per_Workgroup"] = d["lds_block_size_v"]
+        try:
+            row["LDS_Per_Workgroup"] = d["lds_block_size_v"]
+        except:
+            row["LDS_Per_Workgroup"] = 0
 
         row["Scratch_Per_Workitem"] = kernel_symbols[kernel_id]["private_segment_size"]
-        row["Arch_VGPR"] = d["arch_vgpr_count"]
+        
+        try:
+            row["Arch_VGPR"] = d["arch_vgpr_count"]
+        except:
+            row["Arch_VGPR"] = 0
 
         # TODO: Accum VGPR is missing from rocprofv3 output.
         row["Accum_VGPR"] = 0
 
-        row["SGPR"] = d["sgpr_count"]
+        try:
+            row["SGPR"] = d["sgpr_count"]
+        except:
+            row["SGPR"] = 0
+
         row["Wave_Size"] = agents[agent_id]["wave_front_size"]
 
         row["Kernel_Name"] = kernel_symbols[kernel_id]["formatted_kernel_name"]
