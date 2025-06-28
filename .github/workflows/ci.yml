@@ -141,10 +141,10 @@ jobs:
           echo 'Running IntelliPerf examples...'
           
           # Memory Access example
-          intelliperf -vvv --project_directory=./examples --build_command=./scripts/build_examples.sh --instrument_command=\"./scripts/build_examples.sh -i -c\" --formula=memoryAccess -o /tmp/memory_access_output.json -- ./build/access_pattern/uncoalesced
+          intelliperf -vvv --project_directory=./examples --build_command=./scripts/build_examples.sh --formula=memoryAccess -o /tmp/memory_access_output.json -- ./build/access_pattern/uncoalesced
           
           # Bank Conflict example
-          intelliperf -vvv --project_directory=./examples --build_command=./scripts/build_examples.sh --instrument_command=\"./scripts/build_examples.sh -i -c\" --formula=bankConflict -o /tmp/bank_conflict_output.json -- ./build/bank_conflict/matrix_transpose 1024 1024
+          intelliperf -vvv --project_directory=./examples --build_command=./scripts/build_examples.sh --formula=bankConflict -o /tmp/bank_conflict_output.json -- ./build/bank_conflict/matrix_transpose 1024 1024
           
           # Diagnose Only example
           intelliperf -vvv --formula=diagnoseOnly -o /tmp/diagnose_only_output.json -- ./build/access_pattern/uncoalesced
@@ -160,45 +160,53 @@ jobs:
           # Check success status in JSON files
           echo 'Checking test results...'
           
-          # Function to check JSON success field
-          check_json_success() {
-            local json_file=$1
-            local test_name=$2
-            
-            if [ ! -f "$json_file" ]; then
-              echo "❌ $test_name: JSON file not found"
-              return 1
-            fi
-            
-            # Extract success field using jq
-            local success=$(jq -r '.success // false' "$json_file" 2>/dev/null)
-            
-            if [ "$success" = "true" ]; then
-              echo "✅ $test_name: PASSED"
-              return 0
-            else
-              echo "❌ $test_name: FAILED (success=$success)"
-              return 1
-            fi
-          }
-          
-          # Check each test
+          # Check each test individually
           overall_success=true
           
-          if ! check_json_success /tmp/memory_access_output.json "Memory Access Test"; then
+          # Check Memory Access Test
+          if [ ! -f /tmp/memory_access_output.json ]; then
+            echo "❌ Memory Access Test: JSON file not found"
             overall_success=false
+          else
+            success=\$(jq -r '.success // false' /tmp/memory_access_output.json 2>/dev/null)
+            if [ "\$success" = "true" ]; then
+              echo "✅ Memory Access Test: PASSED"
+            else
+              echo "❌ Memory Access Test: FAILED (success=\$success)"
+              overall_success=false
+            fi
           fi
           
-          if ! check_json_success /tmp/bank_conflict_output.json "Bank Conflict Test"; then
+          # Check Bank Conflict Test
+          if [ ! -f /tmp/bank_conflict_output.json ]; then
+            echo "❌ Bank Conflict Test: JSON file not found"
             overall_success=false
+          else
+            success=\$(jq -r '.success // false' /tmp/bank_conflict_output.json 2>/dev/null)
+            if [ "\$success" = "true" ]; then
+              echo "✅ Bank Conflict Test: PASSED"
+            else
+              echo "❌ Bank Conflict Test: FAILED (success=\$success)"
+              overall_success=false
+            fi
           fi
           
-          if ! check_json_success /tmp/diagnose_only_output.json "Diagnose Only Test"; then
+          # Check Diagnose Only Test
+          if [ ! -f /tmp/diagnose_only_output.json ]; then
+            echo "❌ Diagnose Only Test: JSON file not found"
             overall_success=false
+          else
+            success=\$(jq -r '.success // false' /tmp/diagnose_only_output.json 2>/dev/null)
+            if [ "\$success" = "true" ]; then
+              echo "✅ Diagnose Only Test: PASSED"
+            else
+              echo "❌ Diagnose Only Test: FAILED (success=\$success)"
+              overall_success=false
+            fi
           fi
           
           # Exit with appropriate code
-          if [ "$overall_success" = "true" ]; then
+          if [ "\$overall_success" = "true" ]; then
             echo "🎉 All tests PASSED!"
             exit 0
           else
