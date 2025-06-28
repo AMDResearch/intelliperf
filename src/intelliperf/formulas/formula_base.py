@@ -90,8 +90,13 @@ class Formula_Base:
 		logging.debug(f"instrument_command: {instrument_command}")
 		logging.debug(f"project_directory: {project_directory}")
 		logging.debug(f"app_cmd: {app_cmd}")
-		self._application = Application(name, build_command, instrument_command, project_directory, app_cmd)
-		self._reference_app = self._application.clone()  # Create a reference copy for comparison
+
+		# Create a reference copy for comparison
+		self._reference_app = Application(name, build_command, instrument_command, project_directory, app_cmd)
+		self._application = self._reference_app.clone() 
+
+		self._reference_app.build()
+		self._application.build()
 
 		self._initial_profiler_results = None
 
