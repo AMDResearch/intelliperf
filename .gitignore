@@ -27,3 +27,6 @@ bnk_conflict*
 external/
 
 .venv/
+
+
+intelliperf_env/

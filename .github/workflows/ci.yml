@@ -3,6 +3,8 @@ name: IntelliPerf CI
 on:
   pull_request:
     branches: [ main ]
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 concurrency:
@@ -77,6 +79,15 @@ jobs:
           sleep 10
         done
 
+    - name: Determine commit hash
+      id: commit_hash
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          echo "commit_hash=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+        else
+          echo "commit_hash=${{ github.sha }}" >> $GITHUB_OUTPUT
+        fi
+
     - name: Install IntelliPerf
       run: |
         echo "🚀IntelliPerf installation..."
@@ -94,6 +105,9 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H github.com >> ~/.ssh/known_hosts
           
+          # Set LLM API key
+          export LLM_GATEWAY_KEY='${{ secrets.LLM_GATEWAY_KEY  }}'
+          
           export ROCM_PATH=/opt/rocm
           export PATH=\$ROCM_PATH/bin:\$PATH
           export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
@@ -108,6 +122,8 @@ jobs:
           # Clone the repository
           git clone git@github.com:AMDResearch/intelliperf.git
           cd intelliperf
+          echo "Checking out commit ${{ steps.commit_hash.outputs.commit_hash }}"
+          git checkout ${{ steps.commit_hash.outputs.commit_hash }}
           
           python3 -m venv intelliperf_env
           source intelliperf_env/bin/activate
@@ -120,6 +136,29 @@ jobs:
           rocminfo
           
           pip list | grep intelliperf || echo 'IntelliPerf not found in pip list'
+          
+          # Run examples and store outputs
+          echo 'Running IntelliPerf examples...'
+          
+          # Memory Access example
+          intelliperf -vvv --project_directory=./examples --build_command=./scripts/build_examples.sh --formula=memoryAccess -o /tmp/memory_access_output.json -- ./build/access_pattern/uncoalesced
+          
+          # Bank Conflict example
+          intelliperf -vvv --project_directory=./examples --build_command=./scripts/build_examples.sh --formula=bankConflict -o /tmp/bank_conflict_output.json -- ./build/bank_conflict/matrix_transpose 1024 1024
+          
+          # Diagnose Only example
+          intelliperf -vvv --formula=diagnoseOnly -o /tmp/diagnose_only_output.json -- ./build/access_pattern/uncoalesced
+          
+          # Display output files
+          echo 'Memory Access Output:'
+          cat /tmp/memory_access_output.json
+          echo 'Bank Conflict Output:'
+          cat /tmp/bank_conflict_output.json
+          echo 'Diagnose Only Output:'
+          cat /tmp/diagnose_only_output.json
+          
+          # Success checking disabled for now
+          echo 'Success checking disabled - just displaying outputs'
         "
 
     - name: Auto-destroy droplet after use

@@ -32,10 +32,16 @@ function(add_example name source_file)
     # CMake instrumentation integration example
     if(INSTRUMENT)
         set(OMNIPROBE_PATH ${CMAKE_SOURCE_DIR}/../external/omniprobe/install)
-        # Use the plugin to instrument the code
-        target_compile_options(${name} PRIVATE 
-            -fpass-plugin=${OMNIPROBE_PATH}/lib/libAMDGCNSubmitAddressMessages-rocm.so
-        )
+        # Only use omniprobe if the path exists
+        if(EXISTS ${OMNIPROBE_PATH}/lib/libAMDGCNSubmitAddressMessages-rocm.so)
+            # Use the plugin to instrument the code
+            target_compile_options(${name} PRIVATE 
+                -fpass-plugin=${OMNIPROBE_PATH}/lib/libAMDGCNSubmitAddressMessages-rocm.so
+            )
+            message(STATUS "Using Omniprobe instrumentation for ${name}")
+        else()
+            message(WARNING "Omniprobe not found at ${OMNIPROBE_PATH}, skipping instrumentation for ${name}")
+        endif()
         # Must include debug information to get line numbers
     endif()
     target_compile_options(${name} PRIVATE -g)    
