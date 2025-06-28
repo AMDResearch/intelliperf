@@ -93,7 +93,7 @@ class Formula_Base:
 
 		# Create a reference copy for comparison
 		self._reference_app = Application(name, build_command, instrument_command, project_directory, app_cmd)
-		self._application = self._reference_app.clone()
+		self._application = self._reference_app.clone() 
 
 		self._reference_app.build()
 		self._application.build()
@@ -340,15 +340,18 @@ class Formula_Base:
 			diffs.append(cur_diff)
 		return "\n".join(diffs)
 
-	def reset_source(self, filepaths: list[str]):
+	def inplace_update(self, filepaths: list[str]):
+		"""
+		Updates the source code in place.
+		"""
 		for filepath in filepaths:
 			relative_path = os.path.relpath(filepath, self._application.get_project_directory())
 			reference_filepath = os.path.join(self._reference_app.get_project_directory(), relative_path)
 			optimized_filepath = os.path.join(self._application.get_project_directory(), relative_path)
-			with open(reference_filepath, "r") as f:
-				reference_content = f.read()
-			with open(optimized_filepath, "w") as f:
-				f.write(reference_content)
+			with open(optimized_filepath, "r") as f:
+				optimized_content = f.read()
+			with open(reference_filepath, "w") as f:
+				f.write(optimized_content)
 
 	def write_results(self, output_file: str = None, additional_results: dict = {}, diagnose_only: bool = False):
 		"""
@@ -369,8 +372,8 @@ class Formula_Base:
 				**additional_results,
 				"diff": self.compute_diff(self.current_kernel_files),
 			}
-			if not self.in_place:
-				self.reset_source(self.current_kernel_files)
+			if self.in_place:
+				self.inplace_update(self.current_kernel_files)
 		write_results(results, output_file)
 
 

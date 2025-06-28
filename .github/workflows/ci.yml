@@ -141,10 +141,10 @@ jobs:
           echo 'Running IntelliPerf examples...'
           
           # Memory Access example
-          intelliperf -vvv --project_directory=./examples --build_command=../scripts/build_examples.sh --instrument_command=\"../scripts/build_examples.sh -i -c\" --formula=memoryAccess -o /tmp/memory_access_output.json -- ./build/access_pattern/uncoalesced
+          intelliperf -vvv --project_directory=./examples --build_command=./scripts/build_examples.sh --instrument_command=\"./scripts/build_examples.sh -i -c\" --formula=memoryAccess -o /tmp/memory_access_output.json -- ./build/access_pattern/uncoalesced
           
           # Bank Conflict example
-          intelliperf -vvv --project_directory=./examples --build_command=../scripts/build_examples.sh --instrument_command=\"../scripts/build_examples.sh -i -c\" --formula=bankConflict -o /tmp/bank_conflict_output.json -- ./build/bank_conflict/matrix_transpose 1024 1024
+          intelliperf -vvv --project_directory=./examples --build_command=./scripts/build_examples.sh --instrument_command=\"./scripts/build_examples.sh -i -c\" --formula=bankConflict -o /tmp/bank_conflict_output.json -- ./build/bank_conflict/matrix_transpose 1024 1024
           
           # Diagnose Only example
           intelliperf -vvv --formula=diagnoseOnly -o /tmp/diagnose_only_output.json -- ./build/access_pattern/uncoalesced
@@ -156,6 +156,55 @@ jobs:
           cat /tmp/bank_conflict_output.json
           echo 'Diagnose Only Output:'
           cat /tmp/diagnose_only_output.json
+          
+          # Check success status in JSON files
+          echo 'Checking test results...'
+          
+          # Function to check JSON success field
+          check_json_success() {
+            local json_file=$1
+            local test_name=$2
+            
+            if [ ! -f "$json_file" ]; then
+              echo "❌ $test_name: JSON file not found"
+              return 1
+            fi
+            
+            # Extract success field using jq
+            local success=$(jq -r '.success // false' "$json_file" 2>/dev/null)
+            
+            if [ "$success" = "true" ]; then
+              echo "✅ $test_name: PASSED"
+              return 0
+            else
+              echo "❌ $test_name: FAILED (success=$success)"
+              return 1
+            fi
+          }
+          
+          # Check each test
+          overall_success=true
+          
+          if ! check_json_success /tmp/memory_access_output.json "Memory Access Test"; then
+            overall_success=false
+          fi
+          
+          if ! check_json_success /tmp/bank_conflict_output.json "Bank Conflict Test"; then
+            overall_success=false
+          fi
+          
+          if ! check_json_success /tmp/diagnose_only_output.json "Diagnose Only Test"; then
+            overall_success=false
+          fi
+          
+          # Exit with appropriate code
+          if [ "$overall_success" = "true" ]; then
+            echo "🎉 All tests PASSED!"
+            exit 0
+          else
+            echo "💥 Some tests FAILED!"
+            exit 1
+          fi
         "
 
     - name: Auto-destroy droplet after use
