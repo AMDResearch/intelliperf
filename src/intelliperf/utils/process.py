@@ -69,17 +69,17 @@ def capture_subprocess_output(
 			capture_output=True,
 			text=True,
 			encoding="utf-8",
-			errors="replace"
+			errors="replace",
 		)
-		
+
 		success = result.returncode == 0
 		output = result.stdout + result.stderr
-		
+
 		if verbose:
 			print(output)
-		
+
 		return (success, output)
-		
+
 	except Exception as e:
 		logging.error(f"Failed to run command: {e}")
 		return (False, str(e))
