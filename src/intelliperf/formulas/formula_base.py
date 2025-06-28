@@ -93,7 +93,7 @@ class Formula_Base:
 
 		# Create a reference copy for comparison
 		self._reference_app = Application(name, build_command, instrument_command, project_directory, app_cmd)
-		self._application = self._reference_app.clone() 
+		self._application = self._reference_app.clone()
 
 		self._reference_app.build()
 		self._application.build()
