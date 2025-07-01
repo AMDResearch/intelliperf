@@ -99,7 +99,7 @@ class Formula_Base:
 		self._reference_app.show_details()
 		self._application.show_details()
 		logging.debug("--------------------------------")
-  
+
 		self._reference_app.build()
 		self._application.build()
 
@@ -223,7 +223,6 @@ class Formula_Base:
 			logging.debug(f"binary_with_args: {binary_with_args}")
 			logging.debug(f"kernel_args: {kernel_args}")
 			logging.debug(f"ipc_file_name: {ipc_file_name}")
-
 
 			original_dir = os.getcwd()
 			os.chdir(project_directory)

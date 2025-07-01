@@ -260,6 +260,7 @@ def main():
 			break
 
 	import sys
+
 	try:
 		if args.formula == "diagnoseOnly" or performance_result:
 			optimizer.write_results(args.output_file)

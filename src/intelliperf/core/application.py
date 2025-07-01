@@ -238,10 +238,11 @@ class Application:
 				df_results = {"kernels": {}}
 
 			return df_results
+
 	def get_binary_absolute_path(self):
 		if self.get_project_directory() != "":
 			binary = self.get_app_cmd_without_args()
-			if binary.startswith('./'):
+			if binary.startswith("./"):
 				binary = binary[2:]  # Remove './'
 			binary = os.path.join(self.get_project_directory(), binary)
 			logging.debug(f"Binary absolute path: {binary}")
@@ -250,7 +251,6 @@ class Application:
 			return binary
 		else:
 			return self.get_app_cmd_without_args()
-	
 
 	def show_details(self):
 		logging.debug(f"Showing application details of {self.get_name()}")
