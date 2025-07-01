@@ -136,9 +136,31 @@ jobs:
           rocminfo
           pip list | grep intelliperf || echo 'IntelliPerf not found in pip list'
           
+          # Create results directory
+          mkdir -p /intelliperf_results
+          
           # Run the IntelliPerf examples
           ./.github/workflows/scripts/ci_tests.sh
         "
+
+    - name: Download test outputs
+      if: always()
+      run: |
+        echo "📥 Downloading test outputs..."
+        mkdir -p test_outputs
+        scp -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }}:/intelliperf_results/*_output.json ./test_outputs/ || echo "No output files found"
+        
+        # Create tar artifact
+        tar -czf intelliperf_test_outputs.tar.gz -C test_outputs .
+        echo "✅ Test outputs archived as intelliperf_test_outputs.tar.gz"
+
+    - name: Upload test outputs as artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: intelliperf-test-outputs
+        path: intelliperf_test_outputs.tar.gz
+        retention-days: 30
 
     - name: Auto-destroy droplet after use
       if: always()
