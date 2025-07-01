@@ -199,7 +199,7 @@ class Application:
 	def clone(self):
 		if not self.project_directory:
 			logging.debug("Skipping cloning application without project directory")
-			return
+			return self
 
 		temp_dir = tempfile.mkdtemp()
 		logging.info(f"Creating temporary project directory: {temp_dir}")
@@ -238,3 +238,26 @@ class Application:
 				df_results = {"kernels": {}}
 
 			return df_results
+
+	def get_binary_absolute_path(self):
+		if self.get_project_directory() != "":
+			binary = self.get_app_cmd_without_args()
+			if binary.startswith("./"):
+				binary = binary[2:]  # Remove './'
+			binary = os.path.join(self.get_project_directory(), binary)
+			logging.debug(f"Binary absolute path: {binary}")
+			logging.debug(f"Binary path: {binary}")
+			logging.debug(f"Project directory: {self.get_project_directory()}")
+			return binary
+		else:
+			return self.get_app_cmd_without_args()
+
+	def show_details(self):
+		logging.debug(f"Showing application details of {self.get_name()}")
+		logging.debug(f"Project directory: {self.get_project_directory()}")
+		logging.debug(f"Build command: {self.get_build_command()}")
+		logging.debug(f"Instrument command: {self.get_instrument_command()}")
+		logging.debug(f"App command: {self.get_app_cmd()}")
+		logging.debug(f"App args: {self.get_app_args()}")
+		logging.debug(f"App cmd without args: {self.get_app_cmd_without_args()}")
+		logging.debug("--------------------------------")

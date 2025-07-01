@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 ################################################################################
 # MIT License
 
@@ -22,32 +23,42 @@
 # SOFTWARE.
 ################################################################################
 
-cmake_minimum_required(VERSION 3.10)
-project(Examples LANGUAGES HIP CXX)
 
-option(INSTRUMENT "Instrument the code with Omniprobe" OFF)
+import torch
+import triton
+import triton.language as tl
 
-function(add_example name source_file)
-    add_executable(${name} ${source_file})
-    # CMake instrumentation integration example
-    if(INSTRUMENT)
-        set(OMNIPROBE_PATH ${CMAKE_SOURCE_DIR}/../external/omniprobe/install)
-        # Only use omniprobe if the path exists
-        if(EXISTS ${OMNIPROBE_PATH}/lib/libAMDGCNSubmitAddressMessages-rocm.so)
-            # Use the plugin to instrument the code
-            target_compile_options(${name} PRIVATE 
-                -fpass-plugin=${OMNIPROBE_PATH}/lib/libAMDGCNSubmitAddressMessages-rocm.so
-            )
-            message(STATUS "Using Omniprobe instrumentation for ${name}")
-        else()
-            message(WARNING "Omniprobe not found at ${OMNIPROBE_PATH}, skipping instrumentation for ${name}")
-        endif()
-        # Must include debug information to get line numbers
-    endif()
-    target_compile_options(${name} PRIVATE -g)    
-endfunction()
 
-add_subdirectory(bank_conflict)
-add_subdirectory(basic)
-add_subdirectory(contention)
-add_subdirectory(access_pattern)
+@triton.jit
+def reduce(input_ptr, output_ptr, num_elements, BLOCK_SIZE: tl.constexpr):
+	pid = tl.program_id(0)
+	block_start = pid * BLOCK_SIZE
+
+	offsets = block_start + tl.arange(0, BLOCK_SIZE)
+	mask = offsets < num_elements
+
+	vals = tl.load(input_ptr + offsets, mask=mask, other=0)
+	acc = tl.sum(vals)
+
+	tl.atomic_add(output_ptr + 0, acc)
+
+
+def main():
+	data_type = torch.int32
+	BLOCK_SIZE = 128
+	num_elements = 1_000_000
+	grid = lambda META: (triton.cdiv(num_elements, META["BLOCK_SIZE"]),)
+
+	x = torch.randint(0, 42, (num_elements,), dtype=data_type, device="cuda")
+	y = torch.zeros(1, dtype=data_type, device="cuda")
+
+	reduce[grid](x, y, num_elements, BLOCK_SIZE=BLOCK_SIZE)
+
+	actual = y.item()
+	expected = int(x.cpu().sum())
+
+	print(f"Expected: {expected:,} Actual: {actual:,}")
+
+
+if __name__ == "__main__":
+	main()

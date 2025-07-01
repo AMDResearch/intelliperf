@@ -5,8 +5,8 @@
 
 ```console
 intelliperf -vvv --project_directory=./examples\
-    --build_command=../scripts/build_examples.sh\
-    --instrument_command="../scripts/build_examples.sh -i -c"\
+    --build_command="./scripts/build_examples.sh -c"\
+    --instrument_command="./scripts/build_examples.sh -i -c"\
     --formula=bankConflict -- ./build/bank_conflict/matrix_transpose 1024 1024
 ```
 
@@ -14,8 +14,8 @@ intelliperf -vvv --project_directory=./examples\
 
 ```console
 intelliperf -vvv --project_directory=./examples\
-    --build_command=../scripts/build_examples.sh\
-    --instrument_command="../scripts/build_examples.sh -i -c"\
+    --build_command="./scripts/build_examples.sh -c"\
+    --instrument_command="./scripts/build_examples.sh -i -c"\
     --formula=memoryAccess -- ./build/access_pattern/uncoalesced
 ```
 
@@ -23,15 +23,24 @@ intelliperf -vvv --project_directory=./examples\
 
 ```console
 intelliperf -vvv --project_directory=./examples\
-    --build_command=../scripts/build_examples.sh\
-    --instrument_command="../scripts/build_examples.sh -i -c"\
+    --build_command="./scripts/build_examples.sh -c"\
+    --instrument_command="./scripts/build_examples.sh -i -c"\
     --formula=atomicContention -- ./build/contention/reduction
 ```
 
 ## Diagnose Only Formula
+### HIP
 ```console
 ./scripts/build_examples.sh 
 intelliperf -vvv --formula=diagnoseOnly -- ./examples/build/contention/reduction
+```
+### Triton
+```console
+intelliperf -vvv --formula=diagnoseOnly -- python ./examples/triton/reduce.py
+```
+### Python/PyTorch
+```
+intelliperf -vvv --formula=diagnoseOnly -- python ./examples/torch/add.py
 ```
 
 ## Example output:
@@ -624,8 +633,8 @@ After running, you will get an output similar to:
           "/home/AMD/muhaawad/git/amd/audacious/intelliperf/examples/access_pattern/uncoalesced/uncoalesced.hip",
           "/home/AMD/muhaawad/git/amd/audacious/intelliperf/examples/access_pattern/uncoalesced/uncoalesced.hip",
           "/home/AMD/muhaawad/git/amd/audacious/intelliperf/examples/access_pattern/uncoalesced/uncoalesced.hip",
-          "/opt/rocm-6.3.1/lib/llvm/bin/../../../include/hip/amd_detail/amd_hip_runtime.h",
-          "/opt/rocm-6.3.1/lib/llvm/bin/../../../include/hip/amd_detail/amd_hip_runtime.h"
+          "/opt/rocm-6.3.1/lib/llvm/bin/./././include/hip/amd_detail/amd_hip_runtime.h",
+          "/opt/rocm-6.3.1/lib/llvm/bin/./././include/hip/amd_detail/amd_hip_runtime.h"
         ],
         "hip": [
           "",

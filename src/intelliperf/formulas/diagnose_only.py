@@ -90,4 +90,8 @@ class diagnose_only(Formula_Base):
 		"""
 		Writes the results to the output file.
 		"""
-		super().write_results(output_file=output_file, diagnose_only=True)
+		super().write_results(
+			output_file=output_file,
+			diagnose_only=True,
+			additional_results={"success": True},
+		)

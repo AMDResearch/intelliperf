@@ -98,6 +98,7 @@ We provide both Apptainer and Docker images for easy setup:
    python3 scripts/install_tool.py --all
    ```
 
+
 ## Environment Variables
 
 Set the following environment variable for AI-powered optimization:
@@ -153,10 +154,16 @@ intelliperf -- python3 gemm.py
 | `-r, --provider` | Specify the provider to use for optimization (default: openai) |
 | `-l, --in_place` | Modify source files in place during optimization (default: creates backups) |
 
+> [!NOTE]
+> IntelliPerf copies the entire project directory to a temporary location. Make sure your project doesn't include any temporary CMake files if you pass the `project_directory` flag.
+
+
 ## Documentation
 
 - [IntelliPerf Technical Paper](docs/IntelliPerf.md) - Detailed technical overview of the IntelliPerf framework
 - [Running Examples](examples/README.md)
+- [AMD Developer Cloud Setup Guide](docs/DEVCLOUD.md) - Step-by-step instructions for setting up IntelliPerf on AMD Developer Cloud GPU droplets
+
 
 ## Contributing
 
