@@ -3,6 +3,8 @@ name: IntelliPerf CI
 on:
   pull_request:
     branches: [ main ]
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 concurrency:
@@ -77,13 +79,24 @@ jobs:
           sleep 10
         done
 
-    - name: Install IntelliPerf
+    - name: Determine commit hash
+      id: commit_hash
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          echo "commit_hash=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+        else
+          echo "commit_hash=${{ github.sha }}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Install IntelliPerf and run tests
       run: |
         echo "🚀IntelliPerf installation..."
+        
+        # Setup SSH, clone repo, and install dependencies
         ssh -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }} "
           set -e
           
-          # Remove any stale dpkg locks at the very beginning
+          # Remove any stale dpkg locks
           sudo rm -f /var/lib/apt/lists/lock
           sudo rm -f /var/cache/apt/archives/lock
           sudo rm -f /var/lib/dpkg/lock*
@@ -94,13 +107,13 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H github.com >> ~/.ssh/known_hosts
           
+          # Set environment variables
+          export LLM_GATEWAY_KEY='${{ secrets.LLM_GATEWAY_KEY }}'
           export ROCM_PATH=/opt/rocm
           export PATH=\$ROCM_PATH/bin:\$PATH
           export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
           
-          echo 'PATH: ' \$PATH
-          echo 'LD_LIBRARY_PATH: ' \$LD_LIBRARY_PATH
-          
+          # Install system dependencies
           sudo apt-get update
           sudo apt-get install -y python3-venv rocm-llvm-dev libzstd-dev libdwarf-dev locales git cmake
           sudo locale-gen en_US.UTF-8
@@ -108,19 +121,84 @@ jobs:
           # Clone the repository
           git clone git@github.com:AMDResearch/intelliperf.git
           cd intelliperf
+          echo 'Checking out commit ${{ steps.commit_hash.outputs.commit_hash }}'
+          git checkout ${{ steps.commit_hash.outputs.commit_hash }}
           
+          # Setup Python environment
           python3 -m venv intelliperf_env
           source intelliperf_env/bin/activate
           pip install --upgrade pip
-          
           pip install -e .
-          
+          pip3 install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/rocm6.4
           python3 scripts/install_tool.py --all
           
+          # Verify installation
           rocminfo
-          
           pip list | grep intelliperf || echo 'IntelliPerf not found in pip list'
+          
+          # Create results directory
+          mkdir -p /intelliperf_results
+          
+          # Run the IntelliPerf examples
+          ./.github/workflows/scripts/ci_tests.sh
         "
+
+    - name: Download test outputs
+      if: always()
+      run: |
+        echo "📥 Downloading test outputs..."
+        mkdir -p test_outputs
+        scp -r -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }}:/intelliperf_results/ ./test_outputs/ || echo "No results directory found"
+        
+        # Create tar artifact
+        tar -czf intelliperf_test_outputs.tar.gz -C test_outputs .
+        echo "✅ Test outputs archived as intelliperf_test_outputs.tar.gz"
+        
+        # Print test results summary with GitHub Actions annotations
+        echo "📊 IntelliPerf Test Results Summary:"
+        
+        # Check each test result by parsing the success field
+        check_test_result() {
+          local file="$1"
+          local test_name="$2"
+          if [ -f "$file" ]; then
+            if jq -e '.success == true' "$file" >/dev/null 2>&1; then
+              echo "::notice::✅ $test_name: PASSED"
+              return 0
+            else
+              echo "::warning::❌ $test_name: FAILED"
+              return 1
+            fi
+          else
+            echo "::warning::❌ $test_name: FAILED (file not found)"
+            return 1
+          fi
+        }
+        
+        # Track overall success
+        overall_success=true
+        
+        check_test_result "./test_outputs/intelliperf_results/memory_access_output.json" "Memory Access" || overall_success=false
+        check_test_result "./test_outputs/intelliperf_results/bank_conflict_output.json" "Bank Conflict" || overall_success=false
+        check_test_result "./test_outputs/intelliperf_results/atomic_contention_output.json" "Atomic Contention" || overall_success=false
+        check_test_result "./test_outputs/intelliperf_results/diagnose_only_hip_uncoalesced.json" "Diagnose Only (HIP)" || overall_success=false
+        check_test_result "./test_outputs/intelliperf_results/diagnose_only_torch_add.json" "Diagnose Only (Torch)" || overall_success=false
+        check_test_result "./test_outputs/intelliperf_results/diagnose_only_triton_reduce.json" "Diagnose Only (Triton)" || overall_success=false
+        
+        echo ""
+        if [ "$overall_success" = true ]; then
+          echo "::notice::🎯 All IntelliPerf tests PASSED! ✅"
+        else
+          echo "::warning::⚠️ Some IntelliPerf tests FAILED! ❌"
+        fi
+
+    - name: Upload test outputs as artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: intelliperf-test-outputs
+        path: intelliperf_test_outputs.tar.gz
+        retention-days: 15
 
     - name: Auto-destroy droplet after use
       if: always()

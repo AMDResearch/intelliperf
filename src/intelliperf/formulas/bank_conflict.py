@@ -75,6 +75,7 @@ class bank_conflict(Formula_Base):
 		self.bottleneck_report = None
 		self.current_summary = None
 		self.previous_source_code = None
+		self.success = False
 
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
@@ -398,6 +399,7 @@ class bank_conflict(Formula_Base):
 
 		logging.info(self.optimization_report)
 
+		self.success = True
 		return Result(success=True, asset={"log": self.optimization_report})
 
 	def write_results(self, output_file: str = None):
@@ -406,7 +408,7 @@ class bank_conflict(Formula_Base):
 		"""
 		super().write_results(
 			output_file=output_file,
-			additional_results={"formula": "bankConflict"},
+			additional_results={"formula": "bankConflict", "success": self.success},
 		)
 
 	def summarize_previous_passes(self):

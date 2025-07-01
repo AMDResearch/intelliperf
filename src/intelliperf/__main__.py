@@ -259,15 +259,14 @@ def main():
 		if performance_result:
 			break
 
-	if args.formula == "diagnoseOnly" or performance_result:
-		optimizer.write_results(args.output_file)
-		import sys
+	import sys
 
-		sys.exit(0)
-	else:
-		logging.error("Optimization was not successful. Exiting.")
-		import sys
-
+	try:
+		if args.formula == "diagnoseOnly" or performance_result:
+			optimizer.write_results(args.output_file)
+			sys.exit(0)
+	except Exception as e:
+		logging.error(f"Error writing results: {e}")
 		sys.exit(1)
 
 
