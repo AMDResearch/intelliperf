@@ -141,10 +141,10 @@ jobs:
           echo 'Running IntelliPerf examples...'
           
           # Memory Access example
-          intelliperf -vvv --project_directory=./examples --build_command=./scripts/build_examples.sh --formula=memoryAccess -o /tmp/memory_access_output.json -- ./build/access_pattern/uncoalesced
+          intelliperf -vvv --project_directory=./examples --build_command="./scripts/build_examples.sh -c" --formula=memoryAccess -o /tmp/memory_access_output.json -- ./build/access_pattern/uncoalesced
           
           # Bank Conflict example
-          intelliperf -vvv --project_directory=./examples --build_command=./scripts/build_examples.sh --formula=bankConflict -o /tmp/bank_conflict_output.json -- ./build/bank_conflict/matrix_transpose 1024 1024
+          intelliperf -vvv --project_directory=./examples --build_command="./scripts/build_examples.sh -c" --formula=bankConflict -o /tmp/bank_conflict_output.json -- ./build/bank_conflict/matrix_transpose 1024 1024
           
           # Diagnose Only example
           intelliperf -vvv --formula=diagnoseOnly -o /tmp/diagnose_only_output.json -- ./build/access_pattern/uncoalesced
