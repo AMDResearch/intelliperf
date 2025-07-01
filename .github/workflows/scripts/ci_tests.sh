@@ -12,7 +12,7 @@ intelliperf -vvv --project_directory=./examples --build_command="./scripts/build
 
 
 # Diagnose Only
-intelliperf -vvv --formula=diagnoseOnly -o /intelliperf_results/diagnose_only_hip_uncoalesced.json -- ./build/access_pattern/uncoalesced
+intelliperf -vvv --formula=diagnoseOnly -o /intelliperf_results/diagnose_only_hip_uncoalesced.json -- ./examples/build/access_pattern/uncoalesced
 intelliperf -vvv --formula=diagnoseOnly -o /intelliperf_results/diagnose_only_torch_add.json -- python ./examples/torch/add.py
 intelliperf -vvv --formula=diagnoseOnly -o /intelliperf_results/diagnose_only_triton_reduce.json -- python ./examples/triton/reduce.py
 
