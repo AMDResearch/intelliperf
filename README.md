@@ -153,6 +153,10 @@ intelliperf -- python3 gemm.py
 | `-r, --provider` | Specify the provider to use for optimization (default: openai) |
 | `-l, --in_place` | Modify source files in place during optimization (default: creates backups) |
 
+> [!NOTE]
+> IntelliPerf copies the entire project directory to a temporary location. Make sure your project doesn't include any temporary CMake files if you pass the `project_directory` flag.
+
+
 ## Documentation
 
 - [IntelliPerf Technical Paper](docs/IntelliPerf.md) - Detailed technical overview of the IntelliPerf framework
