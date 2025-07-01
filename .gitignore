@@ -4,24 +4,6 @@ __pycache__/
 build/
 
 
-matrix_transpose
-!matrix_transpose/
-
-transpose_scale_add/*
-
-!transpose_scale_add
-!transpose_scale_add_templated
-
-reduce*
-!reduce/
-
-bnk_conflict*
-!bnk_conflict.cpp
-*.log
-*.optimized
-*.unoptimized
-
-
 *.egg-info
 
 external/
