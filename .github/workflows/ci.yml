@@ -91,10 +91,12 @@ jobs:
     - name: Install IntelliPerf
       run: |
         echo "🚀IntelliPerf installation..."
+        
+        # Setup SSH, clone repo, and install dependencies
         ssh -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }} "
           set -e
           
-          # Remove any stale dpkg locks at the very beginning
+          # Remove any stale dpkg locks
           sudo rm -f /var/lib/apt/lists/lock
           sudo rm -f /var/cache/apt/archives/lock
           sudo rm -f /var/lib/dpkg/lock*
@@ -105,16 +107,13 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H github.com >> ~/.ssh/known_hosts
           
-          # Set LLM API key
-          export LLM_GATEWAY_KEY='${{ secrets.LLM_GATEWAY_KEY  }}'
-          
+          # Set environment variables
+          export LLM_GATEWAY_KEY='${{ secrets.LLM_GATEWAY_KEY }}'
           export ROCM_PATH=/opt/rocm
           export PATH=\$ROCM_PATH/bin:\$PATH
           export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
           
-          echo 'PATH: ' \$PATH
-          echo 'LD_LIBRARY_PATH: ' \$LD_LIBRARY_PATH
-          
+          # Install system dependencies
           sudo apt-get update
           sudo apt-get install -y python3-venv rocm-llvm-dev libzstd-dev libdwarf-dev locales git cmake
           sudo locale-gen en_US.UTF-8
@@ -122,43 +121,23 @@ jobs:
           # Clone the repository
           git clone git@github.com:AMDResearch/intelliperf.git
           cd intelliperf
-          echo "Checking out commit ${{ steps.commit_hash.outputs.commit_hash }}"
+          echo 'Checking out commit ${{ steps.commit_hash.outputs.commit_hash }}'
           git checkout ${{ steps.commit_hash.outputs.commit_hash }}
           
+          # Setup Python environment
           python3 -m venv intelliperf_env
           source intelliperf_env/bin/activate
           pip install --upgrade pip
-          
           pip install -e .
-          
+          pip3 install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/rocm6.4
           python3 scripts/install_tool.py --all
           
+          # Verify installation
           rocminfo
-          
           pip list | grep intelliperf || echo 'IntelliPerf not found in pip list'
           
-          # Run examples and store outputs
-          echo 'Running IntelliPerf examples...'
-          
-          # Memory Access example
-          intelliperf -vvv --project_directory=./examples --build_command="./scripts/build_examples.sh -c" --formula=memoryAccess -o /tmp/memory_access_output.json -- ./build/access_pattern/uncoalesced
-          
-          # Bank Conflict example
-          intelliperf -vvv --project_directory=./examples --build_command="./scripts/build_examples.sh -c" --formula=bankConflict -o /tmp/bank_conflict_output.json -- ./build/bank_conflict/matrix_transpose 1024 1024
-          
-          # Diagnose Only example
-          intelliperf -vvv --formula=diagnoseOnly -o /tmp/diagnose_only_output.json -- ./build/access_pattern/uncoalesced
-          
-          # Display output files
-          echo 'Memory Access Output:'
-          cat /tmp/memory_access_output.json
-          echo 'Bank Conflict Output:'
-          cat /tmp/bank_conflict_output.json
-          echo 'Diagnose Only Output:'
-          cat /tmp/diagnose_only_output.json
-          
-          # Success checking disabled for now
-          echo 'Success checking disabled - just displaying outputs'
+          # Run the IntelliPerf examples
+          ./.github/workflows/scripts/ci_tests.sh
         "
 
     - name: Auto-destroy droplet after use
