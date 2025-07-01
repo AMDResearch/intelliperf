@@ -24,40 +24,41 @@
 ################################################################################
 
 
+import torch
 import triton
 import triton.language as tl
-import torch
+
 
 @triton.jit
-def reduce(input_ptr, output_ptr, num_elements,
-           BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(0)
-    block_start = pid * BLOCK_SIZE
+def reduce(input_ptr, output_ptr, num_elements, BLOCK_SIZE: tl.constexpr):
+	pid = tl.program_id(0)
+	block_start = pid * BLOCK_SIZE
 
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < num_elements
+	offsets = block_start + tl.arange(0, BLOCK_SIZE)
+	mask = offsets < num_elements
 
-    vals = tl.load(input_ptr + offsets, mask=mask, other=0)
-    acc = tl.sum(vals)
+	vals = tl.load(input_ptr + offsets, mask=mask, other=0)
+	acc = tl.sum(vals)
 
-    tl.atomic_add(output_ptr + 0, acc)
+	tl.atomic_add(output_ptr + 0, acc)
+
 
 def main():
+	data_type = torch.int32
+	BLOCK_SIZE = 128
+	num_elements = 1_000_000
+	grid = lambda META: (triton.cdiv(num_elements, META["BLOCK_SIZE"]),)
 
-    data_type = torch.int32
-    BLOCK_SIZE = 128
-    num_elements = 1_000_000
-    grid = lambda META: (triton.cdiv(num_elements, META['BLOCK_SIZE']),)
-    
-    x = torch.randint(0, 42, (num_elements,), dtype=data_type, device='cuda')
-    y = torch.zeros(1, dtype=data_type, device='cuda')
+	x = torch.randint(0, 42, (num_elements,), dtype=data_type, device="cuda")
+	y = torch.zeros(1, dtype=data_type, device="cuda")
 
-    reduce[grid](x, y, num_elements, BLOCK_SIZE=BLOCK_SIZE)
+	reduce[grid](x, y, num_elements, BLOCK_SIZE=BLOCK_SIZE)
 
-    actual = y.item()
-    expected = int(x.cpu().sum())
+	actual = y.item()
+	expected = int(x.cpu().sum())
 
-    print(f"Expected: {expected:,} Actual: {actual:,}")
+	print(f"Expected: {expected:,} Actual: {actual:,}")
+
 
 if __name__ == "__main__":
-    main()
+	main()
