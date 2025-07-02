@@ -24,7 +24,7 @@ SOFTWARE.
 
 # IntelliPerf: The Performance Maestro
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/AMDResearch/intelliperf/actions/workflows/lint.yml) 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/AMDResearch/intelliperf/actions/workflows/lint.yml) [![IntelliPerf CI](https://github.com/AMDResearch/intelliperf/actions/workflows/ci.yml/badge.svg)](https://github.com/AMDResearch/intelliperf/actions/workflows/ci.yml)
 
 > [!IMPORTANT]  
 > This project is intended for research purposes only and is provided by AMD Research and Advanced Development team. 
