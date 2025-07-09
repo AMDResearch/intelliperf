@@ -226,17 +226,18 @@ class Application:
 			env["HSA_TOOLS_LIB"] = lib
 			env["NEXUS_LOG_LEVEL"] = "2"
 			env["NEXUS_OUTPUT_FILE"] = json_result_file
+			env["TRITON_ALWAYS_COMPILE"] = "1"
+			env["TRITON_DISABLE_LINE_INFO"] = "0"
 			capture_subprocess_output(
 				self.get_app_cmd(),
 				new_env=env,
-				working_directory=self.get_project_directory(),
+				working_directory=self.get_project_directory()
 			)
 
 			if os.path.exists(json_result_file):
 				df_results = json.loads(open(json_result_file).read())
 			else:
 				df_results = {"kernels": {}}
-
 			return df_results
 
 	def get_binary_absolute_path(self):
