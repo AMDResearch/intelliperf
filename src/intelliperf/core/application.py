@@ -228,11 +228,7 @@ class Application:
 			env["NEXUS_OUTPUT_FILE"] = json_result_file
 			env["TRITON_ALWAYS_COMPILE"] = "1"
 			env["TRITON_DISABLE_LINE_INFO"] = "0"
-			capture_subprocess_output(
-				self.get_app_cmd(),
-				new_env=env,
-				working_directory=self.get_project_directory()
-			)
+			capture_subprocess_output(self.get_app_cmd(), new_env=env, working_directory=self.get_project_directory())
 
 			if os.path.exists(json_result_file):
 				df_results = json.loads(open(json_result_file).read())

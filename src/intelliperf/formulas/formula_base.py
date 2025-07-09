@@ -286,12 +286,11 @@ class Formula_Base:
 				"lines": [],
 				"signature": "",
 			}
-   
+
 			# Try adding the kd suffix
 			if kernel_name not in df_results["kernels"]:
 				kernel_name = kernel_name + ".kd"
 			entry["source"] = df_results["kernels"].get(kernel_name, empty)
-
 
 		return Result(success=True, asset=self._initial_profiler_results)
 
