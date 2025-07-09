@@ -24,7 +24,8 @@ SOFTWARE.
 
 # IntelliPerf: LLM-Powered Autonomous GPU Performance Engineer
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/AMDResearch/intelliperf/actions/workflows/lint.yml) [![IntelliPerf CI](https://github.com/AMDResearch/intelliperf/actions/workflows/ci.yml/badge.svg)](https://github.com/AMDResearch/intelliperf/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/AMDResearch/intelliperf/actions/workflows/lint.yml) [![IntelliPerf CI](https://github.com/AMDResearch/intelliperf/actions/workflows/ci.yml/badge.svg)](https://github.com/AMDResearch/intelliperf/actions/workflows/ci.yml) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15845118.svg)](https://doi.org/10.5281/zenodo.15845118)
+
 
 > [!IMPORTANT]  
 > This project is intended for research purposes only and is provided by AMD Research and Advanced Development team. 
@@ -163,6 +164,25 @@ intelliperf -- python3 gemm.py
 - [IntelliPerf Technical Paper](docs/IntelliPerf.md) - Detailed technical overview of the IntelliPerf framework
 - [Running Examples](examples/README.md)
 - [AMD Developer Cloud Setup Guide](docs/DEVCLOUD.md) - Step-by-step instructions for setting up IntelliPerf on AMD Developer Cloud GPU droplets
+
+
+## Citation
+
+If you use IntelliPerf or discuss our work in your research, please always cite our work:
+
+```bibtex
+@software{   Awad:2025:ILP,
+  author        = {Muhammad Awad and Cole Ramos and Keith Lowery},
+  title         = {IntelliPerf: {LLM}-Powered Autonomous {GPU} Performance Engineer},
+  year          = 2025,
+  month         = jul,
+  doi           = {10.5281/zenodo.15845118},
+  url           = {https://github.com/AMDResearch/intelliperf},
+  code          = {https://github.com/AMDResearch/intelliperf}
+}
+```
+
+You can also use the [CITATION.cff](CITATION.cff) file in the repository root for automatic citation generation.
 
 
 ## Contributing
