@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use IntelliPerf or discuss our work in your research, please always cite our work."
+authors:
+  - family-names: "Awad"
+    given-names: "Muhammad"
+  - family-names: "Ramos"
+    given-names: "Cole"
+  - family-names: "Lowery"
+    given-names: "Keith"
+title: "IntelliPerf: LLM-Powered Autonomous GPU Performance Engineer"
+doi: "10.5281/zenodo.15845118"
+date-released: 2025-07-08
+url: "https://github.com/AMDResearch/intelliperf"
+repository-code: "https://github.com/AMDResearch/intelliperf"
+license: MIT
+keywords:
+  - "GPU optimization"
+  - "performance engineering"
+  - "machine learning"
+  - "LLM"
+  - "ROCm"
+  - "AMD"
+  - "automated optimization"
+  - "bank conflicts"
+  - "memory access patterns"
+  - "atomic contention"
+abstract: "IntelliPerf is an automated performance engineering framework that addresses the complex challenge of GPU kernel optimization. It systematizes the optimization workflow by orchestrating a comprehensive toolchain that automatically profiles applications using rocprofiler-compute, identifies high-level bottlenecks with Guided Tuning, pinpoints specific source code lines using Omniprobe, generates optimized code through Large Language Models (LLMs), and validates results using Accordo for correctness and performance." 
