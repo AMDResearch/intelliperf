@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 -->
 
-# IntelliPerf: The Performance Maestro
+# IntelliPerf: LLM-Powered Autonomous GPU Performance Engineer
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/AMDResearch/intelliperf/actions/workflows/lint.yml) [![IntelliPerf CI](https://github.com/AMDResearch/intelliperf/actions/workflows/ci.yml/badge.svg)](https://github.com/AMDResearch/intelliperf/actions/workflows/ci.yml)
 
