@@ -1,0 +1,37 @@
+Bootstrap: docker
+From: rocm/vllm-dev:nightly_aiter_integration_final_20250325
+
+%arguments
+    INTELLIPERF_HOME=/intelliperf
+
+%environment
+    # Runtime environment inside the finished SIF
+    export LANG=en_US.UTF-8
+    export PATH=/opt/rocm/bin:$PATH
+    export INTELLIPERF_HOME={{ INTELLIPERF_HOME }}
+
+%files
+    . /intelliperf
+
+%post
+    PATH=/opt/rocm/bin:$PATH
+    INTELLIPERF_HOME={{ INTELLIPERF_HOME }}
+
+    mkdir -p "${INTELLIPERF_HOME}"
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        libzstd-dev \
+        python3-setuptools \
+        python3-wheel \
+        libdwarf-dev \
+        rocm-llvm-dev \
+        locales \
+        gdb \
+        ssh
+    locale-gen en_US.UTF-8 
+    rm -rf /var/lib/apt/lists/*
+    
+    cd "${INTELLIPERF_HOME}"
+    pip install -e .
+    python3 scripts/install_tool.py --all
