@@ -39,8 +39,8 @@ python3 -m pip install -r requirements.txt
 
 
 [tool.omniprobe]
-git = "git@github.com:AMDResearch/omniprobe.git"
-branch = "9083730ab0da50114c767773df49cb1d2165ba7f"
+git = "https://github.com/AMDResearch/omniprobe.git"
+branch = "47e7e9ac1e8daba5fd35797e950e44ba2b20e0ce"
 build_command = """
 export CC=${ROCM_PATH}/bin/hipcc
 export CXX=${ROCM_PATH}/bin/hipcc
@@ -61,7 +61,7 @@ cmake --install build
 
 
 [tool.nexus]
-git = "git@github.com:AMDResearch/nexus.git"
+git = "https://github.com/AMDResearch/nexus"
 branch = "main"
 build_command = """
 export CC=${ROCM_PATH}/bin/hipcc
