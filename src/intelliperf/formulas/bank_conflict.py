@@ -22,11 +22,9 @@
 # SOFTWARE.
 ################################################################################
 
-import glob
 import json
 import logging
 import os
-import shutil
 
 from intelliperf.core.llm import LLM
 from intelliperf.formulas.formula_base import (
@@ -150,8 +148,10 @@ class bank_conflict(Formula_Base):
 				"MemoryAnalysis",
 				"--kernels",
 				ecma_regex,
-				"--log-format", "json",
-				"--log-location", omniprobe_output_file,
+				"--log-format",
+				"json",
+				"--log-location",
+				omniprobe_output_file,
 				"--",
 				" ".join(self._application.get_app_cmd()),
 			],
@@ -411,4 +411,3 @@ class bank_conflict(Formula_Base):
 		Summarizes the results of the previous passes for future prompts.
 		"""
 		pass
-
