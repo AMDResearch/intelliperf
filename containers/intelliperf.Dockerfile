@@ -24,5 +24,5 @@ WORKDIR $INTELLIPERF_HOME
 COPY ../ $INTELLIPERF_HOME
 
 # Install tool
-RUN pip install -e && \
+RUN pip install -e . && \
     python3 scripts/install_tool.py --all
