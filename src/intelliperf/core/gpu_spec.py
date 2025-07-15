@@ -190,6 +190,13 @@ def get_cu_count(device_id=None):
 	return cu_count.value
 
 
+def get_xcd_count(device_id=None):
+	"""
+	Return number of XCDs. Currently hardcoded.
+	"""
+	return 8
+
+
 def get_wall_clock_rate(device_id=None):
 	if device_id is None:
 		device_id = get_device()
@@ -307,6 +314,10 @@ class GPUSpec:
 	def get_num_cus(self):
 		"""Return number of compute units (multiprocessors)."""
 		return get_cu_count(self.device_id)
+
+	def get_num_xcds(self):
+		"""Return number of XCDs."""
+		return get_xcd_count(self.device_id)
 
 	def get_atomic_latency(self):
 		"""Return average atomic-add latency in nanoseconds."""
