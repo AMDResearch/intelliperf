@@ -85,7 +85,7 @@ def intelliperf_parser():
 	optional_args.add_argument(
 		"-f",
 		"--formula",
-		choices=["bankConflict", "memoryAccess", "atomicContention", "diagnoseOnly"],
+		choices=["bankConflict", "memoryAccess", "atomicContention", "diagnoseOnly", "swizzling"],
 		default="diagnoseOnly",
 		metavar="",
 		type=str,
@@ -193,6 +193,10 @@ def main():
 		from intelliperf.formulas.atomic_contention import atomic_contention
 
 		formula = atomic_contention
+	elif args.formula == "swizzling":
+		from intelliperf.formulas.swizzling import swizzling
+
+		formula = swizzling
 	else:
 		logging.error(f"Invalid formula specified. {args.formula} is not supported.")
 		import sys

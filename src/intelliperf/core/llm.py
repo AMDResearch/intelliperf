@@ -57,8 +57,8 @@ class LLM:
 					{"role": "system", "content": self.system_prompt},
 					{"role": "user", "content": user_prompt},
 				],
-				"max_Tokens": 4096,
-				"max_Completion_Tokens": 4096,
+				"max_Tokens": 100000,
+				"max_Completion_Tokens": 100000,
 			}
 			url = f"{self.provider}/engines/{self.model}/chat/completions"
 			resp = requests.post(url, json=body, headers=self.header)

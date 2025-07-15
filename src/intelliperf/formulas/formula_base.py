@@ -247,6 +247,8 @@ class Formula_Base:
 				logging.debug(f"  {key0}[{i}]: {results[key0][i]}")
 				logging.debug(f"  {key1}[{i}]: {results[key1][i]}")
 				logging.debug(f"  Difference: {diff}")
+				logging.debug(f"  Max difference: {np.max(diff)}")
+
 			else:
 				argument_name = kernel_args[i]
 				logging.debug(
