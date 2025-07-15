@@ -145,7 +145,7 @@ class bank_conflict(Formula_Base):
 		logging.debug(f"Omniprobe profiling command is: {cmd}")
 		success, output = capture_subprocess_output(
 			[
-				get_omniprobe_path(),
+				str(get_omniprobe_path()),
 				"--instrumented",
 				"--analyzers",
 				"MemoryAnalysis",
