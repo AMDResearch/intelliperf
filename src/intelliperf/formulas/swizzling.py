@@ -247,11 +247,11 @@ class swizzling(Formula_Base):
 				"XCDs contain multiple Compute Units (CUs) and blocks are assigned to CUs.\n\n"
 				"We want to maximize utilization by assigning an equal number of blocks to each XCD.\n\n"
 				"HIP runtime scheduling of blocks:\n\n"
-				"By default, the hardware scheduler assigns each incoming block, in order, to XCDs in a cyclic (\"round-robin\") sequence:\n\n"
+				'By default, the hardware scheduler assigns each incoming block, in order, to XCDs in a cyclic ("round-robin") sequence:\n\n'
 				"// pseudocode for default mapping for each block in [0, num_blocks):\n\n"
 				"assigned_xcd = block % num_XCDs; // execute old_blockIdx on XCD assigned_xcd\n\n"
-				"Once it reaches XCD num_XCD–1, it \"wraps around\" and continues assigning the next blocks to XCD 0, then XCD 1, and so on.\n\n"
-				"If there are more blocks than XCDs, the scheduler effectively makes multiple \"rounds,\" each of size num_XCD.\n\n"
+				'Once it reaches XCD num_XCD–1, it "wraps around" and continues assigning the next blocks to XCD 0, then XCD 1, and so on.\n\n'
+				'If there are more blocks than XCDs, the scheduler effectively makes multiple "rounds," each of size num_XCD.\n\n'
 				"Swizzling goal\n\n"
 				"Recompute the block index with the old block index, number of XCDs on the GPU, and total number of blocks in the program so that:\n\n"
 				"Blocks that share the same data map to the same XCD until that XCD's share is filled.\n\n"
@@ -266,7 +266,7 @@ class swizzling(Formula_Base):
 				"Rationale: Step through how you calculate strides, offsets, and packing.\n\n"
 				"Code: Show the full kernel with your single-line swizzle expression.\n\n"
 				"Do not include any markdown code blocks or text other than the code."
-                "Make sure to try new approaches to swizzling. Do not just use the same approach as the previous time. Try new approaches to swizzling. Make sure to try new approaches to swizzling."
+				"Make sure to try new approaches to swizzling. Do not just use the same approach as the previous time. Try new approaches to swizzling. Make sure to try new approaches to swizzling."
 			)
 
 			if self.current_summary is not None:
@@ -335,10 +335,9 @@ class swizzling(Formula_Base):
 			comparison_func=lambda x: x == self.current_kernel_signature,
 		)
 
-
-        # print("ARYA")
-        # print(unoptimized_results)
-        # print("ARYA")
+		# print("ARYA")
+		# print(unoptimized_results)
+		# print("ARYA")
 
 		unoptimized_time = unoptimized_results[0]["durations"]["ns"]
 		unoptimized_l2_hit_rate = unoptimized_results[0]["l2"]["hr"]
@@ -413,4 +412,4 @@ class swizzling(Formula_Base):
 		"""
 		Summarizes the results of the previous passes for future prompts.
 		"""
-		pass 
+		pass
