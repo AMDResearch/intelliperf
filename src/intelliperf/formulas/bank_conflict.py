@@ -22,11 +22,9 @@
 # SOFTWARE.
 ################################################################################
 
-import glob
 import json
 import logging
 import os
-import shutil
 
 from intelliperf.core.llm import LLM
 from intelliperf.formulas.formula_base import (
@@ -35,7 +33,10 @@ from intelliperf.formulas.formula_base import (
 	filter_json_field,
 	get_kernel_name,
 )
-from intelliperf.utils.env import get_llm_api_key
+from intelliperf.utils.env import (
+	get_llm_api_key,
+	get_omniprobe_path,
+)
 from intelliperf.utils.process import capture_subprocess_output
 from intelliperf.utils.regex import generate_ecma_regex_from_list
 
@@ -124,12 +125,6 @@ class bank_conflict(Formula_Base):
 		"""
 		super().instrument_pass()
 
-		return Result(
-			success=False,
-			asset=self._instrumentation_results,
-			error_report="Instrumentation pass not implemented for bank conflict.",
-		)
-
 		# Always instrument the first kernel
 		kernel_to_instrument = self.get_top_kernel()
 		if kernel_to_instrument is None:
@@ -138,11 +133,11 @@ class bank_conflict(Formula_Base):
 				error_report="No source code found. Please compile your code with -g.",
 			)
 
-		omniprobe_output_dir = os.path.join(self._application.get_project_directory(), "memory_analysis_output")
+		omniprobe_output_file = os.path.join(self._application.get_project_directory(), "memory_analysis_output.json")
 
-		# Remove directory if it exists and create a new one
-		if os.path.exists(omniprobe_output_dir):
-			shutil.rmtree(omniprobe_output_dir)
+		# Remove file if it exists before running omniprobe
+		if os.path.exists(omniprobe_output_file):
+			os.remove(omniprobe_output_file)
 
 		ecma_regex = generate_ecma_regex_from_list([kernel_to_instrument])
 		logging.debug(f"ECMA Regex for kernel names: {ecma_regex}")
@@ -150,12 +145,16 @@ class bank_conflict(Formula_Base):
 		logging.debug(f"Omniprobe profiling command is: {cmd}")
 		success, output = capture_subprocess_output(
 			[
-				"omniprobe",
+				str(get_omniprobe_path()),
 				"--instrumented",
 				"--analyzers",
 				"MemoryAnalysis",
 				"--kernels",
 				ecma_regex,
+				"--log-format",
+				"json",
+				"--log-location",
+				omniprobe_output_file,
 				"--",
 				" ".join(self._application.get_app_cmd()),
 			],
@@ -170,10 +169,9 @@ class bank_conflict(Formula_Base):
 
 		# Try loading the memory analysis output
 		# Find all files in the memory_analysis_output directory
-		output_files = glob.glob(os.path.join(omniprobe_output_dir, "memory_analysis_*.json"))
-		if len(output_files) == 0:
-			return Result(success=False, error_report="No memory analysis output files found.")
-		output_file = output_files[0]
+		output_file = omniprobe_output_file
+		if not os.path.exists(output_file):
+			return Result(success=False, error_report="Memory analysis output file not found.")
 		try:
 			with open(output_file, "r") as f:
 				self._instrumentation_results = json.load(f)
