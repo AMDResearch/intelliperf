@@ -14,17 +14,17 @@ build_apptainer=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --apptainer)
-      build_apptainer=true
+    --docker|-d)
+      use_docker=true
       shift
       ;;
-    --docker)
-      build_docker=true
+    --apptainer|-a)
+      use_apptainer=true
       shift
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--docker] [--apptainer] -- Exactly one option is required."
+      echo "Usage: $0 [--docker|-d] [--apptainer|-a] -- Exactly one option is required."
       exit 1
       ;;
   esac

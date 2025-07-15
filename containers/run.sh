@@ -16,11 +16,11 @@ overlay_size=2048
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --docker)
+    --docker|-d)
       use_docker=true
       shift
       ;;
-    --apptainer)
+    --apptainer|-a)
       use_apptainer=true
       shift
       ;;
@@ -30,7 +30,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--docker] [--apptainer] [-s|--overlay-size SIZE] -- Exactly one option is required."
+      echo "Usage: $0 [--docker|-d] [--apptainer|-a] [-s|--overlay-size SIZE] -- Exactly one option is required."
       echo "  -s, --overlay-size SIZE   Size of overlay filesystem in MiB (default: 2048, Apptainer only)"
       exit 1
       ;;

@@ -55,7 +55,7 @@ We provide both Apptainer and Docker images for easy setup:
 ```console
 $ ./containers/run.sh 
 Must specify either --docker or --apptainer.
-Usage: ./containers/run.sh [--docker] [--apptainer]
+Usage: ./containers/run.sh [--docker|-d] [--apptainer|-a]
   --docker      Run using Docker container
   --apptainer   Run using Apptainer container
 ```
