@@ -15,11 +15,11 @@ build_apptainer=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     --docker|-d)
-      use_docker=true
+      build_docker=true
       shift
       ;;
     --apptainer|-a)
-      use_apptainer=true
+      build_apptainer=true
       shift
       ;;
     *)
