@@ -34,7 +34,7 @@ from intelliperf.formulas.formula_base import (
 	get_kernel_name,
 )
 from intelliperf.utils.env import (
-    get_llm_api_key,
+	get_llm_api_key,
 	get_omniprobe_path,
 )
 from intelliperf.utils.process import capture_subprocess_output
