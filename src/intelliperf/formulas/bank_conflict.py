@@ -33,7 +33,10 @@ from intelliperf.formulas.formula_base import (
 	filter_json_field,
 	get_kernel_name,
 )
-from intelliperf.utils.env import get_llm_api_key
+from intelliperf.utils.env import (
+    get_llm_api_key,
+	get_omniprobe_path,
+)
 from intelliperf.utils.process import capture_subprocess_output
 from intelliperf.utils.regex import generate_ecma_regex_from_list
 
@@ -142,7 +145,7 @@ class bank_conflict(Formula_Base):
 		logging.debug(f"Omniprobe profiling command is: {cmd}")
 		success, output = capture_subprocess_output(
 			[
-				"omniprobe",
+				get_omniprobe_path(),
 				"--instrumented",
 				"--analyzers",
 				"MemoryAnalysis",
