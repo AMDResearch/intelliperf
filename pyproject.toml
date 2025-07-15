@@ -45,6 +45,7 @@ build_command = """
 export CC=${ROCM_PATH}/bin/hipcc
 export CXX=${ROCM_PATH}/bin/hipcc
 git submodule update --init --recursive
+python3 -m pip install omniprobe/requirements.txt
 #TODO: search for a Triton LLVM.
 if [ -d "/root/.triton/llvm/llvm-ubuntu-x64" ]; then
     export TRITON_LLVM_PATH="/root/.triton/llvm/llvm-ubuntu-x64"
