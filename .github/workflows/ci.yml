@@ -23,6 +23,8 @@ jobs:
       uses: digitalocean/action-doctl@v2
       with:
         token: ${{ secrets.DEV_CLOUD_KEY }}
+      env:
+        DIGITALOCEAN_API_URL: ${{ secrets.DIGITALOCEAN_API_URL }}
 
     - name: Install jq
       run: |
