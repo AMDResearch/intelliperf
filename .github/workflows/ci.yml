@@ -14,6 +14,8 @@ concurrency:
 jobs:
   test-intelliperf:
     runs-on: ubuntu-latest
+    env:
+      DIGITALOCEAN_API_URL: ${{ secrets.DIGITALOCEAN_API_URL }}
     
     steps:
     - name: Checkout code
@@ -23,8 +25,6 @@ jobs:
       uses: digitalocean/action-doctl@v2
       with:
         token: ${{ secrets.DEV_CLOUD_KEY }}
-      env:
-        DIGITALOCEAN_API_URL: ${{ secrets.DIGITALOCEAN_API_URL }}
 
     - name: Install jq
       run: |
@@ -33,6 +33,8 @@ jobs:
 
     - name: Create Droplet
       id: create
+      env:
+        DIGITALOCEAN_API_URL: ${{ secrets.DIGITALOCEAN_API_URL }}
       run: |
         DROPLET_NAME="intelliperf-$(date +%s)"
         
@@ -204,6 +206,8 @@ jobs:
 
     - name: Auto-destroy droplet after use
       if: always()
+      env:
+        DIGITALOCEAN_API_URL: ${{ secrets.DIGITALOCEAN_API_URL }}
       run: |
         echo "🗑️ Auto-destroying droplet ${{ steps.create.outputs.droplet_id }}..."
         doctl compute droplet delete ${{ steps.create.outputs.droplet_id }} --force
