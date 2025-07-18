@@ -62,6 +62,14 @@ We provide both Apptainer and Docker images for easy setup:
 ./docker/build.sh
 ./docker/run.sh
 ```
+
+Or use our prebuilt Docker image:
+```bash
+docker pull audacioussw/intelliperf:latest
+export LLM_GATEWAY_KEY="your_api_key_here"
+docker run -it --rm --device=/dev/kfd --device=/dev/dri --group-add video -e LLM_GATEWAY_KEY="$LLM_GATEWAY_KEY" audacioussw/intelliperf
+```
+
 #### For baremetal installation
 
 
