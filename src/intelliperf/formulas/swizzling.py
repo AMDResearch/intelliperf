@@ -25,6 +25,7 @@
 import json
 import logging
 import os
+import difflib
 
 from intelliperf.core.llm import LLM
 from intelliperf.formulas.formula_base import (
@@ -49,6 +50,7 @@ class swizzling(Formula_Base):
 		model: str = "gpt-4o",
 		provider: str = "openai",
 		in_place: bool = False,
+		output_kernel_file: str = None,
 	):
 		super().__init__(
 			name,
@@ -62,6 +64,7 @@ class swizzling(Formula_Base):
 			in_place,
 		)
 
+		self.output_kernel_file = output_kernel_file
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
 		self.only_consider_top_kernel = only_consider_top_kernel
 		self._instrumentation_results = None
@@ -77,9 +80,32 @@ class swizzling(Formula_Base):
 		self.success = False
 		
 		# New fields for iteration history tracking
-		self.iteration_history = []  # List of dicts with {iteration, diff, output, l2_hit_rate, error}
+		self.iteration_history = []  # List of dicts with {iteration, diff, report, success}
 		self.current_iteration = 0
 		self.memory_analysis_done = False
+		self.last_applied_diff = None
+		self.initial_source_code = None
+
+	def compute_diff(self, file_paths: list) -> str:
+		"""
+		Compute the diff between the current and initial versions of the files.
+
+		Args:
+			file_paths (list): A list of file paths.
+
+		Returns:
+			str: The diff string.
+		"""
+		diff_str = ""
+		for file_path in file_paths:
+			with open(file_path, "r") as f:
+				current_content = f.readlines()
+			initial_content = self.initial_source_code.splitlines(True)
+			diff = difflib.unified_diff(initial_content, current_content)
+			diff_str += f"--- a/{file_path}\n"
+			diff_str += f"+++ b/{file_path}\n"
+			diff_str += "".join(diff)
+		return diff_str
 
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
@@ -212,20 +238,17 @@ class swizzling(Formula_Base):
 					error_report=f"Kernel file not found for kernel {kernel}.",
 				)
 
-			print("kernel_file", kernel_file)
-			print("unoptimized_file_content", unoptimized_file_content)
-
 			# Stage 1: Memory access pattern analysis (only run once)
 			if not self.memory_analysis_done:
+				with open(kernel_file, "r") as f:
+					initial_file_content = f.read()
+				self.initial_source_code = initial_file_content
 				analysis_prompt = (
-					f"{unoptimized_file_content}\n\n"
+					f"{self.initial_source_code}\n\n"
 					"I have this triton kernel and am trying to understand the memory access patterns of the kernel, and where there is memory locality that can be taken advantage of in the hardware cache. I will use this to swizzle the block id to better align the work so we have better cache locality.\n\n"
 					"I DO NOT want you to rewrite any code. I only want you to give me an overview for the memory access patterns and memory locality of the kernel. This will be used as context for future prompts that will take advantage of your insights. Make sure these insights on memory access patterns and locality between blocks in the kernel are accuracy and insightful so that I can actually take advantage of them to improve locality."
 				)
 
-				self.previous_source_code = unoptimized_file_content
-
-				#args = kernel.split("(")[1].split(")")[0]
 				self.bottleneck_report = (
 					f"L2 Cache Locality Detection: IntelliPerf identified suboptimal L2 cache hit rate "
 					f"in kernel `{kernel_name}`. Poor cache locality occurs when "
@@ -233,7 +256,6 @@ class swizzling(Formula_Base):
 					f"reducing overall cache effectiveness."
 				)
 
-				print("analysis_prompt", analysis_prompt)
 				# Stage 1: Get memory access analysis
 				try:
 					logging.debug(f"Analysis prompt: {analysis_prompt}")
@@ -244,13 +266,22 @@ class swizzling(Formula_Base):
 					logging.error(f"Failed to get memory analysis - {str(e)}")
 					return Result(success=False, error_report=f"Failed to get memory analysis - {str(e)}")
 
-			cur_diff = self.compute_diff([kernel_file])
+			history_prompt_part = ""
+			if self.iteration_history:
+				history_prompt_part += "Here is the history of previous optimization attempts:\n\n"
+				for item in self.iteration_history:
+					history_prompt_part += f"--- Iteration {item['iteration']} ---\n"
+					history_prompt_part += f"Applied diff:\n{item['diff']}\n"
+					history_prompt_part += f"Profiling report:\n{item['report']}\n\n"
+
+			with open(kernel_file, "r") as f:
+				current_file_content = f.read()
 
 			# Stage 2: Swizzling optimization
 			optimization_prompt = (
-				f"The original code is: {unoptimized_file_content}\n\n"
+				f"The original code is: {self.initial_source_code}\n\n"
 				f"The memory analysis is: {self.memory_analysis_output}\n\n"
-				f"The diff between the current and initial code is: {cur_diff}\n\n"
+				f"{history_prompt_part}"
 				"Pay special attention to the swizzling pattern in the diff. If you see a swizzling pattern in the diff, do not reimplement it. Instead, try to implement an completely new approach to swizzling."
 				"Notes\n\n"
 				"Summary\n\n"
@@ -303,9 +334,28 @@ class swizzling(Formula_Base):
 
 		self.current_kernel_files = [kernel_file]
 		try:
+			with open(kernel_file, "r") as f:
+				code_before_opt = f.read()
+
 			optimized_file_content = optimization_llm.ask(optimization_prompt).strip()
+			
+			diff = difflib.unified_diff(
+				code_before_opt.splitlines(True),
+				optimized_file_content.splitlines(True),
+				fromfile=f"a/{os.path.basename(kernel_file)}",
+				tofile=f"b/{os.path.basename(kernel_file)}",
+			)
+			self.last_applied_diff = "".join(list(diff))
+
 			with open(kernel_file, "w") as f:
 				f.write(optimized_file_content)
+			
+			if self.output_kernel_file:
+				with open(self.output_kernel_file, "a") as f:
+					f.write(f"--- KERNEL ITERATION {self.current_iteration} ---\n")
+					f.write(optimized_file_content)
+					f.write("\n\n")
+
 			logging.debug(f"Optimized file content: {optimized_file_content}")
 			return Result(
 				success=True,
@@ -405,6 +455,21 @@ class swizzling(Formula_Base):
 				f"increased from {unoptimized_time / 1e6:.2f}ms to {optimized_time / 1e6:.2f}ms "
 				f"({(1 / speedup - 1) * 100:.1f}% slower)."
 			)
+
+		self.iteration_history.append(
+			{
+				"iteration": self.current_iteration,
+				"diff": self.last_applied_diff,
+				"report": self.optimization_report,
+				"success": success,
+			}
+		)
+
+		if self.output_kernel_file:
+			with open(self.output_kernel_file, "a") as f:
+				f.write(f"--- PROFILING ITERATION {self.current_iteration} ---\n")
+				f.write(self.optimization_report)
+				f.write("\n\n")
 
 		if not success or speedup < 1:
 			self.current_summary = self.optimization_report

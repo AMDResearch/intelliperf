@@ -25,10 +25,11 @@
 import json
 import logging
 import os
+import difflib
 
 from intelliperf.core.llm import LLM
-from intelliperf.formulas.swizzling import swizzling
 from intelliperf.formulas.formula_base import (
+	Formula_Base,
 	Result,
 	filter_json_field,
 	get_kernel_name,
@@ -36,7 +37,7 @@ from intelliperf.formulas.formula_base import (
 from intelliperf.utils.env import get_llm_api_key
 
 
-class swizzling_test(swizzling):
+class swizzling_test(Formula_Base):
 	def __init__(
 		self,
 		name: str,
@@ -49,6 +50,7 @@ class swizzling_test(swizzling):
 		model: str = "gpt-4o",
 		provider: str = "openai",
 		in_place: bool = False,
+		output_kernel_file: str = None,
 	):
 		super().__init__(
 			name,
@@ -57,21 +59,96 @@ class swizzling_test(swizzling):
 			project_directory,
 			app_cmd,
 			top_n,
-			only_consider_top_kernel,
 			model,
 			provider,
 			in_place,
 		)
+
+		self.output_kernel_file = output_kernel_file
+		# This temp option allows us to toggle if we want a full or partial instrumentation report
+		self.only_consider_top_kernel = only_consider_top_kernel
+		self._instrumentation_results = None
+		self.current_kernel = None
+		self.current_args = None
+		self.current_kernel_signature = None
+		self.kernel_to_optimize = None
+		self.optimization_report = None
+		self.bottleneck_report = None
+		self.current_summary = None
+		self.previous_source_code = None
+		self.memory_analysis_output = None
+		self.success = False
+		
 		# New fields for iteration history tracking
-		self.iteration_history = []  # List of dicts with {iteration, diff, output, l2_hit_rate, error}
+		self.iteration_history = []  # List of dicts with {iteration, diff, report, success}
 		self.current_iteration = 0
 		self.memory_analysis_done = False
-		self.unoptimized_file_content = None  # To store the original kernel code 
+		self.last_applied_diff = None
+		self.initial_source_code = None
+
+	def compute_diff(self, file_paths: list) -> str:
+		"""
+		Compute the diff between the current and initial versions of the files.
+
+		Args:
+			file_paths (list): A list of file paths.
+
+		Returns:
+			str: The diff string.
+		"""
+		diff_str = ""
+		for file_path in file_paths:
+			with open(file_path, "r") as f:
+				current_content = f.readlines()
+			initial_content = self.initial_source_code.splitlines(True)
+			diff = difflib.unified_diff(initial_content, current_content)
+			diff_str += f"--- a/{file_path}\n"
+			diff_str += f"+++ b/{file_path}\n"
+			diff_str += "".join(diff)
+		return diff_str
+
+	def build_pass(self, validate_build_result=True) -> Result:
+		"""
+		Build the application and store the summary.
+
+		Args:
+		    validate_build_result (bool): Whether to validate the build result
+
+		Returns:
+		    Result: Build status and the output file path
+		"""
+		result = super().build(validate_build_result=validate_build_result)
+		if not result:
+			self.current_summary = result.error_report
+		return result
+
+	def profile_pass(self) -> Result:
+		"""
+		Profile the application using guided-tuning and collect l2 hit rate data
+
+		Returns:
+		    Result: DataFrame containing the performance report card
+		"""
+		return super().profile_pass()
+
+	def instrument_pass(self) -> Result:
+		"""
+		Instrument the application, targeting the kernels with the lowest l2 hit rate
+
+		Returns:
+		    Result: Instrumentation data containing the kernel name, arguments, lines, and file path as dict
+		"""
+		super().instrument_pass()
+
+		return Result(
+			success=False,
+			asset=self._instrumentation_results,
+			error_report="The instrumentation is not implemented for swizzling.",
+		)
 
 	def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000) -> Result:
 		"""
-		Optimize the kernel to improve l2 hit rate through block swizzling via two-stage LLM approach,
-		with iteration history tracking.
+		Optimize the kernel to improve l2 hit rate through block swizzling via two-stage LLM approach
 
 		Args:
 		        temperature (float): Sampling temperature for OpenAI API
@@ -80,7 +157,7 @@ class swizzling_test(swizzling):
 		Returns:
 		        Result: Optimized kernel as a file path
 		"""
-		super(swizzling, self).optimize_pass()
+		super().optimize_pass()
 		llm_key = get_llm_api_key()
 
 		# Increment iteration counter
@@ -151,11 +228,8 @@ class swizzling_test(swizzling):
 			for file in files:
 				if os.path.exists(file):
 					with open(file, "r") as f:
-						# Store original content if not already stored
-						if self.unoptimized_file_content is None:
-							self.unoptimized_file_content = f.read()
-						
-						if kernel_name in self.unoptimized_file_content:
+						unoptimized_file_content = f.read()
+						if kernel_name in unoptimized_file_content:
 							kernel_file = file
 							break
 			if kernel_file is None:
@@ -166,18 +240,18 @@ class swizzling_test(swizzling):
 
 			# Stage 1: Memory access pattern analysis (only run once)
 			if not self.memory_analysis_done:
+				with open(kernel_file, "r") as f:
+					initial_file_content = f.read()
+				self.initial_source_code = initial_file_content
 				analysis_prompt = (
-					f"{self.unoptimized_file_content}\n\n"
+					f"{self.initial_source_code}\n\n"
 					"I have this triton kernel and am trying to understand the memory access patterns of the kernel, and where there is memory locality that can be taken advantage of in the hardware cache. I will use this to swizzle the block id to better align the work so we have better cache locality.\n\n"
 					"I DO NOT want you to rewrite any code. I only want you to give me an overview for the memory access patterns and memory locality of the kernel. This will be used as context for future prompts that will take advantage of your insights. Make sure these insights on memory access patterns and locality between blocks in the kernel are accuracy and insightful so that I can actually take advantage of them to improve locality."
 				)
 
-				self.previous_source_code = self.unoptimized_file_content
-
-				args = kernel.split("(")[1].split(")")[0]
 				self.bottleneck_report = (
 					f"L2 Cache Locality Detection: IntelliPerf identified suboptimal L2 cache hit rate "
-					f"in kernel `{kernel_name}` with arguments `{args}`. Poor cache locality occurs when "
+					f"in kernel `{kernel_name}`. Poor cache locality occurs when "
 					f"blocks accessing related memory are scheduled to different XCDs with separate L2 caches, "
 					f"reducing overall cache effectiveness."
 				)
@@ -192,28 +266,22 @@ class swizzling_test(swizzling):
 					logging.error(f"Failed to get memory analysis - {str(e)}")
 					return Result(success=False, error_report=f"Failed to get memory analysis - {str(e)}")
 
-			# Construct iteration history string for the prompt
-			iteration_history_prompt = ""
+			history_prompt_part = ""
 			if self.iteration_history:
-				iteration_history_prompt = "\n\n--- Iteration History ---\n"
+				history_prompt_part += "Here is the history of previous optimization attempts:\n\n"
 				for item in self.iteration_history:
-					iteration_history_prompt += f"\nIteration {item['iteration']}:\n"
-					iteration_history_prompt += f"Diff:\n{item['diff']}\n"
-					iteration_history_prompt += f"Output:\n{item['output']}\n"
-					if 'l2_hit_rate' in item:
-						iteration_history_prompt += f"L2 Hit Rate: {item['l2_hit_rate']}\n"
-					if 'error' in item:
-						iteration_history_prompt += f"Error: {item['error']}\n"
-				iteration_history_prompt += "\n--- End Iteration History ---\n"
+					history_prompt_part += f"--- Iteration {item['iteration']} ---\n"
+					history_prompt_part += f"Applied diff:\n{item['diff']}\n"
+					history_prompt_part += f"Profiling report:\n{item['report']}\n\n"
 
-			cur_diff = self.compute_diff([kernel_file])
+			with open(kernel_file, "r") as f:
+				current_file_content = f.read()
 
 			# Stage 2: Swizzling optimization
 			optimization_prompt = (
-				f"The original code is: {self.unoptimized_file_content}\n\n"
+				f"The original code is: {self.initial_source_code}\n\n"
 				f"The memory analysis is: {self.memory_analysis_output}\n\n"
-				f"The diff between the current and initial code is: {cur_diff}\n\n"
-				f"{iteration_history_prompt}\n\n"
+				f"{history_prompt_part}"
 				"Pay special attention to the swizzling pattern in the diff. If you see a swizzling pattern in the diff, do not reimplement it. Instead, try to implement an completely new approach to swizzling."
 				"Notes\n\n"
 				"Summary\n\n"
@@ -242,7 +310,7 @@ class swizzling_test(swizzling):
 				"For the pattern:\n\n"
 				"Rationale: Step through how you calculate strides, offsets, and packing.\n\n"
 				"Code: Show the full kernel with your single-line swizzle expression.\n\n"
-				"Do not include any markdown code blocks or text other than the code."
+				"EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work."
 				"EXTREMELY IMPORTANT - Make sure to try new approaches to swizzling. Do not just use the same approach as the previous time. If you have previously tried an approach and it is shown in the diff, do not reimplement it. Instead, try to implement an completely new approach to swizzling."
 			)
 
@@ -261,14 +329,33 @@ class swizzling_test(swizzling):
 		logging.debug(f"Optimization prompt: {optimization_prompt}")
 
 		self.current_kernel = kernel.split("(")[0]
-		self.current_args = kernel.split("(")[1].split(")")[0].split(",")
+		#self.current_args = kernel.split("(")[1].split(")")[0].split(",")
 		self.current_kernel_signature = kernel
 
 		self.current_kernel_files = [kernel_file]
 		try:
+			with open(kernel_file, "r") as f:
+				code_before_opt = f.read()
+
 			optimized_file_content = optimization_llm.ask(optimization_prompt).strip()
+			
+			diff = difflib.unified_diff(
+				code_before_opt.splitlines(True),
+				optimized_file_content.splitlines(True),
+				fromfile=f"a/{os.path.basename(kernel_file)}",
+				tofile=f"b/{os.path.basename(kernel_file)}",
+			)
+			self.last_applied_diff = "".join(list(diff))
+
 			with open(kernel_file, "w") as f:
 				f.write(optimized_file_content)
+			
+			if self.output_kernel_file:
+				with open(self.output_kernel_file, "a") as f:
+					f.write(f"--- KERNEL ITERATION {self.current_iteration} ---\n")
+					f.write(optimized_file_content)
+					f.write("\n\n")
+
 			logging.debug(f"Optimized file content: {optimized_file_content}")
 			return Result(
 				success=True,
@@ -279,11 +366,20 @@ class swizzling_test(swizzling):
 			)
 		except Exception as e:
 			logging.error(f"An unexpected error occurred - {str(e)}")
-			return Result(success=False, error_report=f"An unexpected error occurred - {str(e)}") 
+			return Result(success=False, error_report=f"An unexpected error occurred - {str(e)}")
+
+	def compiler_pass(self) -> Result:
+		"""
+		Compile the application
+
+		Returns:
+		        Result: Compilation status and the output file path
+		"""
+		return super().compile_pass()
 
 	def correctness_validation_pass(self, accordo_absolute_tolerance: float = 1e-6) -> Result:
 		"""
-		Validate the optimized kernel and store the result in the iteration history.
+		Validate the optimized kernel by comparing the output with the reference kernel
 
 		Args:
 		        accordo_absolute_tolerance (float): The absolute tolerance for the Accordo validation
@@ -291,30 +387,22 @@ class swizzling_test(swizzling):
 		Returns:
 		    Result: Validation status
 		"""
+		return Result(success=True, asset={"log": "Correctness validation pass not implemented for swizzling."})
 		result = super().correctness_validation_pass(self.current_kernel, self.current_args, accordo_absolute_tolerance)
 		if not result:
 			self.current_summary = result.error_report
-			# Store error in history
-			self.iteration_history.append({
-				"iteration": self.current_iteration,
-				"diff": self.compute_diff(self.current_kernel_files),
-				"output": "Correctness validation failed",
-				"error": result.error_report,
-			})
 		return result
 
 	def performance_validation_pass(self) -> Result:
-		"""
-		Validate the performance of the optimized kernel and store the result in the iteration history.
-
-		Returns:
-		    Result: Performance validation status
-		"""
 		unoptimized_results = filter_json_field(
 			self._initial_profiler_results,
 			field="kernel",
 			comparison_func=lambda x: x == self.current_kernel_signature,
 		)
+
+		# print("ARYA")
+		# print(unoptimized_results)
+		# print("ARYA")
 
 		unoptimized_time = unoptimized_results[0]["durations"]["ns"]
 		unoptimized_l2_hit_rate = unoptimized_results[0]["l2"]["hr"]
@@ -367,14 +455,21 @@ class swizzling_test(swizzling):
 				f"increased from {unoptimized_time / 1e6:.2f}ms to {optimized_time / 1e6:.2f}ms "
 				f"({(1 / speedup - 1) * 100:.1f}% slower)."
 			)
-		
-		# Store results in history
-		self.iteration_history.append({
-			"iteration": self.current_iteration,
-			"diff": self.compute_diff(self.current_kernel_files),
-			"output": self.optimization_report,
-			"l2_hit_rate": optimized_l2_hit_rate,
-		})
+
+		self.iteration_history.append(
+			{
+				"iteration": self.current_iteration,
+				"diff": self.last_applied_diff,
+				"report": self.optimization_report,
+				"success": success,
+			}
+		)
+
+		if self.output_kernel_file:
+			with open(self.output_kernel_file, "a") as f:
+				f.write(f"--- PROFILING ITERATION {self.current_iteration} ---\n")
+				f.write(self.optimization_report)
+				f.write("\n\n")
 
 		if not success or speedup < 1:
 			self.current_summary = self.optimization_report
@@ -382,4 +477,19 @@ class swizzling_test(swizzling):
 		logging.info(self.optimization_report)
 
 		self.success = True
-		return Result(success=True, asset={"log": self.optimization_report}) 
+		return Result(success=True, asset={"log": self.optimization_report})
+
+	def write_results(self, output_file: str = None):
+		"""
+		Writes the results to the output file.
+		"""
+		super().write_results(
+			output_file=output_file,
+			additional_results={"formula": "swizzling", "success": self.success},
+		)
+
+	def summarize_previous_passes(self):
+		"""
+		Summarizes the results of the previous passes for future prompts.
+		"""
+		pass
