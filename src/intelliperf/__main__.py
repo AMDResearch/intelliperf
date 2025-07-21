@@ -219,7 +219,7 @@ def main():
 		"provider": args.provider,
 		"in_place": args.in_place,
 	}
-	if args.formula == "swizzling":
+	if args.formula == "swizzling" or args.formula == "swizzling_test":
 		optimizer_args["output_kernel_file"] = args.output_kernel_file
 
 	optimizer = formula(**optimizer_args)

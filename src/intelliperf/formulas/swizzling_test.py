@@ -259,8 +259,11 @@ class swizzling_test(Formula_Base):
 				# Stage 1: Get memory access analysis
 				try:
 					logging.debug(f"Analysis prompt: {analysis_prompt}")
-					self.memory_analysis_output = analysis_llm.ask(analysis_prompt).strip()
+					self.memory_analysis_output, self.memory_analysis_reasoning = analysis_llm.ask(analysis_prompt, "memory_analysis_output")
+					self.memory_analysis_output = self.memory_analysis_output.strip()
+					self.memory_analysis_reasoning = self.memory_analysis_reasoning.strip()
 					logging.debug(f"Memory analysis output: {self.memory_analysis_output}")
+					logging.debug(f"Memory analysis reasoning: {self.memory_analysis_reasoning}")
 					self.memory_analysis_done = True
 				except Exception as e:
 					logging.error(f"Failed to get memory analysis - {str(e)}")
@@ -337,7 +340,10 @@ class swizzling_test(Formula_Base):
 			with open(kernel_file, "r") as f:
 				code_before_opt = f.read()
 
-			optimized_file_content = optimization_llm.ask(optimization_prompt).strip()
+			optimized_file_content, self.optimization_reasoning = optimization_llm.ask(optimization_prompt, "optimized_code")
+			optimized_file_content = optimized_file_content.strip()
+			self.optimization_reasoning = self.optimization_reasoning.strip()
+			logging.debug(f"Optimization reasoning: {self.optimization_reasoning}")
 			
 			diff = difflib.unified_diff(
 				code_before_opt.splitlines(True),
@@ -348,13 +354,23 @@ class swizzling_test(Formula_Base):
 			self.last_applied_diff = "".join(list(diff))
 
 			with open(kernel_file, "w") as f:
-				f.write(optimized_file_content)
+				f.write('#!/usr/bin/env python3\n' + optimized_file_content)
+
+			if self.output_kernel_file and self.current_iteration == 1:
+				with open(self.output_kernel_file, "w") as f:
+					f.write(f"--- MEMORY ANALYSIS")
+					f.write(f"Memory analysis reasoning: {self.memory_analysis_reasoning}\n")
+					f.write("--------------------------------\n")
+					f.write(f"Memory analysis results: {self.memory_analysis_output}\n")
+					f.write("--------------------------------\n")	
 			
 			if self.output_kernel_file:
 				with open(self.output_kernel_file, "a") as f:
 					f.write(f"--- KERNEL ITERATION {self.current_iteration} ---\n")
-					f.write(optimized_file_content)
-					f.write("\n\n")
+					f.write(f"Optimization reasoning: {self.optimization_reasoning}\n")
+					f.write("--------------------------------\n")
+					f.write('#!/usr/bin/env python3\n' + optimized_file_content)
+					f.write("--------------------------------\n")
 
 			logging.debug(f"Optimized file content: {optimized_file_content}")
 			return Result(
@@ -468,7 +484,7 @@ class swizzling_test(Formula_Base):
 		if self.output_kernel_file:
 			with open(self.output_kernel_file, "a") as f:
 				f.write(f"--- PROFILING ITERATION {self.current_iteration} ---\n")
-				f.write(self.optimization_report)
+				f.write(f"Optimization Report: {self.optimization_report}\n")
 				f.write("\n\n")
 
 		if not success or speedup < 1:

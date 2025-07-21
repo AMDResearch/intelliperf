@@ -25,6 +25,7 @@
 
 import dspy
 import requests
+import logging
 
 
 class LLM:
@@ -49,7 +50,7 @@ class LLM:
 			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key, max_tokens=16000)
 			dspy.configure(lm=self.lm)
 
-	def ask(self, user_prompt: str) -> str:
+	def ask(self, user_prompt: str, answer_type: str = "optimized_code") -> str:
 		if self.use_amd:
 			# AMD/Azure REST call
 			body = {
@@ -68,7 +69,13 @@ class LLM:
 		# DSPy path: use ChainOfThought with clear signature
 		# Define signature mapping input prompt to optimized code
 		dspy.context(description=self.system_prompt)
-		signature = "prompt: str -> optimized_code: str"
+		signature = f"prompt: str -> {answer_type}: str"
 		chain = dspy.ChainOfThought(signature)
 		ct_response = chain(prompt=user_prompt)
-		return getattr(ct_response, "optimized_code", str(ct_response))
+
+		logging.debug(f"CT: {ct_response}")
+		answer = getattr(ct_response, answer_type, str(ct_response))
+		reasoning = getattr(ct_response, "reasoning", None)
+		logging.debug(f"Answer: {answer}")
+		logging.debug(f"Reasoning: {reasoning}")
+		return answer, reasoning
