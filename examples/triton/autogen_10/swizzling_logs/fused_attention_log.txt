@@ -1,0 +1,197 @@
+--- MEMORY ANALYSISMemory analysis reasoning: The Triton kernel `fused_attention_kernel` is designed to perform a fused attention operation, which involves matrix multiplications and softmax operations typical in transformer models. The kernel processes data in blocks, which are defined by `BLOCK_SIZE_M` and `BLOCK_SIZE_N`. Understanding the memory access patterns involves analyzing how these blocks are loaded, processed, and stored.
+
+1. **Memory Access Patterns:**
+   - **Query (Q), Key (K), and Value (V) Tensors:** The kernel uses block pointers to load blocks of Q, K, and V tensors. The `tl.make_block_ptr` function is used to create pointers that define how blocks are accessed in memory. The strides and offsets are crucial here as they determine the linear memory access pattern.
+   - **Block Loading:** The kernel loads blocks of Q, K, and V using `tl.load`. The Q block is loaded once per block of M, while K and V blocks are loaded iteratively as the kernel processes each block of N.
+   - **Matrix Multiplication and Softmax:** The kernel computes the dot product of Q and K blocks, followed by a softmax operation. This involves reading the entire K block for each Q block, which can lead to repeated accesses to the same memory locations if not managed properly.
+   - **Accumulation and Scaling:** The results are accumulated in `acc`, which is updated iteratively. This involves reading and writing to the same memory locations, which can benefit from cache locality if the data fits in cache.
+
+2. **Memory Locality:**
+   - **Spatial Locality:** The use of block pointers and strides ensures that memory accesses within a block are contiguous, which is beneficial for spatial locality. This is particularly true for the Q and V tensors, where blocks are accessed in a linear fashion.
+   - **Temporal Locality:** The iterative loading of K and V blocks for each Q block can exploit temporal locality if the same blocks are accessed multiple times within a short period. However, the current pattern may not fully exploit this due to the sequential nature of the block processing.
+   - **Cache Utilization:** The kernel's performance can be improved by ensuring that frequently accessed data, such as the K and V blocks, remain in cache between iterations. This can be achieved by optimizing the order of block processing to minimize cache evictions.
+--------------------------------
+Memory analysis results: The `fused_attention_kernel` in Triton exhibits specific memory access patterns and locality characteristics that can be optimized for better cache performance:
+
+1. **Block-Based Access:** The kernel processes data in blocks, with `BLOCK_SIZE_M` and `BLOCK_SIZE_N` defining the dimensions. This block-based approach is beneficial for spatial locality, as it ensures contiguous memory access within each block.
+
+2. **Strided Access Patterns:** The use of strides in `tl.make_block_ptr` for Q, K, and V tensors determines the linear access pattern. Properly chosen strides can enhance spatial locality by ensuring that memory accesses are contiguous within a block.
+
+3. **Iterative Block Processing:** The kernel iteratively processes blocks of K and V for each block of Q. This pattern can be optimized to improve temporal locality by reordering block processing to keep frequently accessed data in cache longer.
+
+4. **Cache Locality Opportunities:**
+   - **Spatial Locality:** The contiguous access within blocks of Q and V can be leveraged to maximize cache hits.
+   - **Temporal Locality:** The repeated access to K and V blocks for each Q block can be optimized by reordering block processing to reduce cache misses.
+
+5. **Potential Optimizations:**
+   - **Block Swizzling:** Reordering the block processing order (swizzling) can align memory accesses better with cache lines, reducing cache misses.
+   - **Stride Optimization:** Adjusting strides to ensure that memory accesses are more cache-friendly can improve performance.
+
+By understanding these patterns, you can explore optimizations such as block swizzling and stride adjustments to enhance cache locality and overall kernel performance.
+--------------------------------
+--- KERNEL ITERATION 1 ---
+Optimization reasoning: To optimize the Triton kernel for the MI300x GPU architecture, we need to implement a swizzling pattern that effectively maps blocks to XCDs to maximize cache utilization. The goal is to ensure that blocks accessing the same data are scheduled to the same XCD, thereby improving the L2 cache hit rate. Given the architecture's round-robin scheduling, we can compute a new block index that considers the number of XCDs and the total number of blocks.
+
+The swizzling pattern should:
+1. Calculate the original XCD assignment using the default round-robin method.
+2. Determine the number of blocks per XCD.
+3. Reassign the block index to ensure that blocks sharing data are mapped to the same XCD until the XCD's capacity is filled.
+4. Maintain an even distribution of work across all XCDs.
+
+For this specific algorithm, we will:
+- Use the `program_id` to determine the current block's position.
+- Calculate the new block index by considering the number of XCDs and the total number of blocks.
+- Reassign the block index to optimize data locality.
+
+The swizzling pattern will be implemented as a single line of code within the kernel, ensuring that the function signature remains unchanged.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+import math
+
+@triton.jit
+def fused_attention_kernel(
+    q_ptr, k_ptr, v_ptr, o_ptr,
+    stride_qz, stride_qh, stride_qm, stride_qk,
+    stride_kz, stride_kh, stride_kn, stride_kk,
+    stride_vz, stride_vh, stride_vn, stride_vk,
+    stride_oz, stride_oh, stride_om, stride_on,
+    Z, H, N_CTX,
+    D_HEAD: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = triton.cdiv(N_CTX, BLOCK_SIZE_M) * Z * H
+    old_block_id = tl.program_id(0)
+    assigned_xcd = old_block_id % num_XCD
+    blocks_per_xcd = num_blocks // num_XCD
+    new_block_id = assigned_xcd * blocks_per_xcd + (old_block_id // num_XCD)
+    
+    start_m = new_block_id % (N_CTX // BLOCK_SIZE_M)
+    off_hz = new_block_id // (N_CTX // BLOCK_SIZE_M)
+    
+    q_offset = off_hz * stride_qh
+    k_offset = off_hz * stride_kh
+    v_offset = off_hz * stride_vh
+    o_offset = off_hz * stride_oh
+
+    Q_block_ptr = tl.make_block_ptr(
+        base=q_ptr + q_offset,
+        shape=(N_CTX, D_HEAD),
+        strides=(stride_qm, stride_qk),
+        offsets=(start_m * BLOCK_SIZE_M, 0),
+        block_shape=(BLOCK_SIZE_M, D_HEAD),
+        order=(1, 0)
+    )
+    K_block_ptr = tl.make_block_ptr(
+        base=k_ptr + k_offset,
+        shape=(D_HEAD, N_CTX),
+        strides=(stride_kk, stride_kn),
+        offsets=(0, 0),
+        block_shape=(D_HEAD, BLOCK_SIZE_N),
+        order=(0, 1)
+    )
+    V_block_ptr = tl.make_block_ptr(
+        base=v_ptr + v_offset,
+        shape=(N_CTX, D_HEAD),
+        strides=(stride_vn, stride_vk),
+        offsets=(0, 0),
+        block_shape=(BLOCK_SIZE_N, D_HEAD),
+        order=(1, 0)
+    )
+    O_block_ptr = tl.make_block_ptr(
+        base=o_ptr + o_offset,
+        shape=(N_CTX, D_HEAD),
+        strides=(stride_om, stride_on),
+        offsets=(start_m * BLOCK_SIZE_M, 0),
+        block_shape=(BLOCK_SIZE_M, D_HEAD),
+        order=(1, 0)
+    )
+
+    q = tl.load(Q_block_ptr, boundary_check=(0, 1))
+    
+    l_i = tl.zeros((BLOCK_SIZE_M,), dtype=tl.float32) - float('inf')
+    m_i = tl.zeros((BLOCK_SIZE_M,), dtype=tl.float32) - float('inf')
+    acc = tl.zeros((BLOCK_SIZE_M, D_HEAD), dtype=tl.float32)
+
+    for start_n in range(0, (start_m + 1) * BLOCK_SIZE_M, BLOCK_SIZE_N):
+        k = tl.load(K_block_ptr, boundary_check=(0, 1))
+        
+        s_ij = tl.dot(q, k, out_dtype=tl.float32) / math.sqrt(D_HEAD)
+
+        m_ij = tl.max(s_ij, 1)
+        p_ij = tl.exp(s_ij - m_ij[:, None])
+        l_ij = tl.sum(p_ij, 1)
+
+        m_new = tl.maximum(m_i, m_ij)
+        alpha = tl.exp(m_i - m_new)
+        beta = tl.exp(m_ij - m_new)
+        
+        l_new = alpha * l_i + beta * l_ij
+        
+        p_safe_ij = p_ij / l_ij[:, None]
+        
+        v = tl.load(V_block_ptr, boundary_check=(0, 1))
+        
+        acc_scale = l_i / l_new
+        acc_scale = tl.where(l_i == 0, 0, acc_scale) # handle first iteration
+        acc = acc * acc_scale[:, None]
+        
+        acc += tl.dot(p_safe_ij.to(v.dtype), v)
+
+        l_i = l_new
+        m_i = m_new
+
+        K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_SIZE_N))
+        V_block_ptr = tl.advance(V_block_ptr, (BLOCK_SIZE_N, 0))
+
+    tl.store(O_block_ptr, acc.to(o_ptr.dtype.element_ty), boundary_check=(0, 1))
+
+def fused_attention(q, k, v):
+    Z, H, N_CTX, D_HEAD = q.shape
+    o = torch.empty_like(q)
+
+    grid = (triton.cdiv(N_CTX, 128), Z * H)
+    
+    fused_attention_kernel[grid](
+        q, k, v, o,
+        q.stride(0), q.stride(1), q.stride(2), q.stride(3),
+        k.stride(0), k.stride(1), k.stride(2), k.stride(3),
+        v.stride(0), v.stride(1), v.stride(2), v.stride(3),
+        o.stride(0), o.stride(1), o.stride(2), o.stride(3),
+        Z, H, N_CTX,
+        D_HEAD=D_HEAD,
+        BLOCK_SIZE_M=128, BLOCK_SIZE_N=64
+    )
+    return o
+
+def main():
+    Z, H, N_CTX, D_HEAD = 32, 48, 4096, 64
+    q = torch.randn((Z, H, N_CTX, D_HEAD), device='cuda', dtype=torch.float16)
+    k = torch.randn((Z, H, N_CTX, D_HEAD), device='cuda', dtype=torch.float16)
+    v = torch.randn((Z, H, N_CTX, D_HEAD), device='cuda', dtype=torch.float16)
+
+    rep = 100
+    
+    for _ in range(10):
+        o_triton = fused_attention(q, k, v)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        o_triton = fused_attention(q, k, v)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton fused attention time: {triton_time:.4f} ms")
+
+if __name__ == "__main__":
+    main()--------------------------------

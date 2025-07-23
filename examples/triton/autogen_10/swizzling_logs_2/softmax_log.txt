@@ -1,0 +1,927 @@
+--- MEMORY ANALYSISMemory analysis reasoning: The Triton kernel `softmax_kernel` is designed to compute the softmax function for each row of a 2D tensor. The kernel is launched with a grid size of `(n_rows,)`, meaning each block in the grid is responsible for computing the softmax for one row of the input matrix. The memory access pattern and locality are crucial for optimizing performance, especially when dealing with large matrices.
+
+1. **Memory Access Patterns:**
+   - **Input Access:** Each block accesses a contiguous segment of the input matrix corresponding to a single row. The pointer `row_start_ptr` is calculated using the row index and the row stride, and then `col_offsets` are used to access elements within that row. This results in a linear access pattern for each row, which is optimal for memory coalescing on GPUs.
+   - **Output Access:** Similarly, the output is written back to a contiguous segment of the output matrix. The `output_row_start_ptr` and `output_ptrs` are calculated in the same manner as the input, ensuring that the writes are also coalesced.
+
+2. **Memory Locality:**
+   - **Intra-block Locality:** Within each block, the access to the input and output is contiguous, which takes advantage of spatial locality. This means that once a cache line is loaded, subsequent accesses within the same row are likely to hit the cache.
+   - **Inter-block Locality:** Since each block processes a different row, there is no direct spatial locality between blocks. However, if the matrix is stored in row-major order, the rows are stored contiguously in memory, which can still benefit from cache prefetching mechanisms.
+
+3. **Potential for Optimization:**
+   - **Swizzling Block IDs:** By reordering the block IDs, it might be possible to improve cache locality. For instance, processing rows that are close together in memory consecutively could enhance cache reuse, especially if the matrix is larger than the cache size.
+   - **Cache Utilization:** The current pattern already benefits from good cache utilization due to the contiguous access within each row. However, further optimizations could be explored by considering the cache hierarchy and the specific architecture of the GPU.
+
+Overall, the kernel exhibits a well-structured memory access pattern that is conducive to efficient execution on GPU hardware. The main opportunity for improvement lies in optimizing inter-block locality through strategic block ID swizzling.
+--------------------------------
+Memory analysis results: The `softmax_kernel` in Triton exhibits a memory access pattern that is primarily row-wise, with each block handling a single row of the input matrix. This results in contiguous memory accesses for both reading from the input and writing to the output, which is optimal for memory coalescing on GPUs. 
+
+**Memory Access Patterns:**
+- **Input Access:** Each block accesses a contiguous row of the input matrix, leveraging spatial locality and ensuring coalesced memory reads.
+- **Output Access:** Similarly, the output is written in a contiguous manner, ensuring coalesced memory writes.
+
+**Memory Locality:**
+- **Intra-block Locality:** Within a block, the contiguous access pattern ensures that once a cache line is loaded, subsequent accesses are likely to hit the cache.
+- **Inter-block Locality:** There is limited spatial locality between blocks since each block processes a different row. However, if the matrix is stored in row-major order, rows are contiguous in memory, which can still benefit from cache prefetching.
+
+**Optimization Opportunities:**
+- **Block ID Swizzling:** Reordering block IDs to process rows that are close together in memory consecutively could enhance cache reuse and improve performance.
+- **Cache Utilization:** The current pattern already benefits from good cache utilization due to contiguous access within each row, but further optimizations could be explored based on the GPU's cache architecture.
+
+Overall, the kernel's memory access pattern is well-suited for GPU execution, with potential improvements in inter-block locality through strategic block ID swizzling.
+--------------------------------
+--- KERNEL ITERATION 1 ---
+Optimization reasoning: To optimize the Triton kernel for the MI300x GPU architecture, we need to implement a swizzling pattern that ensures blocks accessing the same data are scheduled to the same XCD, thereby improving L2 cache hit rates. The MI300x GPU has 8 XCDs, and the default block scheduling is round-robin. Our goal is to remap the block indices such that blocks that share data are assigned to the same XCD until that XCD's capacity is filled, while maintaining an even distribution of work across all XCDs.
+
+The swizzling pattern involves recalculating the block index using the original block index, the number of XCDs, and the total number of blocks. The key is to understand the stride of block indices and how they are distributed across XCDs. By computing an offset based on these parameters, we can reassign block indices to achieve the desired mapping.
+
+The swizzling pattern can be implemented as a single line of code within the kernel, ensuring that the new block indices are used for all thread ID computations. This approach should enhance cache utilization by improving data locality within each XCD.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_kernel(
+    output_ptr, input_ptr,
+    input_row_stride, output_row_stride,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = tl.num_programs(0)
+    old_block_idx = tl.program_id(0)
+    
+    # Swizzling pattern: reassign block index
+    new_block_idx = (old_block_idx // num_XCD) + (old_block_idx % num_XCD) * (num_blocks // num_XCD)
+    
+    row_idx = new_block_idx
+    
+    row_start_ptr = input_ptr + row_idx * input_row_stride
+    
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    input_ptrs = row_start_ptr + col_offsets
+    
+    mask = col_offsets < n_cols
+    row = tl.load(input_ptrs, mask=mask, other=-float('inf'))
+    
+    row_minus_max = row - tl.max(row, axis=0)
+    
+    numerator = tl.exp(row_minus_max)
+    denominator = tl.sum(numerator, axis=0)
+    softmax_output = numerator / denominator
+    
+    output_row_start_ptr = output_ptr + row_idx * output_row_stride
+    output_ptrs = output_row_start_ptr + col_offsets
+    tl.store(output_ptrs, softmax_output, mask=mask)
+
+def softmax(x):
+    n_rows, n_cols = x.shape
+    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    
+    num_warps = 4
+    if BLOCK_SIZE >= 2048:
+        num_warps = 8
+    if BLOCK_SIZE >= 4096:
+        num_warps = 16
+        
+    y = torch.empty_like(x)
+    
+    softmax_kernel[(n_rows,)](
+        y, x,
+        x.stride(0), y.stride(0),
+        n_cols,
+        num_warps=num_warps,
+        BLOCK_SIZE=BLOCK_SIZE
+    )
+    return y
+
+def main():
+    n_rows, n_cols = 8192, 8192
+    x = torch.randn((n_rows, n_cols), device='cuda', dtype=torch.float16)
+    
+    rep = 100
+    
+    for _ in range(10):
+        y_triton = softmax(x)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        y_triton = softmax(x)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton softmax time: {triton_time:.4f} ms")
+
+    # y_torch = torch.nn.functional.softmax(x, dim=1)
+    # print(f"Triton output: {y_triton}")
+    # print(f"Torch output: {y_torch}")
+    # assert torch.allclose(y_triton, y_torch, atol=1e-2, rtol=0), "Triton and PyTorch results differ"
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 1 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.05 percentage points. Hit rate increased from 33.5% to 33.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.00x speedup with execution time reduced from 0.09ms to 0.09ms (0.2% faster).
+
+
+--- KERNEL ITERATION 2 ---
+Optimization reasoning: The task is to propose a new swizzling pattern for the Triton kernel to improve L2 cache locality by reassigning block indices. The previous attempt used a simple swizzling pattern that involved dividing and multiplying the block index by the number of XCDs. This time, we need to try a different approach to swizzling to further enhance cache utilization.
+
+The goal is to ensure that blocks accessing the same data are mapped to the same XCD, while maintaining an even distribution of work across all XCDs. The new swizzling pattern should consider the round-robin scheduling of blocks and attempt to group blocks that are likely to access similar data together.
+
+To achieve this, we can use a different mathematical transformation of the block index that still respects the constraints of the hardware architecture. One possible approach is to use a bitwise operation to shuffle the block indices, which can help in redistributing the blocks across XCDs in a manner that might improve cache hits.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_kernel(
+    output_ptr, input_ptr,
+    input_row_stride, output_row_stride,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = tl.num_programs(0)
+    old_block_idx = tl.program_id(0)
+    
+    # New swizzling pattern: use bitwise XOR to shuffle block indices
+    new_block_idx = old_block_idx ^ (old_block_idx // num_XCD)
+    
+    row_idx = new_block_idx
+    
+    row_start_ptr = input_ptr + row_idx * input_row_stride
+    
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    input_ptrs = row_start_ptr + col_offsets
+    
+    mask = col_offsets < n_cols
+    row = tl.load(input_ptrs, mask=mask, other=-float('inf'))
+    
+    row_minus_max = row - tl.max(row, axis=0)
+    
+    numerator = tl.exp(row_minus_max)
+    denominator = tl.sum(numerator, axis=0)
+    softmax_output = numerator / denominator
+    
+    output_row_start_ptr = output_ptr + row_idx * output_row_stride
+    output_ptrs = output_row_start_ptr + col_offsets
+    tl.store(output_ptrs, softmax_output, mask=mask)
+
+def softmax(x):
+    n_rows, n_cols = x.shape
+    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    
+    num_warps = 4
+    if BLOCK_SIZE >= 2048:
+        num_warps = 8
+    if BLOCK_SIZE >= 4096:
+        num_warps = 16
+        
+    y = torch.empty_like(x)
+    
+    softmax_kernel[(n_rows,)](
+        y, x,
+        x.stride(0), y.stride(0),
+        n_cols,
+        num_warps=num_warps,
+        BLOCK_SIZE=BLOCK_SIZE
+    )
+    return y
+
+def main():
+    n_rows, n_cols = 8192, 8192
+    x = torch.randn((n_rows, n_cols), device='cuda', dtype=torch.float16)
+    
+    rep = 100
+    
+    for _ in range(10):
+        y_triton = softmax(x)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        y_triton = softmax(x)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton softmax time: {triton_time:.4f} ms")
+
+    # y_torch = torch.nn.functional.softmax(x, dim=1)
+    # print(f"Triton output: {y_triton}")
+    # print(f"Torch output: {y_torch}")
+    # assert torch.allclose(y_triton, y_torch, atol=1e-2, rtol=0), "Triton and PyTorch results differ"
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 2 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.5% to 33.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.01x speedup with execution time reduced from 0.09ms to 0.09ms (0.9% faster).
+
+
+--- KERNEL ITERATION 3 ---
+Optimization reasoning: The task is to propose a new swizzling pattern for the Triton kernel to improve L2 cache locality by reassigning block indices. The goal is to ensure that blocks accessing the same data are scheduled to the same XCD, thereby improving cache utilization. The previous attempts used a simple arithmetic and bitwise XOR approach for swizzling, which did not significantly improve cache locality. 
+
+For this iteration, I will try a different approach by using a modulo operation combined with a shift to create a new block index. This approach aims to distribute blocks more evenly across XCDs while keeping blocks that access similar data closer together. The idea is to use the modulo operation to group blocks and then shift them to spread across XCDs, potentially improving cache hits by keeping related data within the same XCD.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_kernel(
+    output_ptr, input_ptr,
+    input_row_stride, output_row_stride,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = tl.num_programs(0)
+    old_block_idx = tl.program_id(0)
+    
+    # New swizzling pattern: use modulo and shift to reassign block indices
+    new_block_idx = (old_block_idx % num_XCD) + ((old_block_idx // num_XCD) << 3)
+    
+    row_idx = new_block_idx
+    
+    row_start_ptr = input_ptr + row_idx * input_row_stride
+    
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    input_ptrs = row_start_ptr + col_offsets
+    
+    mask = col_offsets < n_cols
+    row = tl.load(input_ptrs, mask=mask, other=-float('inf'))
+    
+    row_minus_max = row - tl.max(row, axis=0)
+    
+    numerator = tl.exp(row_minus_max)
+    denominator = tl.sum(numerator, axis=0)
+    softmax_output = numerator / denominator
+    
+    output_row_start_ptr = output_ptr + row_idx * output_row_stride
+    output_ptrs = output_row_start_ptr + col_offsets
+    tl.store(output_ptrs, softmax_output, mask=mask)
+
+def softmax(x):
+    n_rows, n_cols = x.shape
+    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    
+    num_warps = 4
+    if BLOCK_SIZE >= 2048:
+        num_warps = 8
+    if BLOCK_SIZE >= 4096:
+        num_warps = 16
+        
+    y = torch.empty_like(x)
+    
+    softmax_kernel[(n_rows,)](
+        y, x,
+        x.stride(0), y.stride(0),
+        n_cols,
+        num_warps=num_warps,
+        BLOCK_SIZE=BLOCK_SIZE
+    )
+    return y
+
+def main():
+    n_rows, n_cols = 8192, 8192
+    x = torch.randn((n_rows, n_cols), device='cuda', dtype=torch.float16)
+    
+    rep = 100
+    
+    for _ in range(10):
+        y_triton = softmax(x)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        y_triton = softmax(x)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton softmax time: {triton_time:.4f} ms")
+
+    # y_torch = torch.nn.functional.softmax(x, dim=1)
+    # print(f"Triton output: {y_triton}")
+    # print(f"Torch output: {y_torch}")
+    # assert torch.allclose(y_triton, y_torch, atol=1e-2, rtol=0), "Triton and PyTorch results differ"
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 3 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.5% to 33.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.00x speedup with execution time reduced from 0.09ms to 0.09ms (0.2% faster).
+
+
+--- KERNEL ITERATION 4 ---
+Optimization reasoning: The task is to propose a new swizzling pattern for the Triton kernel to improve L2 cache locality by reassigning block indices. The goal is to ensure that blocks accessing the same data are scheduled to the same XCD, maximizing cache utilization. The previous attempts used various methods like XOR and modulo with shifts, but they did not significantly improve cache locality or performance. 
+
+For this iteration, I will try a new approach by using a combination of division and modulo operations to create a more balanced distribution of blocks across XCDs. The idea is to first determine the XCD to which a block would be assigned in a round-robin fashion and then adjust the block index to ensure that blocks accessing similar data are grouped together. This approach aims to improve cache hits by ensuring that blocks with similar data access patterns are more likely to be scheduled on the same XCD.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_kernel(
+    output_ptr, input_ptr,
+    input_row_stride, output_row_stride,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = tl.num_programs(0)
+    old_block_idx = tl.program_id(0)
+    
+    # New swizzling pattern: use division and modulo to reassign block indices
+    new_block_idx = (old_block_idx // num_XCD) + (old_block_idx % num_XCD) * (num_blocks // num_XCD)
+    
+    row_idx = new_block_idx
+    
+    row_start_ptr = input_ptr + row_idx * input_row_stride
+    
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    input_ptrs = row_start_ptr + col_offsets
+    
+    mask = col_offsets < n_cols
+    row = tl.load(input_ptrs, mask=mask, other=-float('inf'))
+    
+    row_minus_max = row - tl.max(row, axis=0)
+    
+    numerator = tl.exp(row_minus_max)
+    denominator = tl.sum(numerator, axis=0)
+    softmax_output = numerator / denominator
+    
+    output_row_start_ptr = output_ptr + row_idx * output_row_stride
+    output_ptrs = output_row_start_ptr + col_offsets
+    tl.store(output_ptrs, softmax_output, mask=mask)
+
+def softmax(x):
+    n_rows, n_cols = x.shape
+    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    
+    num_warps = 4
+    if BLOCK_SIZE >= 2048:
+        num_warps = 8
+    if BLOCK_SIZE >= 4096:
+        num_warps = 16
+        
+    y = torch.empty_like(x)
+    
+    softmax_kernel[(n_rows,)](
+        y, x,
+        x.stride(0), y.stride(0),
+        n_cols,
+        num_warps=num_warps,
+        BLOCK_SIZE=BLOCK_SIZE
+    )
+    return y
+
+def main():
+    n_rows, n_cols = 8192, 8192
+    x = torch.randn((n_rows, n_cols), device='cuda', dtype=torch.float16)
+    
+    rep = 100
+    
+    for _ in range(10):
+        y_triton = softmax(x)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        y_triton = softmax(x)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton softmax time: {triton_time:.4f} ms")
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 4 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.05 percentage points. Hit rate increased from 33.5% to 33.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.00x speedup with execution time reduced from 0.09ms to 0.09ms (0.5% faster).
+
+
+--- KERNEL ITERATION 5 ---
+Optimization reasoning: To optimize the swizzling pattern for the Triton kernel, we need to ensure that blocks accessing the same data are mapped to the same XCD, thereby improving L2 cache locality. The previous attempts used various methods like division, modulo, and bitwise operations to reassign block indices. For this iteration, we will try a new approach by using a combination of bitwise operations and arithmetic to create a unique mapping that balances the load across XCDs while keeping related blocks together.
+
+The rationale is to use a bitwise AND operation combined with a shift operation to create a new block index. This approach aims to distribute blocks evenly across XCDs while maintaining spatial locality for blocks that access contiguous memory regions. By using bitwise operations, we can efficiently compute the new block index with minimal computational overhead.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_kernel(
+    output_ptr, input_ptr,
+    input_row_stride, output_row_stride,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = tl.num_programs(0)
+    old_block_idx = tl.program_id(0)
+    
+    # New swizzling pattern: use bitwise AND and shift to reassign block indices
+    new_block_idx = (old_block_idx & (num_XCD - 1)) + ((old_block_idx >> 3) * num_XCD)
+    
+    row_idx = new_block_idx
+    
+    row_start_ptr = input_ptr + row_idx * input_row_stride
+    
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    input_ptrs = row_start_ptr + col_offsets
+    
+    mask = col_offsets < n_cols
+    row = tl.load(input_ptrs, mask=mask, other=-float('inf'))
+    
+    row_minus_max = row - tl.max(row, axis=0)
+    
+    numerator = tl.exp(row_minus_max)
+    denominator = tl.sum(numerator, axis=0)
+    softmax_output = numerator / denominator
+    
+    output_row_start_ptr = output_ptr + row_idx * output_row_stride
+    output_ptrs = output_row_start_ptr + col_offsets
+    tl.store(output_ptrs, softmax_output, mask=mask)
+
+def softmax(x):
+    n_rows, n_cols = x.shape
+    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    
+    num_warps = 4
+    if BLOCK_SIZE >= 2048:
+        num_warps = 8
+    if BLOCK_SIZE >= 4096:
+        num_warps = 16
+        
+    y = torch.empty_like(x)
+    
+    softmax_kernel[(n_rows,)](
+        y, x,
+        x.stride(0), y.stride(0),
+        n_cols,
+        num_warps=num_warps,
+        BLOCK_SIZE=BLOCK_SIZE
+    )
+    return y
+
+def main():
+    n_rows, n_cols = 8192, 8192
+    x = torch.randn((n_rows, n_cols), device='cuda', dtype=torch.float16)
+    
+    rep = 100
+    
+    for _ in range(10):
+        y_triton = softmax(x)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        y_triton = softmax(x)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton softmax time: {triton_time:.4f} ms")
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 5 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.5% to 33.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.00x slowdown with execution time increased from 0.09ms to 0.09ms (0.2% slower).
+
+
+--- KERNEL ITERATION 6 ---
+Optimization reasoning: To optimize the swizzling pattern for the Triton kernel, we need to ensure that blocks accessing the same data are mapped to the same XCD, thereby improving L2 cache locality. The current architecture has 8 XCDs, and the default round-robin scheduling assigns blocks cyclically across these XCDs. Our goal is to remap the block indices such that blocks that share data are grouped together on the same XCD.
+
+The previous attempts used various arithmetic and bitwise operations to achieve this, but they did not result in significant improvements. For this iteration, we will try a new approach by using a combination of modulo and division operations to remap the block indices. This approach will attempt to group blocks that are close in index together, which may help in improving cache locality.
+
+The new swizzling pattern will be:
+1. Calculate the original XCD assignment using modulo operation.
+2. Use division to determine the "round" of assignment.
+3. Combine these to form a new block index that groups blocks more effectively.
+
+This approach aims to balance the load across XCDs while keeping blocks that access similar data on the same XCD.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_kernel(
+    output_ptr, input_ptr,
+    input_row_stride, output_row_stride,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = tl.num_programs(0)
+    old_block_idx = tl.program_id(0)
+    
+    # New swizzling pattern: use modulo and division to reassign block indices
+    new_block_idx = (old_block_idx % num_XCD) + ((old_block_idx // num_XCD) * num_XCD)
+    
+    row_idx = new_block_idx
+    
+    row_start_ptr = input_ptr + row_idx * input_row_stride
+    
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    input_ptrs = row_start_ptr + col_offsets
+    
+    mask = col_offsets < n_cols
+    row = tl.load(input_ptrs, mask=mask, other=-float('inf'))
+    
+    row_minus_max = row - tl.max(row, axis=0)
+    
+    numerator = tl.exp(row_minus_max)
+    denominator = tl.sum(numerator, axis=0)
+    softmax_output = numerator / denominator
+    
+    output_row_start_ptr = output_ptr + row_idx * output_row_stride
+    output_ptrs = output_row_start_ptr + col_offsets
+    tl.store(output_ptrs, softmax_output, mask=mask)
+
+def softmax(x):
+    n_rows, n_cols = x.shape
+    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    
+    num_warps = 4
+    if BLOCK_SIZE >= 2048:
+        num_warps = 8
+    if BLOCK_SIZE >= 4096:
+        num_warps = 16
+        
+    y = torch.empty_like(x)
+    
+    softmax_kernel[(n_rows,)](
+        y, x,
+        x.stride(0), y.stride(0),
+        n_cols,
+        num_warps=num_warps,
+        BLOCK_SIZE=BLOCK_SIZE
+    )
+    return y
+
+def main():
+    n_rows, n_cols = 8192, 8192
+    x = torch.randn((n_rows, n_cols), device='cuda', dtype=torch.float16)
+    
+    rep = 100
+    
+    for _ in range(10):
+        y_triton = softmax(x)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        y_triton = softmax(x)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton softmax time: {triton_time:.4f} ms")
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 6 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.5% to 33.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.00x speedup with execution time reduced from 0.09ms to 0.09ms (0.3% faster).
+
+
+--- KERNEL ITERATION 7 ---
+Optimization reasoning: To optimize the swizzling pattern for the Triton kernel, we need to ensure that blocks accessing the same data are mapped to the same XCD, thereby improving L2 cache locality. The MI300x GPU architecture has 8 XCDs, and the default block assignment is round-robin across these XCDs. Our goal is to reassign block indices such that blocks that share data are grouped together on the same XCD.
+
+The current swizzling pattern uses modulo and division to reassign block indices. To try a new approach, we can consider using a combination of bitwise operations and arithmetic to create a new swizzling pattern. This pattern should ensure that blocks are evenly distributed across XCDs while maximizing data locality.
+
+The new swizzling pattern will involve:
+1. Calculating the original XCD assignment using modulo.
+2. Using bitwise operations to shuffle the block indices within each XCD.
+3. Ensuring that the reassigned indices maintain an even distribution across XCDs.
+
+This approach aims to improve cache locality by grouping blocks that access similar data onto the same XCD, while also balancing the workload across all XCDs.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_kernel(
+    output_ptr, input_ptr,
+    input_row_stride, output_row_stride,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = tl.num_programs(0)
+    old_block_idx = tl.program_id(0)
+    
+    # New swizzling pattern: use bitwise XOR and modulo to reassign block indices
+    new_block_idx = ((old_block_idx ^ (old_block_idx // num_XCD)) % num_XCD) + ((old_block_idx // num_XCD) * num_XCD)
+    
+    row_idx = new_block_idx
+    
+    row_start_ptr = input_ptr + row_idx * input_row_stride
+    
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    input_ptrs = row_start_ptr + col_offsets
+    
+    mask = col_offsets < n_cols
+    row = tl.load(input_ptrs, mask=mask, other=-float('inf'))
+    
+    row_minus_max = row - tl.max(row, axis=0)
+    
+    numerator = tl.exp(row_minus_max)
+    denominator = tl.sum(numerator, axis=0)
+    softmax_output = numerator / denominator
+    
+    output_row_start_ptr = output_ptr + row_idx * output_row_stride
+    output_ptrs = output_row_start_ptr + col_offsets
+    tl.store(output_ptrs, softmax_output, mask=mask)
+
+def softmax(x):
+    n_rows, n_cols = x.shape
+    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    
+    num_warps = 4
+    if BLOCK_SIZE >= 2048:
+        num_warps = 8
+    if BLOCK_SIZE >= 4096:
+        num_warps = 16
+        
+    y = torch.empty_like(x)
+    
+    softmax_kernel[(n_rows,)](
+        y, x,
+        x.stride(0), y.stride(0),
+        n_cols,
+        num_warps=num_warps,
+        BLOCK_SIZE=BLOCK_SIZE
+    )
+    return y
+
+def main():
+    n_rows, n_cols = 8192, 8192
+    x = torch.randn((n_rows, n_cols), device='cuda', dtype=torch.float16)
+    
+    rep = 100
+    
+    for _ in range(10):
+        y_triton = softmax(x)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        y_triton = softmax(x)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton softmax time: {triton_time:.4f} ms")
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 7 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.5% to 33.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.00x slowdown with execution time increased from 0.09ms to 0.09ms (0.0% slower).
+
+
+--- KERNEL ITERATION 8 ---
+Optimization reasoning: To optimize the swizzling pattern for the Triton kernel, we need to ensure that blocks accessing the same data are mapped to the same XCD, thereby improving L2 cache locality. The MI300x GPU architecture has 8 XCDs, and the default block assignment is round-robin. Our goal is to remap the block indices such that blocks that share data are assigned to the same XCD, while maintaining an even distribution of blocks across all XCDs.
+
+The previous attempts have used various combinations of bitwise operations, modulo, and division to achieve this. For a new approach, we can consider using a combination of bitwise shifts and arithmetic operations to create a new swizzling pattern. This pattern should aim to group blocks that are likely to access the same data together, while also ensuring that the load is balanced across the XCDs.
+
+The new swizzling pattern will be implemented by calculating a new block index using a combination of bitwise shifts and arithmetic operations. This approach will attempt to create a more effective grouping of blocks for cache locality.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_kernel(
+    output_ptr, input_ptr,
+    input_row_stride, output_row_stride,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = tl.num_programs(0)
+    old_block_idx = tl.program_id(0)
+    
+    # New swizzling pattern: use bitwise shift and arithmetic to reassign block indices
+    new_block_idx = ((old_block_idx << 1) % num_XCD) + ((old_block_idx // num_XCD) * num_XCD)
+    
+    row_idx = new_block_idx
+    
+    row_start_ptr = input_ptr + row_idx * input_row_stride
+    
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    input_ptrs = row_start_ptr + col_offsets
+    
+    mask = col_offsets < n_cols
+    row = tl.load(input_ptrs, mask=mask, other=-float('inf'))
+    
+    row_minus_max = row - tl.max(row, axis=0)
+    
+    numerator = tl.exp(row_minus_max)
+    denominator = tl.sum(numerator, axis=0)
+    softmax_output = numerator / denominator
+    
+    output_row_start_ptr = output_ptr + row_idx * output_row_stride
+    output_ptrs = output_row_start_ptr + col_offsets
+    tl.store(output_ptrs, softmax_output, mask=mask)
+
+def softmax(x):
+    n_rows, n_cols = x.shape
+    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    
+    num_warps = 4
+    if BLOCK_SIZE >= 2048:
+        num_warps = 8
+    if BLOCK_SIZE >= 4096:
+        num_warps = 16
+        
+    y = torch.empty_like(x)
+    
+    softmax_kernel[(n_rows,)](
+        y, x,
+        x.stride(0), y.stride(0),
+        n_cols,
+        num_warps=num_warps,
+        BLOCK_SIZE=BLOCK_SIZE
+    )
+    return y
+
+def main():
+    n_rows, n_cols = 8192, 8192
+    x = torch.randn((n_rows, n_cols), device='cuda', dtype=torch.float16)
+    
+    rep = 100
+    
+    for _ in range(10):
+        y_triton = softmax(x)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        y_triton = softmax(x)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton softmax time: {triton_time:.4f} ms")
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 8 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.5% to 33.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.02x speedup with execution time reduced from 0.09ms to 0.09ms (1.8% faster).
+
+
+--- KERNEL ITERATION 9 ---
+Optimization reasoning: To optimize the swizzling pattern for the Triton kernel, we need to ensure that blocks accessing the same data are mapped to the same XCD, thereby improving L2 cache locality. The MI300x GPU architecture has 8 XCDs, and the default block assignment is round-robin. Our goal is to remap the block indices such that blocks that share data are assigned to the same XCD, while also balancing the workload across all XCDs.
+
+The previous attempts have used various arithmetic and bitwise operations to achieve this, but the improvements have been marginal. For this iteration, we will try a new approach by using a combination of modulo and addition to create a new swizzling pattern. This pattern will attempt to group blocks that are likely to access the same data together, while still distributing the workload evenly across the XCDs.
+
+The new swizzling pattern will be calculated as follows:
+1. Calculate the base XCD index using modulo operation to ensure blocks are distributed across XCDs.
+2. Use an offset based on the block index to ensure that blocks accessing similar data are grouped together.
+
+This approach aims to improve cache locality by ensuring that blocks with similar data access patterns are mapped to the same XCD, while maintaining an even distribution of blocks across all XCDs.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_kernel(
+    output_ptr, input_ptr,
+    input_row_stride, output_row_stride,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = tl.num_programs(0)
+    old_block_idx = tl.program_id(0)
+    
+    # New swizzling pattern: use modulo and addition to reassign block indices
+    new_block_idx = (old_block_idx % num_XCD) + ((old_block_idx + num_XCD) % num_blocks)
+    
+    row_idx = new_block_idx
+    
+    row_start_ptr = input_ptr + row_idx * input_row_stride
+    
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    input_ptrs = row_start_ptr + col_offsets
+    
+    mask = col_offsets < n_cols
+    row = tl.load(input_ptrs, mask=mask, other=-float('inf'))
+    
+    row_minus_max = row - tl.max(row, axis=0)
+    
+    numerator = tl.exp(row_minus_max)
+    denominator = tl.sum(numerator, axis=0)
+    softmax_output = numerator / denominator
+    
+    output_row_start_ptr = output_ptr + row_idx * output_row_stride
+    output_ptrs = output_row_start_ptr + col_offsets
+    tl.store(output_ptrs, softmax_output, mask=mask)
+
+def softmax(x):
+    n_rows, n_cols = x.shape
+    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    
+    num_warps = 4
+    if BLOCK_SIZE >= 2048:
+        num_warps = 8
+    if BLOCK_SIZE >= 4096:
+        num_warps = 16
+        
+    y = torch.empty_like(x)
+    
+    softmax_kernel[(n_rows,)](
+        y, x,
+        x.stride(0), y.stride(0),
+        n_cols,
+        num_warps=num_warps,
+        BLOCK_SIZE=BLOCK_SIZE
+    )
+    return y
+
+def main():
+    n_rows, n_cols = 8192, 8192
+    x = torch.randn((n_rows, n_cols), device='cuda', dtype=torch.float16)
+    
+    rep = 100
+    
+    for _ in range(10):
+        y_triton = softmax(x)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        y_triton = softmax(x)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton softmax time: {triton_time:.4f} ms")
+
+if __name__ == "__main__":
+    main()--------------------------------

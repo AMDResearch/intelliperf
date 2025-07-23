@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 import torch
 import triton
@@ -35,9 +36,11 @@ def ising_model_kernel(
     # Metropolis-Hastings update rule
     prob = tl.exp(-dE * beta)
     
-    # Generate random numbers (simplified)
-    # A proper implementation would need a parallel random number generator.
-    rand = tl.rand(tl.seed_t(), (BLOCK_SIZE_X, BLOCK_SIZE_Y))
+    # Generate random numbers
+    seed = pid_x * BLOCK_SIZE_X + pid_y * BLOCK_SIZE_Y
+    rand_offsets = tl.arange(0, BLOCK_SIZE_X * BLOCK_SIZE_Y)
+    rand = tl.rand(seed, rand_offsets)
+    rand = tl.reshape(rand, (BLOCK_SIZE_X, BLOCK_SIZE_Y))
     
     new_spin = tl.where(rand < prob, -current_spin, current_spin)
     

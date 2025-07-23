@@ -1,0 +1,135 @@
+--- MEMORY ANALYSISMemory analysis reasoning: The Triton kernel `softmax_kernel` is designed to compute the softmax function for each row of a 2D tensor. The kernel is launched with a grid size of `(n_rows,)`, meaning each block in the grid is responsible for computing the softmax for one row of the input matrix. The memory access pattern and locality are crucial for optimizing performance, especially when dealing with large matrices.
+
+1. **Memory Access Patterns:**
+   - **Input Access:** Each block accesses a contiguous segment of the input matrix corresponding to a single row. The pointer `row_start_ptr` is calculated using the row index and the row stride, and then `col_offsets` are used to access elements within that row. This results in a linear access pattern for each row, which is optimal for memory coalescing on GPUs.
+   - **Output Access:** Similarly, the output is written back to a contiguous segment of the output matrix. The `output_row_start_ptr` and `output_ptrs` are calculated in the same manner as the input, ensuring that the writes are also coalesced.
+
+2. **Memory Locality:**
+   - **Intra-block Locality:** Within each block, the access to the input and output is contiguous, which takes advantage of spatial locality. This means that once a cache line is loaded, subsequent accesses within the same row are likely to hit the cache.
+   - **Inter-block Locality:** Since each block processes a different row, there is no direct spatial locality between blocks. However, if the matrix is stored in row-major order, the rows are stored contiguously in memory, which can still benefit from cache prefetching mechanisms.
+
+3. **Potential for Optimization:**
+   - **Swizzling Block IDs:** By reordering the block IDs, it might be possible to improve cache locality. For instance, processing rows that are close together in memory consecutively could enhance cache reuse, especially if the matrix is larger than the cache size.
+   - **Cache Utilization:** The current pattern already benefits from good cache utilization due to the contiguous access within each row. However, further optimizations could be explored by considering the cache hierarchy and the specific architecture of the GPU.
+
+Overall, the kernel exhibits a well-structured memory access pattern that is conducive to efficient execution on GPU hardware. The main opportunity for improvement lies in optimizing inter-block locality through strategic block ID swizzling.
+--------------------------------
+Memory analysis results: The `softmax_kernel` in Triton exhibits a memory access pattern that is primarily row-wise, with each block handling a single row of the input matrix. This results in contiguous memory accesses for both reading from the input and writing to the output, which is optimal for memory coalescing on GPUs. 
+
+**Memory Access Patterns:**
+- **Input Access:** Each block accesses a contiguous row of the input matrix, leveraging spatial locality and ensuring coalesced memory reads.
+- **Output Access:** Similarly, the output is written in a contiguous manner, ensuring coalesced memory writes.
+
+**Memory Locality:**
+- **Intra-block Locality:** Within a block, the contiguous access pattern ensures that once a cache line is loaded, subsequent accesses are likely to hit the cache.
+- **Inter-block Locality:** There is limited spatial locality between blocks since each block processes a different row. However, if the matrix is stored in row-major order, rows are contiguous in memory, which can still benefit from cache prefetching.
+
+**Optimization Opportunities:**
+- **Block ID Swizzling:** Reordering block IDs to process rows that are close together in memory consecutively could enhance cache reuse and improve performance.
+- **Cache Utilization:** The current pattern already benefits from good cache utilization due to contiguous access within each row, but further optimizations could be explored based on the GPU's cache architecture.
+
+Overall, the kernel's memory access pattern is well-suited for GPU execution, with potential improvements in inter-block locality through strategic block ID swizzling.
+--------------------------------
+--- KERNEL ITERATION 1 ---
+Optimization reasoning: To optimize the Triton kernel for the MI300x GPU architecture, we need to implement a swizzling pattern that ensures blocks accessing the same data are scheduled to the same XCD, thereby improving L2 cache hit rates. The MI300x GPU has 8 XCDs, and the default block scheduling is round-robin. Our goal is to remap the block indices such that blocks that share data are assigned to the same XCD until that XCD's capacity is filled, while maintaining an even distribution of work across all XCDs.
+
+The swizzling pattern involves recalculating the block index using the original block index, the number of XCDs, and the total number of blocks. The key is to understand the stride of block indices and how they are distributed across XCDs. By computing an offset based on these parameters, we can reassign block indices to achieve the desired mapping.
+
+The swizzling pattern can be implemented as a single line of code within the kernel, ensuring that the new block indices are used for all thread ID computations. This approach should enhance cache utilization by improving data locality within each XCD.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def softmax_kernel(
+    output_ptr, input_ptr,
+    input_row_stride, output_row_stride,
+    n_cols,
+    BLOCK_SIZE: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = tl.num_programs(0)
+    old_block_idx = tl.program_id(0)
+    
+    # Swizzling pattern: reassign block index
+    new_block_idx = (old_block_idx // num_XCD) + (old_block_idx % num_XCD) * (num_blocks // num_XCD)
+    
+    row_idx = new_block_idx
+    
+    row_start_ptr = input_ptr + row_idx * input_row_stride
+    
+    col_offsets = tl.arange(0, BLOCK_SIZE)
+    input_ptrs = row_start_ptr + col_offsets
+    
+    mask = col_offsets < n_cols
+    row = tl.load(input_ptrs, mask=mask, other=-float('inf'))
+    
+    row_minus_max = row - tl.max(row, axis=0)
+    
+    numerator = tl.exp(row_minus_max)
+    denominator = tl.sum(numerator, axis=0)
+    softmax_output = numerator / denominator
+    
+    output_row_start_ptr = output_ptr + row_idx * output_row_stride
+    output_ptrs = output_row_start_ptr + col_offsets
+    tl.store(output_ptrs, softmax_output, mask=mask)
+
+def softmax(x):
+    n_rows, n_cols = x.shape
+    BLOCK_SIZE = triton.next_power_of_2(n_cols)
+    
+    num_warps = 4
+    if BLOCK_SIZE >= 2048:
+        num_warps = 8
+    if BLOCK_SIZE >= 4096:
+        num_warps = 16
+        
+    y = torch.empty_like(x)
+    
+    softmax_kernel[(n_rows,)](
+        y, x,
+        x.stride(0), y.stride(0),
+        n_cols,
+        num_warps=num_warps,
+        BLOCK_SIZE=BLOCK_SIZE
+    )
+    return y
+
+def main():
+    n_rows, n_cols = 8192, 8192
+    x = torch.randn((n_rows, n_cols), device='cuda', dtype=torch.float16)
+    
+    rep = 100
+    
+    for _ in range(10):
+        y_triton = softmax(x)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        y_triton = softmax(x)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton softmax time: {triton_time:.4f} ms")
+
+    # y_torch = torch.nn.functional.softmax(x, dim=1)
+    # print(f"Triton output: {y_triton}")
+    # print(f"Torch output: {y_torch}")
+    # assert torch.allclose(y_triton, y_torch, atol=1e-2, rtol=0), "Triton and PyTorch results differ"
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 1 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.05 percentage points. Hit rate increased from 33.5% to 33.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.00x speedup with execution time reduced from 0.09ms to 0.09ms (0.2% faster).
+
+

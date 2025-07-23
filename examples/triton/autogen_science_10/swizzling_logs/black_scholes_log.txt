@@ -1,0 +1,156 @@
+--- MEMORY ANALYSISMemory analysis reasoning: The Triton kernel `black_scholes_kernel` is designed to perform a single step of a finite difference method for the Black-Scholes equation. The kernel operates on a block of assets, with each block processing a contiguous segment of the asset array. The memory access patterns and locality are crucial for performance, especially when considering the hardware cache.
+
+1. **Memory Access Patterns:**
+   - **Loading Asset Prices (`s`):** The kernel loads asset prices from `s_ptr` using offsets calculated from the program ID and block size. This access is contiguous within each block, which is beneficial for cache utilization.
+   - **Loading Option Values (`v_prev`, `v_curr`, `v_next`):** The kernel loads the previous, current, and next option values from `v_ptr`. These accesses are also contiguous within each block, but they involve strided access due to the need to access neighboring elements (`v_prev` and `v_next`). The stride is determined by `stride_s`, which is the stride of the asset dimension in the option value array.
+
+2. **Memory Locality:**
+   - **Intra-block Locality:** Within a block, the memory accesses are contiguous for both asset prices and option values. This contiguity ensures that once a cache line is loaded, subsequent accesses within the block can benefit from the cache, reducing memory latency.
+   - **Inter-block Locality:** Between blocks, the memory accesses are not inherently contiguous because each block processes a separate segment of the asset array. This lack of contiguity can lead to cache misses when transitioning from one block to another, especially if the blocks are not aligned with cache line boundaries.
+
+3. **Potential for Cache Optimization:**
+   - **Block Swizzling:** By reordering the block IDs, it might be possible to improve cache locality between blocks. For example, if blocks are processed in an order that aligns with cache line boundaries, the transition between blocks could be made more efficient.
+   - **Stride Considerations:** The stride access for `v_prev` and `v_next` could be optimized by ensuring that the stride aligns with cache line sizes, minimizing the number of cache lines that need to be loaded for each block.
+
+Overall, the kernel exhibits good intra-block locality due to contiguous memory accesses, but there is room for improvement in inter-block locality through block swizzling and careful consideration of stride alignment.
+--------------------------------
+Memory analysis results: The `black_scholes_kernel` in Triton exhibits the following memory access patterns and locality characteristics:
+
+1. **Contiguous Access Within Blocks:** 
+   - The kernel accesses asset prices (`s`) and option values (`v_prev`, `v_curr`, `v_next`) contiguously within each block. This contiguity is beneficial for cache utilization as it allows for efficient loading of cache lines.
+
+2. **Strided Access for Neighboring Values:**
+   - The kernel accesses neighboring option values (`v_prev` and `v_next`) using a stride determined by `stride_s`. This strided access can lead to inefficient cache usage if the stride does not align well with cache line boundaries.
+
+3. **Intra-block Locality:**
+   - Within a block, the memory accesses are well-localized, meaning that once a cache line is loaded, subsequent accesses within the block can benefit from the cache, reducing memory latency.
+
+4. **Inter-block Locality:**
+   - Between blocks, the memory accesses are not inherently contiguous, which can lead to cache misses when transitioning from one block to another. This is particularly relevant if the blocks are not aligned with cache line boundaries.
+
+5. **Opportunities for Optimization:**
+   - **Block Swizzling:** Reordering block IDs to align with cache line boundaries could improve inter-block cache locality.
+   - **Stride Alignment:** Ensuring that the stride for accessing neighboring values aligns with cache line sizes could minimize the number of cache lines loaded per block.
+
+By addressing these aspects, it is possible to enhance the cache efficiency of the kernel, leading to improved performance.
+--------------------------------
+--- KERNEL ITERATION 1 ---
+Optimization reasoning: To optimize the Triton kernel for the MI300x GPU architecture, we need to implement a swizzling pattern that effectively maps blocks to XCDs, maximizing cache utilization. The MI300x has 8 XCDs, each with its own L2 cache. The goal is to ensure that blocks accessing the same data are mapped to the same XCD, while maintaining an even distribution of work across all XCDs.
+
+The default round-robin scheduling assigns blocks to XCDs in a cyclic manner. To improve this, we can introduce a swizzling pattern that reassigns block indices based on their original mapping and the number of XCDs. This involves calculating a new block index that groups blocks accessing similar data together, while still balancing the load across XCDs.
+
+The swizzling pattern can be implemented by computing a new block index using the original block index, the number of XCDs, and the total number of blocks. This new index will determine the XCD to which the block is assigned, ensuring that blocks with shared data are mapped to the same XCD until its capacity is filled.
+
+The key steps in the swizzling pattern are:
+1. Calculate the original XCD assignment using the modulo operation with the number of XCDs.
+2. Determine the number of iterations required to fill each XCD.
+3. Compute the new block index by adjusting the original index based on the calculated iteration and offset.
+
+By implementing this swizzling pattern, we can enhance the cache efficiency of the kernel, leading to improved performance.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def black_scholes_kernel(
+    s_ptr, v_ptr,
+    new_v_ptr,
+    n_assets, n_timesteps,
+    r, sigma, dt,
+    stride_s, stride_t,
+    BLOCK_SIZE: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = tl.cdiv(n_assets, BLOCK_SIZE)
+    pid = tl.program_id(0)
+    
+    # Swizzling pattern
+    original_xcd = pid % num_XCD
+    iteration = pid // num_XCD
+    new_pid = original_xcd * (num_blocks // num_XCD) + iteration
+    
+    offsets = new_pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_assets
+
+    s = tl.load(s_ptr + offsets, mask=mask)
+    
+    # Finite difference coefficients
+    a = 0.5 * dt * (sigma*sigma*s*s - r*s)
+    b = 1 - dt * (sigma*sigma*s*s + r)
+    c = 0.5 * dt * (sigma*sigma*s*s + r*s)
+
+    # Simplified step: in a real solver, this would be part of a loop
+    # over timesteps, often working backwards from maturity.
+    v_prev = tl.load(v_ptr + offsets - stride_s, mask=(offsets > 0) & mask)
+    v_curr = tl.load(v_ptr + offsets, mask=mask)
+    v_next = tl.load(v_ptr + offsets + stride_s, mask=(offsets < n_assets - 1) & mask)
+
+    new_v = a * v_prev + b * v_curr + c * v_next
+    
+    tl.store(new_v_ptr + offsets, new_v, mask=mask)
+
+
+def black_scholes_step(s, v, r, sigma, dt):
+    n_assets = s.shape[0]
+    n_timesteps = 1 # Not used in this simplified kernel
+    new_v = torch.empty_like(v)
+    
+    grid = (triton.cdiv(n_assets, 1024),)
+    
+    black_scholes_kernel[grid](
+        s, v, new_v,
+        n_assets, n_timesteps,
+        r, sigma, dt,
+        s.stride(0), v.stride(0), # Simplified strides
+        BLOCK_SIZE=1024
+    )
+    return new_v
+
+def main():
+    n_assets = 2**18
+    n_timesteps = 1000 # For problem setup
+    
+    r = 0.05      # Risk-free interest rate
+    sigma = 0.2 # Volatility
+    T = 1.0       # Time to maturity
+    dt = T / n_timesteps
+
+    s = torch.linspace(1, 200, n_assets, device='cuda', dtype=torch.float32)
+    # Initial condition: value at maturity (e.g., for a call option)
+    K = 100.0 # Strike price
+    v = torch.clamp(s - K, min=0)
+
+    rep = 100
+    
+    # Warm-up
+    for _ in range(5):
+        current_v = v.clone()
+        # A full solver would loop n_timesteps times
+        current_v = black_scholes_step(s, current_v, r, sigma, dt)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        current_v = v.clone()
+        # A full solver would loop n_timesteps times
+        current_v = black_scholes_step(s, current_v, r, sigma, dt)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton Black-Scholes (1 step) time: {triton_time:.4f} ms")
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 1 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 1.77 percentage points. Hit rate increased from 32.1% to 33.9% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.01x speedup with execution time reduced from 0.00ms to 0.00ms (0.9% faster).
+
+

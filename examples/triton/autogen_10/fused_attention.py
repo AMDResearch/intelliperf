@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 import torch
 import triton
@@ -11,9 +12,9 @@ def fused_attention_kernel(
     stride_kz, stride_kh, stride_kn, stride_kk,
     stride_vz, stride_vh, stride_vn, stride_vk,
     stride_oz, stride_oh, stride_om, stride_on,
-    Z, H, N_CTX, D_HEAD,
-    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr,
-    BLOCK_SIZE_DMODEL: tl.constexpr
+    Z, H, N_CTX,
+    D_HEAD: tl.constexpr,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
 ):
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
@@ -107,9 +108,9 @@ def fused_attention(q, k, v):
         k.stride(0), k.stride(1), k.stride(2), k.stride(3),
         v.stride(0), v.stride(1), v.stride(2), v.stride(3),
         o.stride(0), o.stride(1), o.stride(2), o.stride(3),
-        Z, H, N_CTX, D_HEAD,
-        BLOCK_SIZE_M=128, BLOCK_SIZE_N=64,
-        BLOCK_SIZE_DMODEL=D_HEAD
+        Z, H, N_CTX,
+        D_HEAD=D_HEAD,
+        BLOCK_SIZE_M=128, BLOCK_SIZE_N=64
     )
     return o
 

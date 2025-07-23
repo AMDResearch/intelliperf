@@ -1,0 +1,282 @@
+--- MEMORY ANALYSISMemory analysis reasoning: The kernel `fdtd_2d_kernel` is designed to update the electromagnetic fields `ex`, `ey`, and `hz` in a 2D finite-difference time-domain (FDTD) simulation. The kernel operates on blocks of data, with each block being processed by a separate thread block in Triton. The memory access patterns and locality are crucial for performance, especially when considering the use of hardware caches.
+
+1. **Memory Access Patterns:**
+   - The kernel uses pointers `ex_ptr`, `ey_ptr`, and `hz_ptr` to access the fields `ex`, `ey`, and `hz`, respectively.
+   - The kernel calculates offsets for each block using `pid_x` and `pid_y`, which are the program IDs for the x and y dimensions. These offsets determine the starting point for each block's data in the global memory.
+   - The kernel uses `tl.load` and `tl.store` operations to read from and write to global memory. These operations are masked to ensure that only valid memory locations are accessed, preventing out-of-bounds errors.
+
+2. **Memory Locality:**
+   - **Spatial Locality:** The kernel accesses memory in a structured pattern, with each thread in a block accessing contiguous memory locations. This pattern is beneficial for spatial locality, as it allows for efficient use of cache lines. For example, when updating the `hz` field, the kernel accesses `hz_ptrs` using a 2D grid of offsets, which helps in coalescing memory accesses.
+   - **Temporal Locality:** The kernel updates the fields in a loop, which means that the same memory locations are accessed multiple times across iterations. This can be leveraged by the cache to keep frequently accessed data close to the processor.
+
+3. **Potential for Cache Optimization:**
+   - The current block size is set to 32x32, which is a common size that balances the number of threads per block with the available shared memory and cache size. However, depending on the specific GPU architecture, adjusting the block size could improve cache utilization.
+   - Swizzling the block IDs could help in aligning the work with the cache lines better. For instance, using a Z-order curve or a Hilbert curve to determine block IDs might improve cache locality by ensuring that blocks that are spatially close in the 2D grid are also close in memory.
+--------------------------------
+Memory analysis results: The `fdtd_2d_kernel` exhibits structured memory access patterns that can be optimized for better cache locality. The kernel processes data in blocks, with each block accessing contiguous memory locations, which is beneficial for spatial locality. The use of `tl.load` and `tl.store` with masks ensures that only valid memory locations are accessed, reducing the risk of cache misses due to out-of-bounds accesses.
+
+The kernel's memory access pattern is primarily determined by the offsets calculated using `pid_x` and `pid_y`, which are the program IDs for the x and y dimensions. These offsets ensure that each block operates on a distinct section of the data, minimizing conflicts and maximizing parallelism.
+
+To improve cache locality, consider the following:
+- **Block Size Adjustment:** The current block size of 32x32 is a reasonable choice, but experimenting with different sizes could yield better cache performance depending on the specific GPU architecture.
+- **Block ID Swizzling:** Implementing a swizzling technique, such as a Z-order curve or a Hilbert curve, for block IDs could enhance cache locality by ensuring that blocks that are spatially close in the 2D grid are also close in memory. This can reduce cache misses and improve overall performance.
+
+By understanding and optimizing these memory access patterns, you can potentially achieve better cache utilization and improved performance in the FDTD simulation.
+--------------------------------
+--- KERNEL ITERATION 1 ---
+Optimization reasoning: To optimize the kernel for the MI300X architecture, we need to implement a swizzling pattern that ensures blocks accessing the same data are scheduled to the same XCD, while maintaining an even distribution of work across all XCDs. The architecture has 8 XCDs, and the default round-robin scheduling assigns blocks cyclically to these XCDs. Our goal is to recompute the block index such that blocks with spatial locality are mapped to the same XCD, improving cache utilization.
+
+The swizzling pattern should consider the following:
+1. **Block Index Calculation**: We need to calculate a new block index that maps blocks with spatial locality to the same XCD. This involves understanding the stride and offset of block indices.
+2. **Even Distribution**: Ensure that the workload is evenly distributed across all XCDs, preventing any single XCD from being overloaded.
+3. **Spatial Locality**: Blocks that are spatially close should be mapped to the same XCD to take advantage of shared L2 cache.
+
+To achieve this, we can use a simple swizzling technique that involves computing a new block index based on the original block index, the number of XCDs, and the total number of blocks. This new index will be used to determine the XCD assignment, ensuring that blocks with spatial locality are grouped together.
+
+The swizzling pattern will be implemented as a single line of code within the kernel, using the available parameters. This approach will help improve cache locality and overall performance of the FDTD simulation.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def fdtd_2d_kernel(
+    ex_ptr, ey_ptr, hz_ptr,
+    Nx, Ny,
+    stride_x, stride_y,
+    BLOCK_SIZE_X: tl.constexpr, BLOCK_SIZE_Y: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks_x = (Nx + BLOCK_SIZE_X - 1) // BLOCK_SIZE_X
+    num_blocks_y = (Ny + BLOCK_SIZE_Y - 1) // BLOCK_SIZE_Y
+    num_blocks = num_blocks_x * num_blocks_y
+
+    # Swizzling pattern
+    pid_x = tl.program_id(0)
+    pid_y = tl.program_id(1)
+    block_id = pid_y * num_blocks_x + pid_x
+    swizzled_block_id = (block_id // num_XCD) + (block_id % num_XCD) * (num_blocks // num_XCD)
+    pid_x = swizzled_block_id % num_blocks_x
+    pid_y = swizzled_block_id // num_blocks_x
+
+    offsets_x = pid_x * BLOCK_SIZE_X + tl.arange(0, BLOCK_SIZE_X)
+    offsets_y = pid_y * BLOCK_SIZE_Y + tl.arange(0, BLOCK_SIZE_Y)
+
+    # Update H_z field
+    hz_ptrs = hz_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y
+    mask_hz = (offsets_x[:, None] < Nx - 1) & (offsets_y[None, :] < Ny - 1)
+    
+    ex_here = tl.load(ex_ptr + offsets_x[:, None] * stride_x + (offsets_y[None, :] + 1) * stride_y, mask=mask_hz)
+    ex_there = tl.load(ex_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y, mask=mask_hz)
+    ey_here = tl.load(ey_ptr + (offsets_x[:, None] + 1) * stride_x + offsets_y[None, :] * stride_y, mask=mask_hz)
+    ey_there = tl.load(ey_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y, mask=mask_hz)
+    
+    hz = tl.load(hz_ptrs, mask=mask_hz)
+    hz = hz - 0.5 * (ey_here - ey_there - ex_here + ex_there)
+    tl.store(hz_ptrs, hz, mask=mask_hz)
+
+    # Update E_x field
+    ex_ptrs = ex_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y
+    mask_ex = (offsets_x[:, None] < Nx) & (offsets_y[None, :] > 0) & (offsets_y[None, :] < Ny)
+    
+    hz_here = tl.load(hz_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y, mask=mask_ex)
+    hz_there = tl.load(hz_ptr + offsets_x[:, None] * stride_x + (offsets_y[None, :] - 1) * stride_y, mask=mask_ex)
+    
+    ex = tl.load(ex_ptrs, mask=mask_ex)
+    ex = ex - 0.5 * (hz_here - hz_there)
+    tl.store(ex_ptrs, ex, mask=mask_ex)
+    
+    # Update E_y field
+    ey_ptrs = ey_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y
+    mask_ey = (offsets_x[:, None] > 0) & (offsets_x[:, None] < Nx) & (offsets_y[None, :] < Ny)
+
+    hz_here = tl.load(hz_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y, mask=mask_ey)
+    hz_there = tl.load(hz_ptr + (offsets_x[:, None] - 1) * stride_x + offsets_y[None, :] * stride_y, mask=mask_ey)
+
+    ey = tl.load(ey_ptrs, mask=mask_ey)
+    ey = ey + 0.5 * (hz_here - hz_there)
+    tl.store(ey_ptrs, ey, mask=mask_ey)
+
+
+def fdtd_2d_step(ex, ey, hz):
+    Nx, Ny = ex.shape
+    
+    grid = (triton.cdiv(Nx, 32), triton.cdiv(Ny, 32))
+    
+    fdtd_2d_kernel[grid](
+        ex, ey, hz,
+        Nx, Ny,
+        ex.stride(0), ex.stride(1),
+        BLOCK_SIZE_X=32, BLOCK_SIZE_Y=32
+    )
+
+def main():
+    Nx, Ny = 4096, 4096
+    
+    ex = torch.zeros(Nx, Ny, device='cuda', dtype=torch.float32)
+    ey = torch.zeros(Nx, Ny, device='cuda', dtype=torch.float32)
+    hz = torch.zeros(Nx, Ny, device='cuda', dtype=torch.float32)
+
+    # Initial condition (a point source)
+    hz[Nx // 2, Ny // 2] = 1.0
+
+    n_iters = 100
+    rep = 10
+
+    # Warm-up
+    for _ in range(5):
+        current_ex, current_ey, current_hz = ex.clone(), ey.clone(), hz.clone()
+        for _ in range(n_iters):
+            fdtd_2d_step(current_ex, current_ey, current_hz)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        current_ex, current_ey, current_hz = ex.clone(), ey.clone(), hz.clone()
+        for _ in range(n_iters):
+            fdtd_2d_step(current_ex, current_ey, current_hz)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / (rep * n_iters)
+    print(f"Triton 2D-FDTD time per step: {triton_time:.4f} ms")
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 1 ---
+Optimization Report: L2 Cache Locality Degradation: L2 cache hit rate decreased by 33.70 percentage points. Hit rate decreased from 73.5% to 39.8% (lower percentages indicate worse cache locality). Performance Gain: Achieved 1.11x speedup with execution time reduced from 0.27ms to 0.25ms (10.5% faster).
+
+
+--- KERNEL ITERATION 2 ---
+Optimization reasoning: The goal is to optimize the memory access pattern of the `fdtd_2d_kernel` to improve cache locality by implementing a new swizzling pattern. The previous attempt used a simple swizzling pattern that resulted in a performance gain but degraded L2 cache locality. To address this, we need to explore a different swizzling approach that better aligns with the memory access patterns of the FDTD algorithm.
+
+In this new approach, we will use a more sophisticated swizzling technique that considers both the block ID and the spatial locality of the data. The idea is to map blocks that are spatially close in the 2D grid to the same XCD, thereby improving cache hits. We will use a combination of bit manipulation and arithmetic operations to achieve this.
+
+The swizzling pattern will be implemented as a single line of code within the kernel, ensuring that the function signature remains unchanged. This approach will help in balancing the workload across XCDs while maintaining high cache locality.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def fdtd_2d_kernel(
+    ex_ptr, ey_ptr, hz_ptr,
+    Nx, Ny,
+    stride_x, stride_y,
+    BLOCK_SIZE_X: tl.constexpr, BLOCK_SIZE_Y: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks_x = (Nx + BLOCK_SIZE_X - 1) // BLOCK_SIZE_X
+    num_blocks_y = (Ny + BLOCK_SIZE_Y - 1) // BLOCK_SIZE_Y
+    num_blocks = num_blocks_x * num_blocks_y
+
+    # Swizzling pattern
+    pid_x = tl.program_id(0)
+    pid_y = tl.program_id(1)
+    block_id = pid_y * num_blocks_x + pid_x
+    swizzled_block_id = ((block_id // num_XCD) ^ (block_id % num_XCD)) * (num_blocks // num_XCD)
+    pid_x = swizzled_block_id % num_blocks_x
+    pid_y = swizzled_block_id // num_blocks_x
+
+    offsets_x = pid_x * BLOCK_SIZE_X + tl.arange(0, BLOCK_SIZE_X)
+    offsets_y = pid_y * BLOCK_SIZE_Y + tl.arange(0, BLOCK_SIZE_Y)
+
+    # Update H_z field
+    hz_ptrs = hz_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y
+    mask_hz = (offsets_x[:, None] < Nx - 1) & (offsets_y[None, :] < Ny - 1)
+    
+    ex_here = tl.load(ex_ptr + offsets_x[:, None] * stride_x + (offsets_y[None, :] + 1) * stride_y, mask=mask_hz)
+    ex_there = tl.load(ex_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y, mask=mask_hz)
+    ey_here = tl.load(ey_ptr + (offsets_x[:, None] + 1) * stride_x + offsets_y[None, :] * stride_y, mask=mask_hz)
+    ey_there = tl.load(ey_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y, mask=mask_hz)
+    
+    hz = tl.load(hz_ptrs, mask=mask_hz)
+    hz = hz - 0.5 * (ey_here - ey_there - ex_here + ex_there)
+    tl.store(hz_ptrs, hz, mask=mask_hz)
+
+    # Update E_x field
+    ex_ptrs = ex_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y
+    mask_ex = (offsets_x[:, None] < Nx) & (offsets_y[None, :] > 0) & (offsets_y[None, :] < Ny)
+    
+    hz_here = tl.load(hz_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y, mask=mask_ex)
+    hz_there = tl.load(hz_ptr + offsets_x[:, None] * stride_x + (offsets_y[None, :] - 1) * stride_y, mask=mask_ex)
+    
+    ex = tl.load(ex_ptrs, mask=mask_ex)
+    ex = ex - 0.5 * (hz_here - hz_there)
+    tl.store(ex_ptrs, ex, mask=mask_ex)
+    
+    # Update E_y field
+    ey_ptrs = ey_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y
+    mask_ey = (offsets_x[:, None] > 0) & (offsets_x[:, None] < Nx) & (offsets_y[None, :] < Ny)
+
+    hz_here = tl.load(hz_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y, mask=mask_ey)
+    hz_there = tl.load(hz_ptr + (offsets_x[:, None] - 1) * stride_x + offsets_y[None, :] * stride_y, mask=mask_ey)
+
+    ey = tl.load(ey_ptrs, mask=mask_ey)
+    ey = ey + 0.5 * (hz_here - hz_there)
+    tl.store(ey_ptrs, ey, mask=mask_ey)
+
+
+def fdtd_2d_step(ex, ey, hz):
+    Nx, Ny = ex.shape
+    
+    grid = (triton.cdiv(Nx, 32), triton.cdiv(Ny, 32))
+    
+    fdtd_2d_kernel[grid](
+        ex, ey, hz,
+        Nx, Ny,
+        ex.stride(0), ex.stride(1),
+        BLOCK_SIZE_X=32, BLOCK_SIZE_Y=32
+    )
+
+def main():
+    Nx, Ny = 4096, 4096
+    
+    ex = torch.zeros(Nx, Ny, device='cuda', dtype=torch.float32)
+    ey = torch.zeros(Nx, Ny, device='cuda', dtype=torch.float32)
+    hz = torch.zeros(Nx, Ny, device='cuda', dtype=torch.float32)
+
+    # Initial condition (a point source)
+    hz[Nx // 2, Ny // 2] = 1.0
+
+    n_iters = 100
+    rep = 10
+
+    # Warm-up
+    for _ in range(5):
+        current_ex, current_ey, current_hz = ex.clone(), ey.clone(), hz.clone()
+        for _ in range(n_iters):
+            fdtd_2d_step(current_ex, current_ey, current_hz)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        current_ex, current_ey, current_hz = ex.clone(), ey.clone(), hz.clone()
+        for _ in range(n_iters):
+            fdtd_2d_step(current_ex, current_ey, current_hz)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / (rep * n_iters)
+    print(f"Triton 2D-FDTD time per step: {triton_time:.4f} ms")
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 2 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 7.07 percentage points. Hit rate increased from 73.5% to 80.6% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 15.57x speedup with execution time reduced from 0.27ms to 0.02ms (1456.8% faster).
+
+

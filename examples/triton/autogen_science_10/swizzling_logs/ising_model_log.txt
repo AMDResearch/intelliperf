@@ -1,0 +1,382 @@
+--- MEMORY ANALYSISMemory analysis reasoning: The Triton kernel for the Ising model simulation involves accessing a 2D grid of spins, where each spin interacts with its four neighbors (up, down, left, right). The kernel is designed to update the spins based on the Metropolis-Hastings algorithm, which involves calculating the energy change and deciding whether to flip the spin based on a probability.
+
+The memory access pattern is primarily determined by how the spins and their neighbors are accessed. Each block of the kernel processes a subgrid of the spins, defined by `BLOCK_SIZE_X` and `BLOCK_SIZE_Y`. The kernel uses periodic boundary conditions to access neighbors, which means that the grid is treated as if it wraps around at the edges.
+
+The memory locality can be analyzed by considering how the data is accessed within each block and across blocks:
+
+1. **Intra-block locality**: Within each block, the kernel accesses a contiguous subgrid of spins. This means that the memory accesses for the current spin and its neighbors are likely to be close in memory, which can be beneficial for cache usage. The use of `tl.load` with a mask ensures that only valid memory locations are accessed, which helps in maintaining efficient memory access patterns.
+
+2. **Inter-block locality**: The blocks are processed independently, and each block accesses a distinct subgrid of the spins. However, due to the periodic boundary conditions, some blocks may access the same memory locations at the edges of the grid. This can lead to cache thrashing if not managed properly. The grid dimensions and block sizes are chosen to ensure that each block fits well within the cache, but the periodic access pattern can still lead to some inefficiencies.
+
+3. **Stride and alignment**: The use of strides (`stride_x` and `stride_y`) in accessing the spins ensures that the memory accesses are aligned with the underlying data layout. This alignment is crucial for maximizing memory throughput and cache efficiency.
+
+Overall, the kernel exhibits good intra-block locality due to the contiguous access pattern within each block. However, the inter-block locality could be improved by considering the periodic boundary conditions and potentially swizzling the block IDs to better align the work with the hardware cache.
+--------------------------------
+Memory analysis results: The memory access pattern in the Triton kernel for the Ising model is characterized by the following key points:
+
+1. **Contiguous Access within Blocks**: Each block processes a subgrid of spins, accessing them in a contiguous manner. This access pattern is beneficial for cache usage as it allows for efficient loading of data into the cache.
+
+2. **Periodic Boundary Conditions**: The kernel uses periodic boundary conditions to access neighboring spins. This means that the edges of the grid wrap around, which can lead to some blocks accessing the same memory locations. This periodic access pattern can cause cache thrashing if not managed properly.
+
+3. **Stride Usage**: The kernel uses strides to access the spins, which helps in aligning the memory accesses with the data layout. Proper alignment is crucial for maximizing memory throughput and cache efficiency.
+
+4. **Intra-block Locality**: The kernel exhibits good intra-block locality due to the contiguous access pattern within each block. This locality ensures that the data required for computations is likely to be present in the cache, reducing the need for frequent memory accesses.
+
+5. **Inter-block Locality**: The inter-block locality could be improved by considering the periodic boundary conditions. Swizzling the block IDs to better align the work with the hardware cache could help in reducing cache misses and improving performance.
+
+By understanding these memory access patterns and locality characteristics, you can explore techniques such as block ID swizzling to enhance cache efficiency and overall performance of the kernel.
+--------------------------------
+--- KERNEL ITERATION 1 ---
+Optimization reasoning: To optimize the memory access pattern for the Ising model kernel on the MI300x GPU architecture, we need to implement a swizzling pattern that effectively maps blocks to XCDs. The goal is to ensure that blocks accessing the same data are scheduled to the same XCD, thereby improving cache locality and reducing cache misses. Given that the GPU has 8 XCDs, we need to distribute the blocks evenly across these XCDs while ensuring that blocks sharing data are mapped to the same XCD.
+
+The default round-robin scheduling assigns blocks to XCDs in a cyclic manner. To improve this, we can introduce a swizzling pattern that reassigns block indices based on their original mapping and the number of XCDs. The swizzling pattern should consider the periodic boundary conditions and the memory access pattern of the Ising model to ensure that neighboring blocks, which are likely to access the same data, are mapped to the same XCD.
+
+The swizzling pattern can be implemented by calculating a new block index using the original block index, the number of XCDs, and the total number of blocks. This involves computing the stride and offset for each block and reassigning the block index accordingly. The new block index should ensure that blocks accessing the same memory locations are grouped together on the same XCD.
+
+In this implementation, we will introduce a swizzling line within the kernel to achieve this optimized mapping. The swizzling line will compute a new block index based on the original block index and the number of XCDs, ensuring that blocks are evenly distributed across XCDs while maximizing cache locality.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def ising_model_kernel(
+    spins_ptr, new_spins_ptr,
+    Nx, Ny,
+    stride_x, stride_y,
+    beta,
+    BLOCK_SIZE_X: tl.constexpr, BLOCK_SIZE_Y: tl.constexpr
+):
+    pid_x = tl.program_id(0)
+    pid_y = tl.program_id(1)
+
+    # Swizzling pattern to optimize block mapping to XCDs
+    num_XCD = 8
+    num_blocks_x = (Nx + BLOCK_SIZE_X - 1) // BLOCK_SIZE_X
+    num_blocks_y = (Ny + BLOCK_SIZE_Y - 1) // BLOCK_SIZE_Y
+    total_blocks = num_blocks_x * num_blocks_y
+    new_pid_x = (pid_x // num_XCD) + (pid_x % num_XCD) * (total_blocks // num_XCD)
+    new_pid_y = (pid_y // num_XCD) + (pid_y % num_XCD) * (total_blocks // num_XCD)
+
+    offsets_x = new_pid_x * BLOCK_SIZE_X + tl.arange(0, BLOCK_SIZE_X)
+    offsets_y = new_pid_y * BLOCK_SIZE_Y + tl.arange(0, BLOCK_SIZE_Y)
+
+    spins_ptrs = spins_ptr + (offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y)
+    mask = (offsets_x[:, None] < Nx) & (offsets_y[None, :] < Ny)
+    
+    current_spin = tl.load(spins_ptrs, mask=mask)
+
+    # Load neighbors with periodic boundary conditions
+    up = tl.load(spins_ptr + (offsets_x[:, None] * stride_x + ((offsets_y[None, :] - 1 + Ny) % Ny) * stride_y), mask=mask)
+    down = tl.load(spins_ptr + (offsets_x[:, None] * stride_x + ((offsets_y[None, :] + 1) % Ny) * stride_y), mask=mask)
+    left = tl.load(spins_ptr + (((offsets_x[:, None] - 1 + Nx) % Nx) * stride_x + offsets_y[None, :] * stride_y), mask=mask)
+    right = tl.load(spins_ptr + (((offsets_x[:, None] + 1) % Nx) * stride_x + offsets_y[None, :] * stride_y), mask=mask)
+    
+    # Calculate energy change if spin is flipped
+    neighbor_sum = up + down + left + right
+    dE = 2 * current_spin * neighbor_sum
+    
+    # Metropolis-Hastings update rule
+    prob = tl.exp(-dE * beta)
+    
+    # Generate random numbers
+    seed = new_pid_x * BLOCK_SIZE_X + new_pid_y * BLOCK_SIZE_Y
+    rand_offsets = tl.arange(0, BLOCK_SIZE_X * BLOCK_SIZE_Y)
+    rand = tl.rand(seed, rand_offsets)
+    rand = tl.reshape(rand, (BLOCK_SIZE_X, BLOCK_SIZE_Y))
+    
+    new_spin = tl.where(rand < prob, -current_spin, current_spin)
+    
+    new_spins_ptrs = new_spins_ptr + (offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y)
+    tl.store(new_spins_ptrs, new_spin, mask=mask)
+
+
+def ising_model_step(spins, beta):
+    Nx, Ny = spins.shape
+    new_spins = torch.empty_like(spins)
+    
+    grid = (triton.cdiv(Nx, 32), triton.cdiv(Ny, 32))
+
+    ising_model_kernel[grid](
+        spins, new_spins,
+        Nx, Ny,
+        spins.stride(0), spins.stride(1),
+        beta,
+        BLOCK_SIZE_X=32, BLOCK_SIZE_Y=32
+    )
+    return new_spins
+
+def main():
+    Nx, Ny = 4096, 4096
+    beta = 0.44 # Critical temperature for 2D Ising model is ~0.44
+
+    spins = torch.randint(0, 2, (Nx, Ny), device='cuda', dtype=torch.int8) * 2 - 1
+    
+    n_iters = 100
+    rep = 10
+    
+    # Warm-up
+    for _ in range(5):
+        current_spins = spins.clone()
+        for _ in range(n_iters):
+            current_spins = ising_model_step(current_spins, beta)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        current_spins = spins.clone()
+        for _ in range(n_iters):
+            current_spins = ising_model_step(current_spins, beta)
+    end_time.record()
+    torch.cuda.synchronize()
+    
+    triton_time = start_time.elapsed_time(end_time) / (rep * n_iters)
+    print(f"Triton Ising Model time per step: {triton_time:.4f} ms")
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 1 ---
+Optimization Report: L2 Cache Locality Degradation: L2 cache hit rate decreased by 0.82 percentage points. Hit rate decreased from 84.6% to 83.8% (lower percentages indicate worse cache locality). Performance Gain: Achieved 5.27x speedup with execution time reduced from 0.09ms to 0.02ms (427.2% faster).
+
+
+--- KERNEL ITERATION 2 ---
+Optimization reasoning: The goal is to optimize the swizzling pattern to improve cache locality and performance by ensuring that blocks accessing the same data are mapped to the same XCD. The previous attempt used a swizzling pattern that degraded L2 cache locality, although it achieved a significant performance gain. To try a new approach, we need to consider how blocks are distributed across XCDs and how they access memory. The new swizzling pattern should aim to balance the load across XCDs while ensuring that blocks with high data sharing are mapped to the same XCD. This can be achieved by reassigning block indices based on their original mapping and the number of XCDs, while considering the total number of blocks.
+
+The new approach will involve calculating a new block index by considering the original block index, the number of XCDs, and the total number of blocks. The idea is to group blocks that access similar data together and map them to the same XCD, while maintaining an even distribution of blocks across all XCDs.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def ising_model_kernel(
+    spins_ptr, new_spins_ptr,
+    Nx, Ny,
+    stride_x, stride_y,
+    beta,
+    BLOCK_SIZE_X: tl.constexpr, BLOCK_SIZE_Y: tl.constexpr
+):
+    pid_x = tl.program_id(0)
+    pid_y = tl.program_id(1)
+
+    # New swizzling pattern
+    num_XCD = 8
+    num_blocks_x = (Nx + BLOCK_SIZE_X - 1) // BLOCK_SIZE_X
+    num_blocks_y = (Ny + BLOCK_SIZE_Y - 1) // BLOCK_SIZE_Y
+    total_blocks = num_blocks_x * num_blocks_y
+    new_pid_x = (pid_x % num_XCD) * (total_blocks // num_XCD) + (pid_x // num_XCD)
+    new_pid_y = (pid_y % num_XCD) * (total_blocks // num_XCD) + (pid_y // num_XCD)
+
+    offsets_x = new_pid_x * BLOCK_SIZE_X + tl.arange(0, BLOCK_SIZE_X)
+    offsets_y = new_pid_y * BLOCK_SIZE_Y + tl.arange(0, BLOCK_SIZE_Y)
+
+    spins_ptrs = spins_ptr + (offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y)
+    mask = (offsets_x[:, None] < Nx) & (offsets_y[None, :] < Ny)
+    
+    current_spin = tl.load(spins_ptrs, mask=mask)
+
+    # Load neighbors with periodic boundary conditions
+    up = tl.load(spins_ptr + (offsets_x[:, None] * stride_x + ((offsets_y[None, :] - 1 + Ny) % Ny) * stride_y), mask=mask)
+    down = tl.load(spins_ptr + (offsets_x[:, None] * stride_x + ((offsets_y[None, :] + 1) % Ny) * stride_y), mask=mask)
+    left = tl.load(spins_ptr + (((offsets_x[:, None] - 1 + Nx) % Nx) * stride_x + offsets_y[None, :] * stride_y), mask=mask)
+    right = tl.load(spins_ptr + (((offsets_x[:, None] + 1) % Nx) * stride_x + offsets_y[None, :] * stride_y), mask=mask)
+    
+    # Calculate energy change if spin is flipped
+    neighbor_sum = up + down + left + right
+    dE = 2 * current_spin * neighbor_sum
+    
+    # Metropolis-Hastings update rule
+    prob = tl.exp(-dE * beta)
+    
+    # Generate random numbers
+    seed = new_pid_x * BLOCK_SIZE_X + new_pid_y * BLOCK_SIZE_Y
+    rand_offsets = tl.arange(0, BLOCK_SIZE_X * BLOCK_SIZE_Y)
+    rand = tl.rand(seed, rand_offsets)
+    rand = tl.reshape(rand, (BLOCK_SIZE_X, BLOCK_SIZE_Y))
+    
+    new_spin = tl.where(rand < prob, -current_spin, current_spin)
+    
+    new_spins_ptrs = new_spins_ptr + (offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y)
+    tl.store(new_spins_ptrs, new_spin, mask=mask)
+
+
+def ising_model_step(spins, beta):
+    Nx, Ny = spins.shape
+    new_spins = torch.empty_like(spins)
+    
+    grid = (triton.cdiv(Nx, 32), triton.cdiv(Ny, 32))
+
+    ising_model_kernel[grid](
+        spins, new_spins,
+        Nx, Ny,
+        spins.stride(0), spins.stride(1),
+        beta,
+        BLOCK_SIZE_X=32, BLOCK_SIZE_Y=32
+    )
+    return new_spins
+
+def main():
+    Nx, Ny = 4096, 4096
+    beta = 0.44 # Critical temperature for 2D Ising model is ~0.44
+
+    spins = torch.randint(0, 2, (Nx, Ny), device='cuda', dtype=torch.int8) * 2 - 1
+    
+    n_iters = 100
+    rep = 10
+    
+    # Warm-up
+    for _ in range(5):
+        current_spins = spins.clone()
+        for _ in range(n_iters):
+            current_spins = ising_model_step(current_spins, beta)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        current_spins = spins.clone()
+        for _ in range(n_iters):
+            current_spins = ising_model_step(current_spins, beta)
+    end_time.record()
+    torch.cuda.synchronize()
+    
+    triton_time = start_time.elapsed_time(end_time) / (rep * n_iters)
+    print(f"Triton Ising Model time per step: {triton_time:.4f} ms")
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 2 ---
+Optimization Report: L2 Cache Locality Degradation: L2 cache hit rate decreased by 0.79 percentage points. Hit rate decreased from 84.6% to 83.8% (lower percentages indicate worse cache locality). Performance Gain: Achieved 5.31x speedup with execution time reduced from 0.09ms to 0.02ms (430.8% faster).
+
+
+--- KERNEL ITERATION 3 ---
+Optimization reasoning: To optimize the swizzling pattern for the Triton kernel, we need to ensure that blocks accessing the same memory are scheduled to the same XCD, thereby improving cache locality. The previous attempts used a swizzling pattern that rearranged the block indices based on a modulo operation with the number of XCDs. However, this approach did not fully optimize the cache locality as indicated by the slight decrease in L2 cache hit rate.
+
+For a new approach, we can consider a more sophisticated swizzling pattern that takes into account both the block indices and the total number of blocks. The goal is to distribute the blocks evenly across the XCDs while ensuring that blocks accessing the same or nearby data are mapped to the same XCD. This can be achieved by interleaving the block indices in a way that maximizes the reuse of cached data within each XCD.
+
+The new swizzling pattern will involve calculating a new block index based on a combination of the original block index, the number of XCDs, and the total number of blocks. This will help in achieving a better balance of workload across the XCDs and improve cache locality.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def ising_model_kernel(
+    spins_ptr, new_spins_ptr,
+    Nx, Ny,
+    stride_x, stride_y,
+    beta,
+    BLOCK_SIZE_X: tl.constexpr, BLOCK_SIZE_Y: tl.constexpr
+):
+    pid_x = tl.program_id(0)
+    pid_y = tl.program_id(1)
+
+    # New swizzling pattern
+    num_XCD = 8
+    num_blocks_x = (Nx + BLOCK_SIZE_X - 1) // BLOCK_SIZE_X
+    num_blocks_y = (Ny + BLOCK_SIZE_Y - 1) // BLOCK_SIZE_Y
+    total_blocks = num_blocks_x * num_blocks_y
+    new_pid_x = ((pid_x // num_XCD) + (pid_x % num_XCD) * (total_blocks // num_XCD)) % num_blocks_x
+    new_pid_y = ((pid_y // num_XCD) + (pid_y % num_XCD) * (total_blocks // num_XCD)) % num_blocks_y
+
+    offsets_x = new_pid_x * BLOCK_SIZE_X + tl.arange(0, BLOCK_SIZE_X)
+    offsets_y = new_pid_y * BLOCK_SIZE_Y + tl.arange(0, BLOCK_SIZE_Y)
+
+    spins_ptrs = spins_ptr + (offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y)
+    mask = (offsets_x[:, None] < Nx) & (offsets_y[None, :] < Ny)
+    
+    current_spin = tl.load(spins_ptrs, mask=mask)
+
+    # Load neighbors with periodic boundary conditions
+    up = tl.load(spins_ptr + (offsets_x[:, None] * stride_x + ((offsets_y[None, :] - 1 + Ny) % Ny) * stride_y), mask=mask)
+    down = tl.load(spins_ptr + (offsets_x[:, None] * stride_x + ((offsets_y[None, :] + 1) % Ny) * stride_y), mask=mask)
+    left = tl.load(spins_ptr + (((offsets_x[:, None] - 1 + Nx) % Nx) * stride_x + offsets_y[None, :] * stride_y), mask=mask)
+    right = tl.load(spins_ptr + (((offsets_x[:, None] + 1) % Nx) * stride_x + offsets_y[None, :] * stride_y), mask=mask)
+    
+    # Calculate energy change if spin is flipped
+    neighbor_sum = up + down + left + right
+    dE = 2 * current_spin * neighbor_sum
+    
+    # Metropolis-Hastings update rule
+    prob = tl.exp(-dE * beta)
+    
+    # Generate random numbers
+    seed = new_pid_x * BLOCK_SIZE_X + new_pid_y * BLOCK_SIZE_Y
+    rand_offsets = tl.arange(0, BLOCK_SIZE_X * BLOCK_SIZE_Y)
+    rand = tl.rand(seed, rand_offsets)
+    rand = tl.reshape(rand, (BLOCK_SIZE_X, BLOCK_SIZE_Y))
+    
+    new_spin = tl.where(rand < prob, -current_spin, current_spin)
+    
+    new_spins_ptrs = new_spins_ptr + (offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y)
+    tl.store(new_spins_ptrs, new_spin, mask=mask)
+
+
+def ising_model_step(spins, beta):
+    Nx, Ny = spins.shape
+    new_spins = torch.empty_like(spins)
+    
+    grid = (triton.cdiv(Nx, 32), triton.cdiv(Ny, 32))
+
+    ising_model_kernel[grid](
+        spins, new_spins,
+        Nx, Ny,
+        spins.stride(0), spins.stride(1),
+        beta,
+        BLOCK_SIZE_X=32, BLOCK_SIZE_Y=32
+    )
+    return new_spins
+
+def main():
+    Nx, Ny = 4096, 4096
+    beta = 0.44 # Critical temperature for 2D Ising model is ~0.44
+
+    spins = torch.randint(0, 2, (Nx, Ny), device='cuda', dtype=torch.int8) * 2 - 1
+    
+    n_iters = 100
+    rep = 10
+    
+    # Warm-up
+    for _ in range(5):
+        current_spins = spins.clone()
+        for _ in range(n_iters):
+            current_spins = ising_model_step(current_spins, beta)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        current_spins = spins.clone()
+        for _ in range(n_iters):
+            current_spins = ising_model_step(current_spins, beta)
+    end_time.record()
+    torch.cuda.synchronize()
+    
+    triton_time = start_time.elapsed_time(end_time) / (rep * n_iters)
+    print(f"Triton Ising Model time per step: {triton_time:.4f} ms")
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 3 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 14.52 percentage points. Hit rate increased from 84.6% to 99.1% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.03x speedup with execution time reduced from 0.09ms to 0.09ms (2.6% faster).
+
+
