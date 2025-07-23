@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 import torch
 import triton
@@ -18,7 +19,7 @@ def fdtd_2d_kernel(
 
     # Update H_z field
     hz_ptrs = hz_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y
-    mask_hz = (offsets_x[:, None] < Nx) & (offsets_y[None, :] < Ny - 1)
+    mask_hz = (offsets_x[:, None] < Nx - 1) & (offsets_y[None, :] < Ny - 1)
     
     ex_here = tl.load(ex_ptr + offsets_x[:, None] * stride_x + (offsets_y[None, :] + 1) * stride_y, mask=mask_hz)
     ex_there = tl.load(ex_ptr + offsets_x[:, None] * stride_x + offsets_y[None, :] * stride_y, mask=mask_hz)

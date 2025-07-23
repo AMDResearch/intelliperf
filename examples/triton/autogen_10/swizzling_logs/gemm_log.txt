@@ -1,0 +1,163 @@
+--- MEMORY ANALYSISMemory analysis reasoning: The Triton kernel provided is designed to perform matrix multiplication, which involves accessing and manipulating large blocks of memory. Understanding the memory access patterns and locality is crucial for optimizing performance, especially in GPU architectures where memory bandwidth and cache utilization are critical.
+
+1. **Memory Access Patterns**:
+   - **A Matrix**: The kernel accesses the A matrix using `a_ptrs`, which is calculated based on the block indices `pid_m` and `offs_am`. The access pattern is primarily row-major, as it iterates over rows of A for a given block of columns defined by `BLOCK_SIZE_K`.
+   - **B Matrix**: The B matrix is accessed using `b_ptrs`, which is calculated using `pid_n` and `offs_bn`. The access pattern is column-major, iterating over columns for a given block of rows defined by `BLOCK_SIZE_K`.
+   - **C Matrix**: The result matrix C is accessed using `c_ptrs`, which combines the row and column offsets `offs_cm` and `offs_cn`. The access pattern is a combination of row and column major, as it writes the result of the dot product into the corresponding block of C.
+
+2. **Memory Locality**:
+   - **Spatial Locality**: The kernel exhibits spatial locality within each block of A and B due to the contiguous access of elements within the block size dimensions (`BLOCK_SIZE_M`, `BLOCK_SIZE_N`, `BLOCK_SIZE_K`). This is beneficial for cache utilization as consecutive memory accesses are likely to hit the cache.
+   - **Temporal Locality**: Temporal locality is present when the same elements of A and B are reused across different iterations of the loop over `k`. This reuse can be optimized by ensuring that these elements remain in cache across iterations.
+   - **Inter-block Locality**: The grouping of blocks using `GROUP_SIZE_M` can be leveraged to improve inter-block locality. By processing groups of blocks that are close in memory, the kernel can reduce cache misses and improve data reuse.
+
+3. **Potential for Optimization**:
+   - **Swizzling Block IDs**: By reordering the block processing order (swizzling), it is possible to align the memory accesses more closely with the cache line boundaries, improving cache hit rates.
+   - **Prefetching**: Explicit prefetching of blocks of A and B into shared memory or cache before they are needed can further enhance performance by hiding memory latency.
+
+Overall, the kernel's memory access patterns are designed to take advantage of the GPU's memory hierarchy, but there is potential for further optimization by improving cache locality through strategic block processing order and prefetching.
+--------------------------------
+Memory analysis results: The Triton kernel for matrix multiplication exhibits specific memory access patterns and locality characteristics that can be optimized for better performance:
+
+1. **Access Patterns**:
+   - The A matrix is accessed in a row-major fashion within each block, while the B matrix is accessed in a column-major fashion. This results in a mixed access pattern for the C matrix, which combines both row and column accesses.
+   - The kernel iterates over blocks of size `BLOCK_SIZE_M`, `BLOCK_SIZE_N`, and `BLOCK_SIZE_K`, accessing contiguous memory regions within these blocks.
+
+2. **Locality**:
+   - **Spatial Locality**: The kernel benefits from spatial locality within each block, as elements are accessed contiguously. This is advantageous for cache utilization, as it increases the likelihood of cache hits.
+   - **Temporal Locality**: There is temporal reuse of elements within the loop over `k`, as the same elements of A and B are used multiple times across different iterations.
+   - **Inter-block Locality**: The use of `GROUP_SIZE_M` to group blocks can be leveraged to improve inter-block locality, reducing cache misses by processing spatially or temporally adjacent blocks together.
+
+3. **Optimization Opportunities**:
+   - **Block Swizzling**: Reordering the processing of blocks (swizzling) can align memory accesses with cache line boundaries, improving cache efficiency.
+   - **Prefetching**: Implementing prefetching strategies for A and B blocks can hide memory latency and improve throughput by ensuring data is available in cache when needed.
+
+By understanding and optimizing these memory access patterns and locality characteristics, the kernel's performance can be significantly enhanced, particularly in terms of cache utilization and memory bandwidth efficiency.
+--------------------------------
+--- KERNEL ITERATION 1 ---
+Optimization reasoning: To optimize the Triton kernel for matrix multiplication on the MI300x GPU architecture, we need to implement a swizzling pattern that efficiently maps blocks to XCDs. The goal is to ensure that blocks accessing the same data are scheduled to the same XCD, thereby improving L2 cache hit rates. The MI300x GPU has 8 XCDs, and the default block assignment is round-robin. We need to modify this to achieve better data locality.
+
+The swizzling pattern should:
+1. Calculate the original XCD assignment using the default round-robin method.
+2. Reassign blocks to XCDs such that blocks sharing data are grouped together.
+3. Ensure an even distribution of blocks across all XCDs.
+
+The swizzling pattern can be implemented by computing a new block index based on the original block index, the number of XCDs, and the total number of blocks. This involves calculating strides and offsets to determine how blocks are reassigned.
+
+The swizzling line will be added inside the kernel, and the new block index will be used for all subsequent computations. This approach should enhance cache utilization and memory bandwidth efficiency.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def matmul_kernel(
+    a_ptr, b_ptr, c_ptr,
+    M, N, K,
+    stride_am, stride_ak,
+    stride_bk, stride_bn,
+    stride_cm, stride_cn,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr,
+    GROUP_SIZE_M: tl.constexpr,
+):
+    """Kernel for computing the matmul C = A x B.
+    A has shape (M, K), B has shape (K, N) and C has shape (M, N)
+    """
+    num_XCD = 8
+    num_blocks = tl.cdiv(M, BLOCK_SIZE_M) * tl.cdiv(N, BLOCK_SIZE_N)
+    pid = tl.program_id(axis=0)
+    
+    # Swizzling pattern
+    original_xcd = pid % num_XCD
+    new_pid = (pid // num_XCD) + (original_xcd * (num_blocks // num_XCD))
+    pid = new_pid
+
+    num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
+    num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
+    num_pid_in_group = GROUP_SIZE_M * num_pid_n
+    group_id = pid // num_pid_in_group
+    first_pid_m = group_id * GROUP_SIZE_M
+    group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
+    pid_m = first_pid_m + (pid % group_size_m)
+    pid_n = (pid % num_pid_in_group) // group_size_m
+
+    offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M))[:, None]
+    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N))[None, :]
+    offs_k = tl.arange(0, BLOCK_SIZE_K)
+    a_ptrs = a_ptr + (offs_am * stride_am + offs_k[None, :] * stride_ak)
+    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn * stride_bn)
+
+    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
+        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
+        accumulator += tl.dot(a, b)
+        a_ptrs += BLOCK_SIZE_K * stride_ak
+        b_ptrs += BLOCK_SIZE_K * stride_bk
+    c = accumulator.to(tl.float16)
+
+    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+    tl.store(c_ptrs, c, mask=c_mask)
+
+def matmul(a, b):
+    M, K = a.shape
+    K, N = b.shape
+    c = torch.empty((M, N), device=a.device, dtype=a.dtype)
+    grid = lambda META: (
+        triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']),
+    )
+    matmul_kernel[grid](
+        a, b, c,
+        M, N, K,
+        a.stride(0), a.stride(1),
+        b.stride(0), b.stride(1),
+        c.stride(0), c.stride(1),
+        BLOCK_SIZE_M=128, BLOCK_SIZE_N=256, BLOCK_SIZE_K=64,
+        GROUP_SIZE_M=8,
+    )
+    return c
+
+def main():
+    M, N, K = 8192, 8192, 8192
+    a = torch.randn((M, K), device='cuda', dtype=torch.float16)
+    b = torch.randn((K, N), device='cuda', dtype=torch.float16)
+    
+    # repetitions for performance measurement
+    rep = 100
+    
+    # Warm-up
+    for _ in range(10):
+        c_triton = matmul(a, b)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        c_triton = matmul(a, b)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+
+    # torch_output = torch.matmul(a,b)
+    # print(f"Triton output: {c_triton}")
+    # print(f"Torch output: {torch_output}")
+    print(f"Triton matmul time: {triton_time:.4f} ms")
+
+    # For verification
+    # c_torch = torch.matmul(a, b)
+    # assert torch.allclose(c_triton, c_torch, atol=1e-2, rtol=0), "Triton and PyTorch results differ"
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 1 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 33.22 percentage points. Hit rate increased from 44.2% to 77.4% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.06x speedup with execution time reduced from 3.02ms to 2.86ms (5.7% faster).
+
+

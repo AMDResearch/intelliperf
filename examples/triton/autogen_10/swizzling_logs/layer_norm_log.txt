@@ -1,0 +1,271 @@
+--- MEMORY ANALYSISMemory analysis reasoning: The Triton kernel `layer_norm_kernel` is designed to perform layer normalization on a 2D tensor `x` with dimensions `MxN`. The kernel is launched with a grid size of `(M,)`, meaning each program instance (or block) is responsible for processing one row of the input matrix `x`. The memory access patterns and locality are crucial for understanding how to optimize the kernel for better cache performance.
+
+1. **Memory Access Patterns:**
+   - **Input Matrix `x`:** Each block accesses a row of the matrix `x`. The access pattern is sequential within a row, as the kernel iterates over the columns in chunks of `BLOCK_SIZE_N`. This sequential access within a row is beneficial for cache locality.
+   - **Weights `w` and Biases `b`:** These are accessed in a similar sequential manner as `x`, but they are shared across all rows. This means that once a portion of `w` or `b` is loaded into cache, it can be reused by subsequent blocks, assuming the cache is large enough to hold these vectors.
+   - **Output Matrix `y`:** The output is written in a similar pattern to the input, with each block writing to a row of `y`. This again benefits from sequential access within a row.
+
+2. **Memory Locality:**
+   - **Spatial Locality:** The kernel exhibits good spatial locality within each row due to the sequential access pattern. This is beneficial for cache performance as it allows for efficient prefetching and reduced cache misses.
+   - **Temporal Locality:** There is limited temporal locality within a single execution of the kernel because each block processes a different row. However, the reuse of `w` and `b` across different rows can provide some temporal locality if these vectors remain in cache between block executions.
+
+3. **Potential for Optimization:**
+   - **Block Swizzling:** By adjusting the order in which blocks are executed (e.g., processing non-consecutive rows in a way that aligns with cache line sizes), it might be possible to improve cache utilization. This could involve reordering the block IDs to better align with the hardware's cache architecture.
+   - **Cache Blocking:** Increasing `BLOCK_SIZE_N` to better match the cache line size could improve cache efficiency, assuming the hardware can support larger block sizes without excessive register pressure.
+
+Overall, the kernel's memory access pattern is already quite efficient due to its sequential access within rows. However, further optimizations could be achieved by considering the specific cache architecture of the target hardware and adjusting the block execution order or size accordingly.
+--------------------------------
+Memory analysis results: The `layer_norm_kernel` in Triton processes each row of the input matrix `x` independently, with each block handling one row. The memory access pattern is primarily sequential within each row, which is beneficial for spatial locality and cache performance. The weights `w` and biases `b` are accessed in a similar sequential manner and are shared across all rows, providing potential for temporal locality if they remain in cache between block executions.
+
+The kernel exhibits good spatial locality due to the sequential access pattern within rows, which allows for efficient cache line utilization. Temporal locality is limited within a single execution, but the reuse of `w` and `b` across different rows can enhance it if these vectors are cached.
+
+To optimize for better cache locality, consider block swizzling to reorder block execution in a way that aligns with the cache architecture. Additionally, adjusting `BLOCK_SIZE_N` to better match cache line sizes could improve cache efficiency, provided the hardware can handle larger block sizes without excessive register pressure.
+
+Overall, the kernel's memory access pattern is efficient, but further optimizations could be achieved by aligning block execution with the hardware's cache architecture.
+--------------------------------
+--- KERNEL ITERATION 1 ---
+Optimization reasoning: To optimize the Triton kernel for the MI300x GPU architecture, we need to implement a swizzling pattern that efficiently maps blocks to XCDs, maximizing cache utilization. The MI300x GPU has 8 XCDs, each with its own L2 cache. The goal is to ensure that blocks accessing the same data are scheduled to the same XCD, enhancing temporal locality and cache hit rates.
+
+The default round-robin scheduling assigns blocks to XCDs in a cyclic manner. To improve this, we can introduce a swizzling pattern that reassigns block indices based on their original mapping and the number of XCDs. This involves calculating a new block index that groups blocks accessing similar data together on the same XCD, while maintaining an even distribution of work across all XCDs.
+
+The swizzling pattern can be implemented by computing a new block index using the original block index, the number of XCDs, and the total number of blocks. This new index will determine the XCD to which the block is assigned, ensuring that blocks sharing data are mapped to the same XCD until its capacity is filled.
+
+The key steps in the swizzling pattern are:
+1. Calculate the original XCD assignment using the modulo operation with the number of XCDs.
+2. Determine the number of iterations required to fill an XCD with blocks.
+3. Compute an offset for reassigning the block index based on these iterations.
+4. Reassign the block index to group blocks with shared data on the same XCD.
+
+By implementing this swizzling pattern, we can enhance the kernel's performance by improving cache locality and balancing the workload across XCDs.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def layer_norm_kernel(
+    x_ptr, y_ptr,
+    w_ptr, b_ptr,
+    M, N,
+    stride_x_m, stride_x_n,
+    stride_y_m, stride_y_n,
+    eps,
+    BLOCK_SIZE_N: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = M
+    pid_m = tl.program_id(0)
+    
+    # Swizzling pattern
+    original_xcd = pid_m % num_XCD
+    iteration = pid_m // num_XCD
+    new_pid_m = original_xcd * (num_blocks // num_XCD) + iteration
+    
+    offset_m = new_pid_m * stride_x_m
+    
+    x_row_ptr = x_ptr + offset_m
+    y_row_ptr = y_ptr + offset_m
+    
+    mean = tl.zeros([BLOCK_SIZE_N], dtype=tl.float32)
+    var = tl.zeros([BLOCK_SIZE_N], dtype=tl.float32)
+    
+    for off in range(0, N, BLOCK_SIZE_N):
+        cols = off + tl.arange(0, BLOCK_SIZE_N)
+        mask = cols < N
+        
+        x = tl.load(x_row_ptr + cols * stride_x_n, mask=mask, other=0.0).to(tl.float32)
+        
+        mean += tl.sum(x, axis=0)
+        var += tl.sum(x * x, axis=0)
+
+    mean = mean / N
+    var = var / N - mean * mean
+    
+    rstd = 1 / tl.sqrt(var + eps)
+    
+    for off in range(0, N, BLOCK_SIZE_N):
+        cols = off + tl.arange(0, BLOCK_SIZE_N)
+        mask = cols < N
+        
+        x = tl.load(x_row_ptr + cols * stride_x_n, mask=mask, other=0.0).to(tl.float32)
+        w = tl.load(w_ptr + cols, mask=mask)
+        b = tl.load(b_ptr + cols, mask=mask)
+        
+        y = (x - mean) * rstd * w + b
+        
+        tl.store(y_row_ptr + cols * stride_y_n, y.to(y_ptr.dtype.element_ty), mask=mask)
+
+def layer_norm(x, w, b, eps):
+    M, N = x.shape
+    y = torch.empty_like(x)
+
+    grid = (M,)
+    
+    layer_norm_kernel[grid](
+        x, y, w, b,
+        M, N,
+        x.stride(0), x.stride(1),
+        y.stride(0), y.stride(1),
+        eps,
+        BLOCK_SIZE_N=triton.next_power_of_2(N)
+    )
+    return y
+
+def main():
+    M, N = 8192, 8192
+    x = torch.randn((M, N), device='cuda', dtype=torch.float16)
+    w = torch.randn((N,), device='cuda', dtype=torch.float16)
+    b = torch.randn((N,), device='cuda', dtype=torch.float16)
+    eps = 1e-5
+    
+    rep = 100
+    
+    for _ in range(10):
+        y_triton = layer_norm(x, w, b, eps)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        y_triton = layer_norm(x, w, b, eps)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton layer norm time: {triton_time:.4f} ms")
+
+    # y_torch = torch.nn.functional.layer_norm(x, (N,), w, b, eps)
+    # print(f"Triton output: {y_triton}")
+    # print(f"Torch output: {y_torch}")
+    # assert torch.allclose(y_triton, y_torch, atol=1e-1, rtol=0), "Triton and PyTorch results differ"
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 1 ---
+Optimization Report: L2 Cache Locality Degradation: L2 cache hit rate decreased by 7.86 percentage points. Hit rate decreased from 65.3% to 57.4% (lower percentages indicate worse cache locality). Performance Loss: Experienced 1.02x slowdown with execution time increased from 0.15ms to 0.15ms (2.2% slower).
+
+
+--- KERNEL ITERATION 2 ---
+Optimization reasoning: The goal is to optimize the Triton kernel for better cache locality by implementing a new swizzling pattern. The previous attempt used a swizzling pattern that degraded L2 cache locality, so a different approach is needed. The MI300x GPU architecture has 8 XCDs, each with its own L2 cache. The objective is to map blocks that access the same data to the same XCD to improve cache hit rates. The default round-robin scheduling assigns blocks to XCDs cyclically. To optimize, we need to compute a new block index that groups blocks accessing the same data onto the same XCD while maintaining load balance across XCDs.
+
+The new approach involves calculating a new block index by considering the number of XCDs and the total number of blocks. The swizzling pattern should ensure that blocks accessing the same data are mapped to the same XCD, and the workload is evenly distributed across all XCDs. This can be achieved by reordering the block indices based on their original assignment and the number of iterations they have undergone in the round-robin scheduling.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def layer_norm_kernel(
+    x_ptr, y_ptr,
+    w_ptr, b_ptr,
+    M, N,
+    stride_x_m, stride_x_n,
+    stride_y_m, stride_y_n,
+    eps,
+    BLOCK_SIZE_N: tl.constexpr
+):
+    num_XCD = 8
+    num_blocks = M
+    pid_m = tl.program_id(0)
+    
+    # New swizzling pattern
+    original_xcd = pid_m % num_XCD
+    iteration = pid_m // num_XCD
+    new_pid_m = (iteration % num_XCD) * (num_blocks // num_XCD) + original_xcd
+    
+    offset_m = new_pid_m * stride_x_m
+    
+    x_row_ptr = x_ptr + offset_m
+    y_row_ptr = y_ptr + offset_m
+    
+    mean = tl.zeros([BLOCK_SIZE_N], dtype=tl.float32)
+    var = tl.zeros([BLOCK_SIZE_N], dtype=tl.float32)
+    
+    for off in range(0, N, BLOCK_SIZE_N):
+        cols = off + tl.arange(0, BLOCK_SIZE_N)
+        mask = cols < N
+        
+        x = tl.load(x_row_ptr + cols * stride_x_n, mask=mask, other=0.0).to(tl.float32)
+        
+        mean += tl.sum(x, axis=0)
+        var += tl.sum(x * x, axis=0)
+
+    mean = mean / N
+    var = var / N - mean * mean
+    
+    rstd = 1 / tl.sqrt(var + eps)
+    
+    for off in range(0, N, BLOCK_SIZE_N):
+        cols = off + tl.arange(0, BLOCK_SIZE_N)
+        mask = cols < N
+        
+        x = tl.load(x_row_ptr + cols * stride_x_n, mask=mask, other=0.0).to(tl.float32)
+        w = tl.load(w_ptr + cols, mask=mask)
+        b = tl.load(b_ptr + cols, mask=mask)
+        
+        y = (x - mean) * rstd * w + b
+        
+        tl.store(y_row_ptr + cols * stride_y_n, y.to(y_ptr.dtype.element_ty), mask=mask)
+
+def layer_norm(x, w, b, eps):
+    M, N = x.shape
+    y = torch.empty_like(x)
+
+    grid = (M,)
+    
+    layer_norm_kernel[grid](
+        x, y, w, b,
+        M, N,
+        x.stride(0), x.stride(1),
+        y.stride(0), y.stride(1),
+        eps,
+        BLOCK_SIZE_N=triton.next_power_of_2(N)
+    )
+    return y
+
+def main():
+    M, N = 8192, 8192
+    x = torch.randn((M, N), device='cuda', dtype=torch.float16)
+    w = torch.randn((N,), device='cuda', dtype=torch.float16)
+    b = torch.randn((N,), device='cuda', dtype=torch.float16)
+    eps = 1e-5
+    
+    rep = 100
+    
+    for _ in range(10):
+        y_triton = layer_norm(x, w, b, eps)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        y_triton = layer_norm(x, w, b, eps)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton layer norm time: {triton_time:.4f} ms")
+
+    # y_torch = torch.nn.functional.layer_norm(x, (N,), w, b, eps)
+    # print(f"Triton output: {y_triton}")
+    # print(f"Torch output: {y_torch}")
+    # assert torch.allclose(y_triton, y_torch, atol=1e-1, rtol=0), "Triton and PyTorch results differ"
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 2 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 34.41 percentage points. Hit rate increased from 65.3% to 99.7% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.20x speedup with execution time reduced from 0.15ms to 0.13ms (20.5% faster).
+
+

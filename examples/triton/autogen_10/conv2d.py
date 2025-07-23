@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 import torch
 import triton
@@ -11,14 +12,20 @@ def conv2d_kernel(
     stride_xn, stride_xc, stride_xh, stride_xw,
     stride_wn, stride_wc, stride_wh, stride_ww,
     stride_yn, stride_yc, stride_yh, stride_yw,
-    BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_F: tl.constexpr, 
+    P_H, P_W,
+    BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_F: tl.constexpr,
     BLOCK_SIZE_H: tl.constexpr, BLOCK_SIZE_W: tl.constexpr,
-    BLOCK_SIZE_C: tl.constexpr, BLOCK_SIZE_R: tl.constexpr, BLOCK_SIZE_S: tl.constexpr
+    BLOCK_SIZE_C: tl.constexpr
 ):
-    pid_n = tl.program_id(axis=0)
-    pid_f = tl.program_id(axis=1)
-    pid_h = tl.program_id(axis=2)
-    pid_w = tl.program_id(axis=3)
+    pid = tl.program_id(axis=0)
+    num_pid_w = tl.cdiv(P_W, BLOCK_SIZE_W)
+    num_pid_h = tl.cdiv(P_H, BLOCK_SIZE_H)
+    num_pid_f = tl.cdiv(F, BLOCK_SIZE_F)
+    
+    pid_w = pid % num_pid_w
+    pid_h = (pid // num_pid_w) % num_pid_h
+    pid_f = (pid // (num_pid_w * num_pid_h)) % num_pid_f
+    pid_n = pid // (num_pid_w * num_pid_h * num_pid_f)
 
     offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     offs_f = pid_f * BLOCK_SIZE_F + tl.arange(0, BLOCK_SIZE_F)
@@ -35,39 +42,30 @@ def conv2d_kernel(
 
     accumulator = tl.zeros((BLOCK_SIZE_N, BLOCK_SIZE_F, BLOCK_SIZE_H, BLOCK_SIZE_W), dtype=tl.float32)
 
-    for c in range(0, C, BLOCK_SIZE_C):
-        for r in range(0, R, BLOCK_SIZE_R):
-            for s in range(0, S, BLOCK_SIZE_S):
-                offs_c = c + tl.arange(0, BLOCK_SIZE_C)
-                offs_r = r + tl.arange(0, BLOCK_SIZE_R)
-                offs_s = s + tl.arange(0, BLOCK_SIZE_S)
-                
-                offs_x_n = offs_n[:, None, None, None, None, None]
-                offs_x_c = offs_c[None, :, None, None, None, None]
-                offs_x_h = (offs_h[None, None, :, None, None, None] + offs_r[None, None, None, None, :, None])
-                offs_x_w = (offs_w[None, None, None, :, None, None] + offs_s[None, None, None, None, None, :])
+    offs_c = tl.arange(0, BLOCK_SIZE_C)
+    
+    for r in range(R):
+        for s in range(S):
+            offs_x_n = offs_n[:, None, None, None]
+            offs_x_c = offs_c[None, :, None, None]
+            offs_x_h = offs_h[None, None, :, None] + r
+            offs_x_w = offs_w[None, None, None, :] + s
+            
+            x_ptrs = x_ptr + offs_x_n * stride_xn + offs_x_c * stride_xc + offs_x_h * stride_xh + offs_x_w * stride_xw
+            mask_x = (offs_x_n < N) & (offs_x_c < C) & (offs_x_h < H) & (offs_x_w < W)
+            x = tl.load(x_ptrs, mask=mask_x, other=0.0)
 
-                x_ptrs = x_ptr + offs_x_n * stride_xn + offs_x_c * stride_xc + \
-                         offs_x_h * stride_xh + offs_x_w * stride_xw
-
-                mask_x = (offs_x_n < N) & (offs_x_c < C) & (offs_x_h < H) & (offs_x_w < W)
-                x_tile = tl.load(x_ptrs, mask=mask_x, other=0.0)
-
-                offs_w_f = offs_f[None, :, None, None, None, None]
-                offs_w_c = offs_c[:, None, None, None, None, None]
-                offs_w_r = offs_r[None, None, :, None, None, None]
-                offs_w_s = offs_s[None, None, None, :, None, None]
-
-                w_ptrs = w_ptr + offs_w_f * stride_wn + offs_w_c * stride_wc + \
-                         offs_w_r * stride_wh + offs_w_s * stride_ww
-                
-                mask_w = (offs_w_f < F) & (offs_w_c < C) & (offs_w_r < R) & (offs_w_s < S)
-                w_tile = tl.load(w_ptrs, mask=mask_w, other=0.0)
-                
-                accumulator += tl.sum(x_tile[:, :, :, :, :, :] * w_tile[:, :, :, :, :, :], axis=(1, 4, 5))
+            offs_w_f = offs_f[None, :, None, None]
+            offs_w_c = offs_c[None, :, None, None]
+            
+            w_ptrs = w_ptr + offs_w_f * stride_wn + offs_w_c * stride_wc + r * stride_wh + s * stride_ww
+            mask_w = (offs_w_f < F) & (offs_w_c < C) 
+            w = tl.load(w_ptrs, mask=mask_w, other=0.0)
+            
+            accumulator += tl.sum(x * w, axis=1)
 
     y = accumulator.to(tl.float16)
-    mask_y = (offs_y_n < N) & (offs_y_f < F) & (offs_y_h < H) & (offs_y_w < W)
+    mask_y = (offs_y_n < N) & (offs_y_f < F) & (offs_y_h < P_H) & (offs_y_w < P_W)
     tl.store(y_ptrs, y, mask=mask_y)
 
 
@@ -78,10 +76,10 @@ def conv2d(x, w):
     y = torch.empty((N, F, P_H, P_W), device=x.device, dtype=x.dtype)
 
     grid = lambda META: (
-        triton.cdiv(N, META['BLOCK_SIZE_N']), 
-        triton.cdiv(F, META['BLOCK_SIZE_F']),
-        triton.cdiv(P_H, META['BLOCK_SIZE_H']),
-        triton.cdiv(P_W, META['BLOCK_SIZE_W'])
+        triton.cdiv(N, META['BLOCK_SIZE_N']) * 
+        triton.cdiv(F, META['BLOCK_SIZE_F']) *
+        triton.cdiv(P_H, META['BLOCK_SIZE_H']) *
+        triton.cdiv(P_W, META['BLOCK_SIZE_W']),
     )
 
     conv2d_kernel[grid](
@@ -91,15 +89,16 @@ def conv2d(x, w):
         x.stride(0), x.stride(1), x.stride(2), x.stride(3),
         w.stride(0), w.stride(1), w.stride(2), w.stride(3),
         y.stride(0), y.stride(1), y.stride(2), y.stride(3),
-        BLOCK_SIZE_N=16, BLOCK_SIZE_F=32,
-        BLOCK_SIZE_H=32, BLOCK_SIZE_W=32,
-        BLOCK_SIZE_C=16, BLOCK_SIZE_R=3, BLOCK_SIZE_S=3
+        P_H, P_W,
+        BLOCK_SIZE_N=16, BLOCK_SIZE_F=16,
+        BLOCK_SIZE_H=16, BLOCK_SIZE_W=16,
+        BLOCK_SIZE_C=16
     )
     return y
 
 def main():
-    N, C, H, W = 128, 256, 128, 128
-    F, R, S = 512, 3, 3
+    N, C, H, W = 32, 32, 32, 32
+    F, R, S = 64, 3, 3
 
     x = torch.randn((N, C, H, W), device='cuda', dtype=torch.float16)
     w = torch.randn((F, C, R, S), device='cuda', dtype=torch.float16)

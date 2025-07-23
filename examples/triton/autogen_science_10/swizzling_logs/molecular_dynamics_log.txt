@@ -1,0 +1,138 @@
+--- MEMORY ANALYSISMemory analysis reasoning: The kernel `molecular_dynamics_kernel` is designed to compute forces on particles based on their positions using the Lennard-Jones potential. The memory access patterns and locality are crucial for optimizing performance, especially when dealing with a large number of particles.
+
+1. **Memory Access Patterns:**
+   - **Position Data Loading:** The kernel loads position data for each particle in three dimensions (x, y, z) using the `tl.load` function. The positions are stored in a contiguous block of memory, and the kernel accesses them using offsets calculated from the block size and program ID. This access pattern is linear and predictable, which is beneficial for memory coalescing on the GPU.
+   - **Force Data Storage:** The computed forces are stored back into memory using `tl.store`. The storage pattern mirrors the loading pattern, ensuring that forces for each dimension are stored contiguously.
+
+2. **Memory Locality:**
+   - **Intra-Block Locality:** Within a block, the kernel processes a contiguous set of particles. This means that the position data for particles within a block is likely to be cached together, improving access speed due to spatial locality.
+   - **Inter-Block Locality:** Each block processes a different set of particles, and there is no explicit sharing of data between blocks. However, since each block accesses a contiguous segment of the position array, there is potential for cache lines to be reused if blocks are scheduled in a way that exploits spatial locality.
+   - **Temporal Locality:** The kernel does not exhibit significant temporal locality because each particle's position is only read once per kernel execution. However, the repeated execution of the kernel (e.g., in the main loop) could benefit from caching if the same data is accessed frequently.
+
+3. **Potential for Optimization:**
+   - **Block Swizzling:** By adjusting the block ID mapping, it might be possible to improve cache utilization. For example, if particles that are spatially close in the simulation are processed by the same or nearby blocks, this could enhance cache locality.
+   - **Data Layout:** Ensuring that position and force data are aligned and padded to match cache line sizes can also improve performance by reducing cache misses.
+--------------------------------
+Memory analysis results: The `molecular_dynamics_kernel` exhibits a linear memory access pattern for both loading positions and storing forces, which is beneficial for memory coalescing on GPUs. The intra-block locality is strong due to contiguous access within a block, but inter-block locality could be improved by swizzling block IDs to align with spatial locality in the simulation. Temporal locality is limited within a single kernel execution but could be leveraged across multiple executions. Optimizing data layout and block scheduling could further enhance cache utilization and performance.
+--------------------------------
+--- KERNEL ITERATION 1 ---
+Optimization reasoning: To optimize the memory access pattern for the MI300x GPU architecture, we need to implement a swizzling pattern that ensures blocks accessing the same data are scheduled to the same XCD. The architecture has 8 XCDs, each with its own L2 cache. The goal is to maximize cache hits by ensuring that blocks sharing data are mapped to the same XCD until its capacity is filled, while also balancing the workload across all XCDs.
+
+The default round-robin scheduling assigns blocks cyclically to XCDs. To improve this, we can remap the block index using a swizzling pattern. The swizzling pattern should consider the number of XCDs and the total number of blocks. By calculating the original XCD assignment and adjusting the block index, we can ensure that blocks with spatial locality are grouped together on the same XCD.
+
+The swizzling pattern involves:
+1. Calculating the original XCD assignment using the modulo operation.
+2. Determining the number of blocks per XCD.
+3. Adjusting the block index to group blocks with similar data access patterns on the same XCD.
+
+This approach will enhance the L2 cache hit rate by improving spatial locality and balancing the workload across XCDs.
+--------------------------------
+#!/usr/bin/env python3
+#!/usr/bin/env python
+
+import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def molecular_dynamics_kernel(
+    pos_ptr, force_ptr,
+    n_particles,
+    sigma, epsilon,
+    BLOCK_SIZE: tl.constexpr,
+):
+    num_XCD = 8
+    num_blocks = tl.cdiv(n_particles, BLOCK_SIZE)
+    pid = tl.program_id(0)
+    
+    # Swizzling pattern
+    original_xcd = pid % num_XCD
+    blocks_per_xcd = num_blocks // num_XCD
+    new_pid = (pid // num_XCD) + (original_xcd * blocks_per_xcd)
+    
+    offsets = new_pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_particles
+
+    px = tl.load(pos_ptr + offsets, mask=mask)
+    py = tl.load(pos_ptr + n_particles + offsets, mask=mask)
+    pz = tl.load(pos_ptr + 2 * n_particles + offsets, mask=mask)
+
+    fx = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    fy = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+    fz = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
+
+    for i in range(0, n_particles):
+        other_px = tl.load(pos_ptr + i)
+        other_py = tl.load(pos_ptr + n_particles + i)
+        other_pz = tl.load(pos_ptr + 2 * n_particles + i)
+
+        dx = other_px - px
+        dy = other_py - py
+        dz = other_pz - pz
+
+        dist_sq = dx*dx + dy*dy + dz*dz
+        dist_sq = tl.where(dist_sq == 0, 1e-12, dist_sq) # Avoid division by zero
+
+        # Lennard-Jones potential calculation
+        sr2 = (sigma * sigma) / dist_sq
+        sr6 = sr2 * sr2 * sr2
+        sr12 = sr6 * sr6
+        
+        force_scalar = 24 * epsilon * (2 * sr12 - sr6) / dist_sq
+        
+        fx += force_scalar * dx
+        fy += force_scalar * dy
+        fz += force_scalar * dz
+
+    tl.store(force_ptr + offsets, fx, mask=mask)
+    tl.store(force_ptr + n_particles + offsets, fy, mask=mask)
+    tl.store(force_ptr + 2 * n_particles + offsets, fz, mask=mask)
+
+
+def molecular_dynamics(pos, sigma, epsilon):
+    n_particles = pos.shape[1]
+    forces = torch.empty_like(pos)
+    
+    grid = lambda META: (triton.cdiv(n_particles, META['BLOCK_SIZE']),)
+    
+    molecular_dynamics_kernel[grid](
+        pos, forces,
+        n_particles,
+        sigma, epsilon,
+        BLOCK_SIZE=1024
+    )
+    return forces
+
+def main():
+    n_particles = 32768
+    sigma = 1.0
+    epsilon = 1.0
+    
+    pos = torch.randn(3, n_particles, device='cuda', dtype=torch.float32)
+
+    rep = 100
+    
+    # Warm-up
+    for _ in range(10):
+        forces = molecular_dynamics(pos, sigma, epsilon)
+
+    torch.cuda.synchronize()
+    start_time = torch.cuda.Event(enable_timing=True)
+    end_time = torch.cuda.Event(enable_timing=True)
+
+    start_time.record()
+    for _ in range(rep):
+        forces = molecular_dynamics(pos, sigma, epsilon)
+    end_time.record()
+    torch.cuda.synchronize()
+
+    triton_time = start_time.elapsed_time(end_time) / rep
+    print(f"Triton Molecular Dynamics time: {triton_time:.4f} ms")
+
+
+if __name__ == "__main__":
+    main()--------------------------------
+--- PROFILING ITERATION 1 ---
+Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 86.6% to 86.6% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.00x speedup with execution time reduced from 12.09ms to 12.08ms (0.1% faster).
+
+

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 import torch
 import triton
@@ -6,53 +7,41 @@ import numpy as np
 
 @triton.jit
 def fft_kernel(
-    output_ptr, input_ptr,
+    output_real_ptr, output_imag_ptr,
+    input_real_ptr, input_imag_ptr,
     N,
     stride_x, stride_y,
     BLOCK_SIZE: tl.constexpr
 ):
     pid = tl.program_id(0)
-    
     offsets = tl.arange(0, BLOCK_SIZE)
     
-    x = tl.load(input_ptr + offsets * stride_x, mask=offsets < N, other=0)
+    # Load real and imaginary parts
+    x_real = tl.load(input_real_ptr + offsets * stride_x, mask=offsets < N, other=0)
+    x_imag = tl.load(input_imag_ptr + offsets * stride_x, mask=offsets < N, other=0)
+
+    # Simplified FFT logic for demonstration
+    # A full implementation would require bit-reversal and butterfly operations
     
-    # Basic Cooley-Tukey FFT algorithm (simplified for demonstration)
-    # This is a placeholder for a full FFT implementation, which is complex.
-    # A real implementation would involve multiple stages and twiddle factors.
+    # Placeholder: just copy real and imaginary parts
+    y_real = x_real
+    y_imag = x_imag
     
-    # Stage 1: Bit-reversal permutation (can be precomputed)
-    # This part is simplified and not a correct bit-reversal
-    rev_indices = tl.arange(0, BLOCK_SIZE) # simplified
-    rev_x = tl.load(input_ptr + rev_indices * stride_x, mask=rev_indices < N, other=0)
-    
-    # Butterfly operations across multiple stages
-    y = rev_x
-    
-    # This loop should iterate log2(N) times for a full FFT
-    for stage in range(0, 1): # Simplified to one stage
-        # Twiddle factor calculation
-        # w = tl.exp(2 * 3.14159 * tl.arange(0, BLOCK_SIZE) / BLOCK_SIZE)
-        # This is a complex operation in Triton, simplified here
-        
-        # Butterfly computation (simplified)
-        even = y
-        odd = y
-        y = even + odd # simplified
-        
-    tl.store(output_ptr + offsets * stride_y, y, mask=offsets < N)
+    tl.store(output_real_ptr + offsets * stride_y, y_real, mask=offsets < N)
+    tl.store(output_imag_ptr + offsets * stride_y, y_imag, mask=offsets < N)
 
 def fft(x):
     N = x.size(0)
-    y = torch.empty_like(x, dtype=torch.complex64)
+    # Create complex output tensor
+    y = torch.empty(N, dtype=torch.complex64, device='cuda')
     
-    # FFT requires complex numbers
     x_complex = x.to(torch.complex64)
     
     grid = (triton.cdiv(N, 1024),)
 
     fft_kernel[grid](
-        y, x_complex,
+        y.real, y.imag,
+        x_complex.real, x_complex.imag,
         N,
         x.stride(0), y.stride(0),
         BLOCK_SIZE=1024

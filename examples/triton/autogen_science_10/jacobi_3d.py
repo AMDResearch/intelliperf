@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 import torch
 import triton
@@ -51,9 +52,9 @@ def jacobi_3d_step(grid):
     Nx, Ny, Nz = grid.shape
     new_grid = torch.empty_like(grid)
 
-    grid = (triton.cdiv(Nx, 16), triton.cdiv(Ny, 16), triton.cdiv(Nz, 16))
+    launch_grid = (triton.cdiv(Nx, 16), triton.cdiv(Ny, 16), triton.cdiv(Nz, 16))
     
-    jacobi_3d_kernel[grid](
+    jacobi_3d_kernel[launch_grid](
         grid, new_grid,
         Nx, Ny, Nz,
         grid.stride(0), grid.stride(1), grid.stride(2),

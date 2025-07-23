@@ -86,6 +86,13 @@ class swizzling_test(Formula_Base):
 		self.last_applied_diff = None
 		self.initial_source_code = None
 
+		self.max_iterations = 10
+		self.best_l2_improvement = -float("inf")
+		self.best_speedup = 0.0
+		self.best_diff = ""
+		self.best_kernel_name = ""
+		self.best_iteration_report = ""
+
 	def compute_diff(self, file_paths: list) -> str:
 		"""
 		Compute the diff between the current and initial versions of the files.
@@ -222,6 +229,9 @@ class swizzling_test(Formula_Base):
 			kernel = filtered_report_card[0]["kernel"]
 			files = filtered_report_card[0]["source"]["files"]
 			kernel_name = get_kernel_name(kernel)
+
+			if not self.best_kernel_name:
+				self.best_kernel_name = kernel_name
 
 			logging.debug(f"Kernel name: {kernel_name}")
 			kernel_file = None
@@ -416,10 +426,6 @@ class swizzling_test(Formula_Base):
 			comparison_func=lambda x: x == self.current_kernel_signature,
 		)
 
-		# print("ARYA")
-		# print(unoptimized_results)
-		# print("ARYA")
-
 		unoptimized_time = unoptimized_results[0]["durations"]["ns"]
 		unoptimized_l2_hit_rate = unoptimized_results[0]["l2"]["hr"]
 		kernel = unoptimized_results[0]["kernel"]
@@ -481,19 +487,40 @@ class swizzling_test(Formula_Base):
 			}
 		)
 
+		if l2_improvement > self.best_l2_improvement:
+			self.best_l2_improvement = l2_improvement
+			self.best_speedup = speedup
+			self.best_diff = self.last_applied_diff
+			self.best_iteration_report = self.optimization_report
+
 		if self.output_kernel_file:
 			with open(self.output_kernel_file, "a") as f:
 				f.write(f"--- PROFILING ITERATION {self.current_iteration} ---\n")
 				f.write(f"Optimization Report: {self.optimization_report}\n")
 				f.write("\n\n")
 
-		if not success or speedup < 1:
+		if self.current_iteration < self.max_iterations:
 			self.current_summary = self.optimization_report
+			# Always return success=False to continue iterating
 			return Result(success=False, error_report=self.optimization_report)
-		logging.info(self.optimization_report)
 
-		self.success = True
-		return Result(success=True, asset={"log": self.optimization_report})
+		# After max_iterations, determine final success and write best results
+		self.success = self.best_l2_improvement > 0
+
+		if self.output_kernel_file:
+			with open(self.output_kernel_file, "a") as f:
+				f.write("--- BEST RESULT ---\n")
+				f.write(f"Kernel Name: {self.best_kernel_name}\n")
+				f.write(f"Best Swizzling Pattern:\n{self.best_diff}\n")
+				f.write(f"L2 Hit Rate Improvement %: {self.best_l2_improvement}\n")
+				f.write(f"Speedup: {self.best_speedup}\n")
+				f.write("--- END BEST RESULT ---\n")
+
+		if self.success:
+			logging.info(self.best_iteration_report)
+			return Result(success=True, asset={"log": self.best_iteration_report})
+		
+		return Result(success=False, error_report=self.best_iteration_report)
 
 	def write_results(self, output_file: str = None):
 		"""
