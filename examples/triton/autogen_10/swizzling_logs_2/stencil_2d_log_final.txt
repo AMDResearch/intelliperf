@@ -1,4 +1,18 @@
-#!/usr/bin/env python
+L2 Hit Rate Improvement %: 31.792021677019868
+Speedup: 1.164756288100392
+
+Swizzling Pattern:
+[[[pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # New swizzling pattern
+    block_id = pid_m * num_blocks_n + pid_n
+    xcd_stride = num_blocks // num_XCD
+    new_block_id = (block_id % xcd_stride) * num_XCD + (block_id // xcd_stride) % num_XCD
+    pid_m = new_block_id // num_blocks_n
+    pid_n = new_block_id % num_blocks_n]]]
+Full Kernel Code:
+[[[#!/usr/bin/env python
 
 import torch
 import triton
@@ -12,8 +26,20 @@ def stencil_2d_kernel(
     stride_m, stride_n,
     BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
 ):
+    num_XCD = 8
+    num_blocks_m = (M + BLOCK_SIZE_M - 1) // BLOCK_SIZE_M
+    num_blocks_n = (N + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
+    num_blocks = num_blocks_m * num_blocks_n
+
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
+
+    # New swizzling pattern
+    block_id = pid_m * num_blocks_n + pid_n
+    xcd_stride = num_blocks // num_XCD
+    new_block_id = (block_id % xcd_stride) * num_XCD + (block_id // xcd_stride) % num_XCD
+    pid_m = new_block_id // num_blocks_n
+    pid_n = new_block_id % num_blocks_n
 
     offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
@@ -95,4 +121,4 @@ if __name__ == "__main__":
     parser.add_argument("--N", type=int, default=8192, help="Number of columns")
     args = parser.parse_args()
     
-    main(args.M, args.N) 
+    main(args.M, args.N)]]]

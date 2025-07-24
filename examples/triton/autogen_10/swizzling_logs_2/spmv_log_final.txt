@@ -1,4 +1,18 @@
-#!/usr/bin/env python
+L2 Hit Rate Improvement %: 45.78918605485132
+Speedup: 1.0047149739417647
+
+Swizzling Pattern:
+[[[num_XCD = 8
+    num_blocks = M
+    pid = tl.program_id(0)
+    
+    # New swizzling pattern
+    original_xcd = pid % num_XCD
+    stride = num_blocks // num_XCD
+    new_pid = (pid // stride) + (original_xcd * stride)
+    pid = new_pid]]]
+Full Kernel Code:
+[[[#!/usr/bin/env python
 
 import torch
 import triton
@@ -14,7 +28,15 @@ def spmv_kernel(
     M,
     BLOCK_SIZE: tl.constexpr
 ):
+    num_XCD = 8
+    num_blocks = M
     pid = tl.program_id(0)
+    
+    # New swizzling pattern
+    original_xcd = pid % num_XCD
+    stride = num_blocks // num_XCD
+    new_pid = (pid // stride) + (original_xcd * stride)
+    pid = new_pid
     
     row_start = tl.load(indptr_ptr + pid)
     row_end = tl.load(indptr_ptr + pid + 1)
@@ -87,4 +109,4 @@ if __name__ == "__main__":
     parser.add_argument("--density", type=float, default=0.01, help="Density of the sparse matrix")
     args = parser.parse_args()
     
-    main(args.M, args.N, args.density) 
+    main(args.M, args.N, args.density)]]]

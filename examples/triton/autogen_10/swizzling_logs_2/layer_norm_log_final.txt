@@ -1,4 +1,19 @@
-#!/usr/bin/env python
+L2 Hit Rate Improvement %: 1.3893202379400407
+Speedup: 0.9701539699205681
+
+Swizzling Pattern:
+[[[num_XCD = 8
+    num_blocks = M
+    pid_m = tl.program_id(0)
+    
+    # New swizzling pattern
+    original_pid = pid_m
+    xcd_id = (original_pid // (num_blocks // num_XCD)) % num_XCD
+    round_id = original_pid % (num_blocks // num_XCD)
+    new_pid = xcd_id * (num_blocks // num_XCD) + round_id
+    pid = new_pid]]]
+Full Kernel Code:
+[[[#!/usr/bin/env python
 
 import torch
 import triton
@@ -15,9 +30,18 @@ def layer_norm_kernel(
     eps,
     BLOCK_SIZE_N: tl.constexpr
 ):
+    num_XCD = 8
+    num_blocks = M
     pid_m = tl.program_id(0)
     
-    offset_m = pid_m * stride_x_m
+    # New swizzling pattern
+    original_pid = pid_m
+    xcd_id = (original_pid // (num_blocks // num_XCD)) % num_XCD
+    round_id = original_pid % (num_blocks // num_XCD)
+    new_pid = xcd_id * (num_blocks // num_XCD) + round_id
+    pid = new_pid
+    
+    offset_m = pid * stride_x_m
     
     x_row_ptr = x_ptr + offset_m
     y_row_ptr = y_ptr + offset_m
@@ -103,4 +127,4 @@ if __name__ == "__main__":
     parser.add_argument("--N", type=int, default=8192, help="Number of columns")
     args = parser.parse_args()
     
-    main(args.M, args.N) 
+    main(args.M, args.N)]]]

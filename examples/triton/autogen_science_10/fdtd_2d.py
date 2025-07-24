@@ -3,6 +3,7 @@
 import torch
 import triton
 import triton.language as tl
+import argparse
 
 @triton.jit
 def fdtd_2d_kernel(
@@ -65,9 +66,7 @@ def fdtd_2d_step(ex, ey, hz):
         BLOCK_SIZE_X=32, BLOCK_SIZE_Y=32
     )
 
-def main():
-    Nx, Ny = 4096, 4096
-    
+def main(Nx=4096, Ny=4096, n_iters=100):
     ex = torch.zeros(Nx, Ny, device='cuda', dtype=torch.float32)
     ey = torch.zeros(Nx, Ny, device='cuda', dtype=torch.float32)
     hz = torch.zeros(Nx, Ny, device='cuda', dtype=torch.float32)
@@ -75,7 +74,6 @@ def main():
     # Initial condition (a point source)
     hz[Nx // 2, Ny // 2] = 1.0
 
-    n_iters = 100
     rep = 10
 
     # Warm-up
@@ -101,4 +99,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Triton 2D-FDTD Benchmark")
+    parser.add_argument("--Nx", type=int, default=4096, help="Grid size in X dimension")
+    parser.add_argument("--Ny", type=int, default=4096, help="Grid size in Y dimension")
+    parser.add_argument("--n_iters", type=int, default=100, help="Number of iterations")
+    args = parser.parse_args()
+    
+    main(args.Nx, args.Ny, args.n_iters) 

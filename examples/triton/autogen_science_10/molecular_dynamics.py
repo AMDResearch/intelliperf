@@ -3,6 +3,7 @@
 import torch
 import triton
 import triton.language as tl
+import argparse
 
 @triton.jit
 def molecular_dynamics_kernel(
@@ -66,11 +67,7 @@ def molecular_dynamics(pos, sigma, epsilon):
     )
     return forces
 
-def main():
-    n_particles = 32768
-    sigma = 1.0
-    epsilon = 1.0
-    
+def main(n_particles=32768, sigma=1.0, epsilon=1.0):
     pos = torch.randn(3, n_particles, device='cuda', dtype=torch.float32)
 
     rep = 100
@@ -94,4 +91,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Triton Molecular Dynamics Benchmark")
+    parser.add_argument("--n_particles", type=int, default=32768, help="Number of particles")
+    parser.add_argument("--sigma", type=float, default=1.0, help="LJ sigma parameter")
+    parser.add_argument("--epsilon", type=float, default=1.0, help="LJ epsilon parameter")
+    args = parser.parse_args()
+    
+    main(args.n_particles, args.sigma, args.epsilon) 

@@ -3,6 +3,7 @@
 import torch
 import triton
 import triton.language as tl
+import argparse
 
 @triton.jit
 def ising_model_kernel(
@@ -63,13 +64,9 @@ def ising_model_step(spins, beta):
     )
     return new_spins
 
-def main():
-    Nx, Ny = 4096, 4096
-    beta = 0.44 # Critical temperature for 2D Ising model is ~0.44
-
+def main(Nx=4096, Ny=4096, n_iters=100, beta=0.44):
     spins = torch.randint(0, 2, (Nx, Ny), device='cuda', dtype=torch.int8) * 2 - 1
     
-    n_iters = 100
     rep = 10
     
     # Warm-up
@@ -95,4 +92,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Triton Ising Model Benchmark")
+    parser.add_argument("--Nx", type=int, default=4096, help="Grid size in X dimension")
+    parser.add_argument("--Ny", type=int, default=4096, help="Grid size in Y dimension")
+    parser.add_argument("--n_iters", type=int, default=100, help="Number of iterations")
+    parser.add_argument("--beta", type=float, default=0.44, help="Inverse temperature")
+    args = parser.parse_args()
+    
+    main(args.Nx, args.Ny, args.n_iters, args.beta) 

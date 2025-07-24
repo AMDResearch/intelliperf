@@ -3,6 +3,7 @@
 import torch
 import triton
 import triton.language as tl
+import argparse
 
 @triton.jit
 def pic_1d_kernel(
@@ -57,17 +58,13 @@ def pic_1d_step(pos, vel, E, dx, dt):
     )
     return new_pos, new_vel
 
-def main():
-    n_particles = 2**20
-    n_grid = 2**14
+def main(n_particles=2**20, n_grid=2**14, n_iters=100, dt=0.1):
     dx = 1.0
-    dt = 0.1
 
     pos = torch.rand(n_particles, device='cuda', dtype=torch.float32) * n_grid * dx
     vel = torch.randn(n_particles, device='cuda', dtype=torch.float32)
     E = torch.randn(n_grid, device='cuda', dtype=torch.float32)
 
-    n_iters = 100
     rep = 10
     
     # Warm-up
@@ -93,4 +90,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Triton 1D PIC Benchmark")
+    parser.add_argument("--n_particles", type=int, default=2**20, help="Number of particles")
+    parser.add_argument("--n_grid", type=int, default=2**14, help="Number of grid points")
+    parser.add_argument("--n_iters", type=int, default=100, help="Number of iterations")
+    parser.add_argument("--dt", type=float, default=0.1, help="Time step")
+    args = parser.parse_args()
+    
+    main(args.n_particles, args.n_grid, args.n_iters, args.dt) 

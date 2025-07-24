@@ -3,6 +3,7 @@
 import torch
 import triton
 import triton.language as tl
+import argparse
 
 @triton.jit
 def smith_waterman_kernel(
@@ -55,8 +56,7 @@ def smith_waterman(seq1, seq2, gap_penalty, match_score, mismatch_penalty):
     )
     return scores
 
-def main():
-    M, N = 4096, 4096
+def main(M=4096, N=4096):
     seq1 = "A" * M # Simplified sequences for demonstration
     seq2 = "C" * N
     
@@ -85,4 +85,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Triton Smith-Waterman Benchmark")
+    parser.add_argument("--M", type=int, default=4096, help="Length of sequence 1")
+    parser.add_argument("--N", type=int, default=4096, help="Length of sequence 2")
+    args = parser.parse_args()
+    
+    main(args.M, args.N) 

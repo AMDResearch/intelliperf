@@ -3,6 +3,7 @@
 import torch
 import triton
 import triton.language as tl
+import argparse
 
 @triton.jit
 def black_scholes_kernel(
@@ -51,12 +52,7 @@ def black_scholes_step(s, v, r, sigma, dt):
     )
     return new_v
 
-def main():
-    n_assets = 2**18
-    n_timesteps = 1000 # For problem setup
-    
-    r = 0.05      # Risk-free interest rate
-    sigma = 0.2 # Volatility
+def main(n_assets=2**18, n_timesteps=1000, r=0.05, sigma=0.2):
     T = 1.0       # Time to maturity
     dt = T / n_timesteps
 
@@ -90,4 +86,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Triton Black-Scholes Benchmark")
+    parser.add_argument("--n_assets", type=int, default=2**18, help="Number of assets")
+    parser.add_argument("--n_timesteps", type=int, default=1000, help="Number of timesteps")
+    parser.add_argument("--r", type=float, default=0.05, help="Risk-free interest rate")
+    parser.add_argument("--sigma", type=float, default=0.2, help="Volatility")
+    args = parser.parse_args()
+    
+    main(args.n_assets, args.n_timesteps, args.r, args.sigma) 

@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 import numpy as np
+import argparse
 
 @triton.jit
 def fft_kernel(
@@ -48,8 +49,7 @@ def fft(x):
     )
     return y
 
-def main():
-    N = 2**16
+def main(N=2**16):
     x = torch.randn(N, device='cuda', dtype=torch.float16)
 
     rep = 100
@@ -78,4 +78,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Triton FFT Benchmark")
+    parser.add_argument("--N", type=int, default=2**16, help="Size of the input vector")
+    args = parser.parse_args()
+    
+    main(args.N) 

@@ -14,10 +14,17 @@ def spmv_kernel(
     M,
     BLOCK_SIZE: tl.constexpr
 ):
+    num_XCD = 8
+    num_blocks = M
     pid = tl.program_id(0)
     
-    row_start = tl.load(indptr_ptr + pid)
-    row_end = tl.load(indptr_ptr + pid + 1)
+    # New swizzling pattern
+    original_xcd = pid % num_XCD
+    iteration = pid // num_XCD
+    new_pid = (iteration + original_xcd * (num_blocks // num_XCD)) % num_blocks
+    
+    row_start = tl.load(indptr_ptr + new_pid)
+    row_end = tl.load(indptr_ptr + new_pid + 1)
     
     acc = 0.0
     for i in range(row_start, row_end, BLOCK_SIZE):
@@ -30,7 +37,7 @@ def spmv_kernel(
         
         acc += tl.sum(data * x_vals)
         
-    tl.store(y_ptr + pid, acc)
+    tl.store(y_ptr + new_pid, acc)
 
 def spmv(x, data, indices, indptr):
     M = indptr.size(0) - 1
@@ -87,4 +94,4 @@ if __name__ == "__main__":
     parser.add_argument("--density", type=float, default=0.01, help="Density of the sparse matrix")
     args = parser.parse_args()
     
-    main(args.M, args.N, args.density) 
+    main(args.M, args.N, args.density)

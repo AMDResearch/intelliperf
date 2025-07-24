@@ -3,6 +3,7 @@
 import torch
 import triton
 import triton.language as tl
+import argparse
 
 @triton.jit
 def transpose_kernel(
@@ -54,8 +55,7 @@ def transpose(x):
     )
     return y
 
-def main():
-    M, N = 8192, 8192
+def main(M=8192, N=8192):
     x = torch.randn((M, N), device='cuda', dtype=torch.float16)
 
     rep = 100
@@ -83,4 +83,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Triton Transpose Benchmark")
+    parser.add_argument("--M", type=int, default=8192, help="Number of rows")
+    parser.add_argument("--N", type=int, default=8192, help="Number of columns")
+    args = parser.parse_args()
+    
+    main(args.M, args.N) 

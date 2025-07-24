@@ -1,4 +1,11 @@
-#!/usr/bin/env python
+L2 Hit Rate Improvement %: 37.43175789500208
+Speedup: 1.0856064245260495
+
+Swizzling Pattern:
+[[[assigned_xcd = (pid_m * num_pid_n + pid_n) % num_XCD
+new_pid = (assigned_xcd * (total_blocks // num_XCD)) + ((pid_m * num_pid_n + pid_n) // num_XCD)]]]
+Full Kernel Code:
+[[[#!/usr/bin/env python
 
 import torch
 import triton
@@ -28,8 +35,14 @@ def matmul_kernel(
     pid_m = first_pid_m + (pid % group_size_m)
     pid_n = (pid % num_pid_in_group) // group_size_m
 
-    offs_am = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M))[:, None]
-    offs_bn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N))[None, :]
+    # New swizzling pattern
+    num_XCD = 8
+    total_blocks = num_pid_m * num_pid_n
+    assigned_xcd = (pid_m * num_pid_n + pid_n) % num_XCD
+    new_pid = (assigned_xcd * (total_blocks // num_XCD)) + ((pid_m * num_pid_n + pid_n) // num_XCD)
+
+    offs_am = (new_pid // num_pid_n * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M))[:, None]
+    offs_bn = (new_pid % num_pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N))[None, :]
     offs_k = tl.arange(0, BLOCK_SIZE_K)
     a_ptrs = a_ptr + (offs_am * stride_am + offs_k[None, :] * stride_ak)
     b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + offs_bn * stride_bn)
@@ -43,8 +56,8 @@ def matmul_kernel(
         b_ptrs += BLOCK_SIZE_K * stride_bk
     c = accumulator.to(tl.float16)
 
-    offs_cm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-    offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    offs_cm = new_pid // num_pid_n * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offs_cn = new_pid % num_pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
     tl.store(c_ptrs, c, mask=c_mask)
@@ -106,4 +119,4 @@ if __name__ == "__main__":
     parser.add_argument("--K", type=int, default=8192, help="Number of columns in A and rows in B")
     args = parser.parse_args()
     
-    main(args.M, args.N, args.K) 
+    main(args.M, args.N, args.K)]]]
