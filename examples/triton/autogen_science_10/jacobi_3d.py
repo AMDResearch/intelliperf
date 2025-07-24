@@ -3,6 +3,7 @@
 import torch
 import triton
 import triton.language as tl
+import argparse
 
 @triton.jit
 def jacobi_3d_kernel(
@@ -62,11 +63,9 @@ def jacobi_3d_step(grid):
     )
     return new_grid
 
-def main():
-    Nx, Ny, Nz = 256, 256, 256
+def main(Nx=256, Ny=256, Nz=256, n_iters=10):
     grid = torch.randn(Nx, Ny, Nz, device='cuda', dtype=torch.float32)
     
-    n_iters = 10
     rep = 10
     
     # Warm-up
@@ -92,4 +91,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Triton 3D Jacobi Solver Benchmark")
+    parser.add_argument("--Nx", type=int, default=256, help="Grid size in X dimension")
+    parser.add_argument("--Ny", type=int, default=256, help="Grid size in Y dimension")
+    parser.add_argument("--Nz", type=int, default=256, help="Grid size in Z dimension")
+    parser.add_argument("--n_iters", type=int, default=10, help="Number of Jacobi iterations")
+    args = parser.parse_args()
+    
+    main(args.Nx, args.Ny, args.Nz, args.n_iters) 

@@ -3,6 +3,7 @@
 import torch
 import triton
 import triton.language as tl
+import argparse
 
 @triton.jit
 def gravity_potential_kernel(
@@ -55,10 +56,7 @@ def gravity_potential(masses, pos, Nx, Ny):
     )
     return grid
 
-def main():
-    Nx, Ny = 4096, 4096
-    n_masses = 16384
-    
+def main(Nx=4096, Ny=4096, n_masses=16384):
     masses = torch.rand(n_masses, device='cuda', dtype=torch.float32) * 100
     pos = torch.rand(2, n_masses, device='cuda', dtype=torch.float32)
     pos[0, :] *= Nx
@@ -85,4 +83,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Triton Gravitational Potential Benchmark")
+    parser.add_argument("--Nx", type=int, default=4096, help="Grid size in X dimension")
+    parser.add_argument("--Ny", type=int, default=4096, help="Grid size in Y dimension")
+    parser.add_argument("--n_masses", type=int, default=16384, help="Number of masses")
+    args = parser.parse_args()
+    
+    main(args.Nx, args.Ny, args.n_masses) 

@@ -3,6 +3,7 @@
 import torch
 import triton
 import triton.language as tl
+import argparse
 
 @triton.jit
 def n_body_kernel(
@@ -84,11 +85,7 @@ def n_body_simulation(pos, vel, dt, eps):
     )
     return new_pos, new_vel
 
-def main():
-    n_particles = 32768
-    dt = 0.01
-    eps = 1e-6
-    
+def main(n_particles=32768, dt=0.01, eps=1e-6):
     pos = torch.randn(3, n_particles, device='cuda', dtype=torch.float32)
     vel = torch.randn(3, n_particles, device='cuda', dtype=torch.float32)
 
@@ -112,4 +109,10 @@ def main():
     print(f"Triton N-Body Simulation time: {triton_time:.4f} ms")
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Triton N-Body Simulation Benchmark")
+    parser.add_argument("--n_particles", type=int, default=32768, help="Number of particles")
+    parser.add_argument("--dt", type=float, default=0.01, help="Time step")
+    parser.add_argument("--eps", type=float, default=1e-6, help="Softening factor")
+    args = parser.parse_args()
+    
+    main(args.n_particles, args.dt, args.eps) 

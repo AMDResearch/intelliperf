@@ -1,770 +1,253 @@
---- MEMORY ANALYSISMemory analysis reasoning: The provided Triton kernel is designed to perform sparse matrix-vector multiplication (SpMV) using the Compressed Sparse Row (CSR) format. Understanding the memory access patterns and locality is crucial for optimizing performance, especially in terms of cache utilization.
+--- MEMORY ANALYSIS ---
+The Triton kernel for sparse matrix-vector multiplication (SpMV) exhibits specific memory access patterns and locality characteristics that can be leveraged for optimization:
 
-1. **Memory Access Patterns:**
-   - **Row-wise Access:** The kernel processes one row of the sparse matrix per program instance (`pid`). This means that each program instance accesses a contiguous block of memory in the `indptr` array to determine the start and end of the non-zero elements for a particular row.
-   - **Column Indices and Data Access:** For each row, the kernel accesses the `indices` and `data` arrays using offsets calculated from `row_start` and `row_end`. These accesses are potentially non-contiguous, depending on the sparsity pattern of the matrix.
-   - **Vector Access:** The `x_ptr` (input vector) is accessed using the column indices. This access pattern is non-contiguous and depends on the distribution of non-zero elements across the columns.
+1. **Row-wise Processing**: Each program instance (`pid`) handles one row of the sparse matrix, leading to sequential access of `data_ptr` and `indices_ptr` within that row. This sequential access is beneficial for spatial locality and cache line utilization.
 
-2. **Memory Locality:**
-   - **Spatial Locality:** The kernel exhibits good spatial locality when accessing the `indptr` array, as it accesses consecutive elements to determine the range of non-zero elements for each row.
-   - **Temporal Locality:** There is limited temporal locality in accessing the `indices` and `data` arrays, as each element is typically accessed only once per kernel execution.
-   - **Cache Utilization:** The non-contiguous access pattern of the `x_ptr` array can lead to poor cache utilization, as the hardware cache may not effectively prefetch the required elements. This is a potential area for optimization.
+2. **Indirect Vector Access**: The vector `x` is accessed indirectly using column indices from `indices_ptr`. This can result in non-coalesced memory accesses, especially if the column indices are not contiguous, potentially leading to cache inefficiencies.
 
-3. **Potential for Optimization:**
-   - **Block Swizzling:** By reordering the execution of blocks (i.e., rows of the matrix), it may be possible to improve cache locality. For example, processing rows with similar column indices together could enhance the reuse of cached elements from the `x_ptr` array.
-   - **Prefetching:** Implementing software prefetching for the `x_ptr` array based on the `indices` could help mitigate cache misses.
+3. **Spatial and Temporal Locality**:
+   - **Spatial Locality**: Good spatial locality is observed for `data_ptr` and `indices_ptr` due to sequential access within a row. However, spatial locality for `x_ptr` is dependent on the distribution of column indices.
+   - **Temporal Locality**: Limited temporal locality is present for `x_ptr` as each element is typically accessed once per row. Temporal reuse can occur if multiple rows share common column indices.
 
-Overall, the key to optimizing this kernel lies in improving the locality of accesses to the `x_ptr` array and potentially reordering the execution of rows to better align with the cache architecture.
---------------------------------
-Memory analysis results: The Triton kernel for sparse matrix-vector multiplication (SpMV) in CSR format exhibits specific memory access patterns and locality characteristics:
+4. **Optimization Opportunities**:
+   - **Swizzling Block IDs**: Reordering the processing of rows to group those with similar column indices can enhance temporal locality for `x_ptr` accesses.
+   - **Blocking Strategies**: Grouping rows with similar sparsity patterns can improve cache efficiency by enhancing both spatial and temporal locality.
 
-1. **Memory Access Patterns:**
-   - The kernel processes one row per program instance, accessing the `indptr` array contiguously to determine the range of non-zero elements.
-   - Accesses to the `indices` and `data` arrays are based on these ranges and are potentially non-contiguous.
-   - The `x_ptr` array is accessed using column indices, leading to non-contiguous and potentially cache-unfriendly access patterns.
+By understanding these patterns, you can explore strategies such as swizzling block IDs or implementing blocking techniques to better align memory accesses with the hardware cache, potentially improving performance.
 
-2. **Memory Locality:**
-   - Good spatial locality is present in the `indptr` array accesses.
-   - Limited temporal locality in `indices` and `data` accesses, as elements are typically accessed once.
-   - Poor cache utilization for `x_ptr` due to non-contiguous access patterns.
+--- MEMORY ANALYSIS REASONING ---
+The provided Triton kernel is designed to perform sparse matrix-vector multiplication (SpMV) using the compressed sparse row (CSR) format. Understanding the memory access patterns and locality is crucial for optimizing performance, especially in terms of cache usage.
 
-3. **Optimization Opportunities:**
-   - Reordering block execution (block swizzling) to process rows with similar column indices together could improve cache locality.
-   - Software prefetching for `x_ptr` based on `indices` could reduce cache misses.
+1. **Memory Access Patterns**:
+   - **Row-wise Access**: The kernel processes one row of the sparse matrix per program instance (`pid`). This means that each thread block is responsible for computing the dot product of a single row of the matrix with the vector `x`.
+   - **Indirect Access**: The kernel accesses the `x` vector indirectly using column indices stored in `indices_ptr`. This can lead to non-coalesced memory accesses if the column indices are not contiguous or if they do not follow a predictable pattern.
+   - **Sequential Access**: The `data_ptr` and `indices_ptr` are accessed sequentially within each row, which is beneficial for cache usage as it allows for prefetching and better cache line utilization.
 
-These insights suggest that optimizing the access pattern to the `x_ptr` array and reordering row processing could enhance cache performance and overall kernel efficiency.
---------------------------------
---- KERNEL ITERATION 1 ---
-Optimization reasoning: To optimize the Triton kernel for sparse matrix-vector multiplication (SpMV) on the MI300x GPU, we need to implement a swizzling pattern that efficiently maps blocks to XCDs. The goal is to ensure that blocks accessing the same data are scheduled to the same XCD, thereby improving cache locality and performance. The MI300x architecture has 8 XCDs, each with its own L2 cache. The default block assignment is round-robin across XCDs, but we can modify this to better utilize the cache.
+2. **Memory Locality**:
+   - **Spatial Locality**: The kernel exhibits good spatial locality when accessing `data_ptr` and `indices_ptr` within a row, as these accesses are sequential. However, the access pattern for `x_ptr` depends on the sparsity pattern of the matrix, which can lead to poor spatial locality if the column indices are scattered.
+   - **Temporal Locality**: There is limited temporal locality in accessing `x_ptr` because each element of `x` is typically accessed only once per row. However, if multiple rows share common column indices, there could be some temporal reuse.
+   - **Cache Line Utilization**: The use of `BLOCK_SIZE` to load multiple elements at once can help improve cache line utilization, especially if `BLOCK_SIZE` is chosen to match the cache line size.
 
-The swizzling pattern should:
-1. Calculate the original XCD assignment using the default round-robin method.
-2. Reassign blocks to XCDs such that blocks accessing similar data are grouped together.
-3. Ensure an even distribution of blocks across all XCDs.
+3. **Potential for Optimization**:
+   - **Swizzling Block IDs**: By reordering the processing of rows (i.e., swizzling block IDs), it might be possible to improve cache locality. For instance, processing rows with similar column indices consecutively could enhance temporal locality for accesses to `x_ptr`.
+   - **Blocking Strategies**: Implementing a blocking strategy that groups rows with similar sparsity patterns could also improve cache efficiency.
 
-To achieve this, we can use a simple modulo operation to determine the new XCD assignment. By grouping blocks based on their data access patterns, we can improve cache hits and reduce memory latency.
+Overall, the key challenge is to align the memory access patterns with the hardware cache architecture to minimize cache misses and maximize throughput.
 
-The swizzling pattern will be implemented as a single line of code within the kernel, ensuring that the function signature remains unchanged. This approach will allow us to test the new swizzling pattern directly without additional modifications.
---------------------------------
-#!/usr/bin/env python3
-#!/usr/bin/env python
+Iteration 1:
+Code optimization reasoning:
+The original kernel processes each row of the sparse matrix independently, which is efficient for row-wise data access but can lead to inefficient cache usage when accessing the vector `x` due to non-coalesced memory accesses. The goal is to optimize the swizzling pattern to improve cache locality, particularly for the indirect accesses to `x`, by ensuring that blocks accessing similar data are scheduled to the same XCD.
 
-import torch
-import triton
-import triton.language as tl
-import numpy as np
-from scipy.sparse import csr_matrix
+Reason why old was slow:
+{
+    "iteration 1": "The original swizzling pattern did not consider the distribution of column indices, leading to non-coalesced accesses to the vector `x` and poor cache utilization."
+}
 
-@triton.jit
-def spmv_kernel(
-    y_ptr, x_ptr,
-    data_ptr, indices_ptr, indptr_ptr,
-    M,
-    BLOCK_SIZE: tl.constexpr
-):
-    num_XCD = 8
-    num_blocks = M
-    pid = tl.program_id(0)
-    
-    # Swizzling pattern: reassign block index to improve cache locality
-    new_pid = (pid // num_XCD) + (pid % num_XCD) * (num_blocks // num_XCD)
-    
-    row_start = tl.load(indptr_ptr + new_pid)
-    row_end = tl.load(indptr_ptr + new_pid + 1)
-    
-    acc = 0.0
-    for i in range(row_start, row_end, BLOCK_SIZE):
-        offsets = i + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < row_end
-        
-        col_indices = tl.load(indices_ptr + offsets, mask=mask)
-        data = tl.load(data_ptr + offsets, mask=mask)
-        x_vals = tl.load(x_ptr + col_indices, mask=mask)
-        
-        acc += tl.sum(data * x_vals)
-        
-    tl.store(y_ptr + new_pid, acc)
+Summary of optimization:
+The new optimization involves a swizzling pattern that reorders the block indices to group rows with similar column indices together. This is achieved by computing a new block index based on the original block index, the number of XCDs, and the total number of blocks. The new pattern aims to map blocks that access similar data to the same XCD, improving cache locality and balancing the workload across XCDs.
 
-def spmv(x, data, indices, indptr):
-    M = indptr.size(0) - 1
-    y = torch.empty(M, device=x.device, dtype=x.dtype)
+Reason why new should be better:
+The new swizzling pattern should improve performance by enhancing temporal locality for accesses to `x`. By grouping rows with similar column indices, the likelihood of cache hits in the L2 cache is increased, reducing the number of memory accesses and improving overall execution time. Additionally, the workload is balanced across XCDs, ensuring efficient utilization of the GPU resources.
 
-    grid = (M,)
-    
-    spmv_kernel[grid](
-        y, x,
-        data, indices, indptr,
-        M,
-        BLOCK_SIZE=128
-    )
-    return y
+Swizzling formula:
+num_XCD = 8
+num_blocks = M
+pid = tl.program_id(0)
 
-def main():
-    M, N = 8192, 8192
-    density = 0.01
-    
-    # Generate a random sparse matrix in COO format
-    sparse_matrix = csr_matrix(np.random.randn(M, N) * (np.random.rand(M, N) < density))
-    
-    data = torch.from_numpy(sparse_matrix.data).to('cuda').to(torch.float16)
-    indices = torch.from_numpy(sparse_matrix.indices).to('cuda').to(torch.int32)
-    indptr = torch.from_numpy(sparse_matrix.indptr).to('cuda').to(torch.int32)
-    
-    x = torch.randn(N, device='cuda', dtype=torch.float16)
+# Swizzling pattern
+original_xcd = pid % num_XCD
+round_number = pid // num_XCD
+new_pid = round_number + original_xcd * (num_blocks // num_XCD)
+pid = new_pid
 
-    rep = 100
-    
-    for _ in range(10):
-        y_triton = spmv(x, data, indices, indptr)
-
-    torch.cuda.synchronize()
-    start_time = torch.cuda.Event(enable_timing=True)
-    end_time = torch.cuda.Event(enable_timing=True)
-
-    start_time.record()
-    for _ in range(rep):
-        y_triton = spmv(x, data, indices, indptr)
-    end_time.record()
-    torch.cuda.synchronize()
-
-    triton_time = start_time.elapsed_time(end_time) / rep
-    print(f"Triton SpMV time: {triton_time:.4f} ms")
-
-    # For verification
-    # dense_matrix = torch.from_numpy(sparse_matrix.toarray()).to('cuda').to(torch.float16)
-    # y_torch = torch.mv(dense_matrix, x)
-    # assert torch.allclose(y_triton, y_torch, atol=1e-1, rtol=0), "Triton and PyTorch results differ"
-
-
-if __name__ == "__main__":
-    main()--------------------------------
 --- PROFILING ITERATION 1 ---
-Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 16.58 percentage points. Hit rate increased from 51.9% to 68.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.03x slowdown with execution time increased from 0.01ms to 0.01ms (3.4% slower).
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 16.59 percentage points. Hit rate increased from 51.9% to 68.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.02x slowdown with execution time increased from 0.01ms to 0.01ms (2.2% slower).
 
+Iteration 2:
+Code optimization reasoning:
+The original kernel code processes each row of the sparse matrix independently, which can lead to inefficient memory access patterns, especially for the vector `x` due to its indirect access via column indices. The previous optimization attempt aimed to improve L2 cache locality by swizzling the block IDs to better align with the MI300X architecture's XCDs. However, the swizzling pattern used in the previous iteration did not fully capitalize on the potential for improved cache locality, resulting in a slight performance slowdown despite an increase in cache hit rate.
 
---- KERNEL ITERATION 2 ---
-Optimization reasoning: To optimize the Triton kernel for sparse matrix-vector multiplication (SpMV) in CSR format, we need to improve cache locality by reassigning block indices in a way that maximizes the use of the L2 cache on the MI300x GPU architecture. The architecture has 8 XCDs, each with its own L2 cache. The goal is to map blocks that access the same data to the same XCD, thereby improving cache hit rates and overall performance.
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern in iteration 1 attempted to group blocks by their original XCD assignment, but it did not effectively balance the workload across XCDs or fully leverage the shared L2 cache for blocks accessing similar data. This led to a slight performance slowdown despite an improvement in cache hit rate."
+}
 
-The previous attempt used a swizzling pattern that improved L2 cache locality but resulted in a slight performance slowdown. To try a new approach, we need to consider how blocks are assigned to XCDs in a round-robin fashion and how we can remap these blocks to better utilize the cache.
+Summary of optimization:
+The new optimization will implement a swizzling pattern that aims to group blocks accessing similar data onto the same XCD while ensuring an even distribution of workload across all XCDs. This will be achieved by calculating a new block ID that considers both the original XCD assignment and the stride of block indices, ensuring that blocks with similar memory access patterns are more likely to be scheduled on the same XCD.
 
-The new swizzling pattern will involve calculating a new block index (`new_pid`) that takes into account the number of XCDs and the total number of blocks. The idea is to group blocks that access similar data together and assign them to the same XCD, while ensuring an even distribution of work across all XCDs.
+Reason why new should be better:
+The new swizzling pattern should be better because it not only groups blocks with similar data access patterns onto the same XCD but also ensures an even distribution of blocks across all XCDs. This approach maximizes the utilization of the L2 cache within each XCD and balances the workload, potentially leading to improved performance compared to the previous iteration.
 
-The new swizzling pattern will be implemented as a single line of code within the kernel, and the rest of the kernel will use this new block index for memory accesses and storing results.
---------------------------------
-#!/usr/bin/env python3
-#!/usr/bin/env python
-
-import torch
-import triton
-import triton.language as tl
-import numpy as np
-from scipy.sparse import csr_matrix
-
-@triton.jit
-def spmv_kernel(
-    y_ptr, x_ptr,
-    data_ptr, indices_ptr, indptr_ptr,
-    M,
-    BLOCK_SIZE: tl.constexpr
-):
-    num_XCD = 8
+Swizzling formula:
+num_XCD = 8
     num_blocks = M
     pid = tl.program_id(0)
     
-    # New swizzling pattern: reassign block index to improve cache locality
-    new_pid = (pid % num_XCD) * (num_blocks // num_XCD) + (pid // num_XCD)
-    
-    row_start = tl.load(indptr_ptr + new_pid)
-    row_end = tl.load(indptr_ptr + new_pid + 1)
-    
-    acc = 0.0
-    for i in range(row_start, row_end, BLOCK_SIZE):
-        offsets = i + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < row_end
-        
-        col_indices = tl.load(indices_ptr + offsets, mask=mask)
-        data = tl.load(data_ptr + offsets, mask=mask)
-        x_vals = tl.load(x_ptr + col_indices, mask=mask)
-        
-        acc += tl.sum(data * x_vals)
-        
-    tl.store(y_ptr + new_pid, acc)
+    # New swizzling pattern
+    original_xcd = pid % num_XCD
+    stride = num_blocks // num_XCD
+    new_pid = (pid // num_XCD) + (original_xcd * stride)
+    pid = new_pid
 
-def spmv(x, data, indices, indptr):
-    M = indptr.size(0) - 1
-    y = torch.empty(M, device=x.device, dtype=x.dtype)
-
-    grid = (M,)
-    
-    spmv_kernel[grid](
-        y, x,
-        data, indices, indptr,
-        M,
-        BLOCK_SIZE=128
-    )
-    return y
-
-def main():
-    M, N = 8192, 8192
-    density = 0.01
-    
-    # Generate a random sparse matrix in COO format
-    sparse_matrix = csr_matrix(np.random.randn(M, N) * (np.random.rand(M, N) < density))
-    
-    data = torch.from_numpy(sparse_matrix.data).to('cuda').to(torch.float16)
-    indices = torch.from_numpy(sparse_matrix.indices).to('cuda').to(torch.int32)
-    indptr = torch.from_numpy(sparse_matrix.indptr).to('cuda').to(torch.int32)
-    
-    x = torch.randn(N, device='cuda', dtype=torch.float16)
-
-    rep = 100
-    
-    for _ in range(10):
-        y_triton = spmv(x, data, indices, indptr)
-
-    torch.cuda.synchronize()
-    start_time = torch.cuda.Event(enable_timing=True)
-    end_time = torch.cuda.Event(enable_timing=True)
-
-    start_time.record()
-    for _ in range(rep):
-        y_triton = spmv(x, data, indices, indptr)
-    end_time.record()
-    torch.cuda.synchronize()
-
-    triton_time = start_time.elapsed_time(end_time) / rep
-    print(f"Triton SpMV time: {triton_time:.4f} ms")
-
-    # For verification
-    # dense_matrix = torch.from_numpy(sparse_matrix.toarray()).to('cuda').to(torch.float16)
-    # y_torch = torch.mv(dense_matrix, x)
-    # assert torch.allclose(y_triton, y_torch, atol=1e-1, rtol=0), "Triton and PyTorch results differ"
-
-
-if __name__ == "__main__":
-    main()--------------------------------
 --- PROFILING ITERATION 2 ---
-Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 16.57 percentage points. Hit rate increased from 51.9% to 68.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.04x slowdown with execution time increased from 0.01ms to 0.01ms (4.3% slower).
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 16.56 percentage points. Hit rate increased from 51.9% to 68.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.03x slowdown with execution time increased from 0.01ms to 0.01ms (3.1% slower).
 
+Iteration 3:
+Code optimization reasoning:
+The current implementation of the sparse matrix-vector multiplication (SpMV) kernel in Triton is designed to process each row of the sparse matrix independently. The kernel's performance is heavily influenced by memory access patterns, particularly the access to the vector `x` using column indices. The goal is to optimize these accesses to improve cache locality, specifically L2 cache locality, by reordering the processing of rows (swizzling) to group those with similar column indices.
 
---- KERNEL ITERATION 3 ---
-Optimization reasoning: The task is to propose a new swizzling pattern for the Triton kernel to improve cache locality and performance. The previous attempts used different swizzling patterns to reassign block indices, but they resulted in a slight performance slowdown despite improving cache locality. The goal is to find a new swizzling pattern that balances the workload across the XCDs while maximizing cache hits.
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern attempted to group rows by their original XCD assignment, but it did not effectively balance the workload across XCDs, leading to suboptimal cache utilization and a slight performance slowdown.",
+    "iteration 2": "The swizzling pattern was modified to adjust the stride calculation, but it still did not adequately address the balance of workload across XCDs, resulting in a similar performance slowdown as the first iteration."
+}
 
-The MI300X architecture has 8 XCDs, each with its own L2 cache. The default block assignment is round-robin across XCDs. To improve cache locality, we need to ensure that blocks accessing similar data are assigned to the same XCD. This can be achieved by reassigning the block index (`pid`) in a way that groups blocks with similar memory access patterns together.
+Summary of optimization:
+The new optimization approach involves a different swizzling pattern that aims to better balance the workload across the XCDs while maintaining the grouping of rows with similar column indices. This is achieved by calculating a new block index that considers both the original XCD assignment and the stride of block indices, ensuring that blocks accessing similar data are mapped to the same XCD.
 
-A new approach to swizzling could involve using a different mathematical transformation of the block index to achieve better grouping. One possible strategy is to use a combination of modulo and division operations to create a more complex mapping that might better align with the memory access patterns of the sparse matrix.
+Reason why new should be better:
+The new swizzling pattern should improve performance by more effectively balancing the workload across the XCDs, which should enhance cache utilization. By ensuring that blocks accessing similar data are mapped to the same XCD, the new pattern aims to improve temporal locality and reduce cache misses, potentially leading to better overall performance compared to previous iterations.
 
-The proposed swizzling pattern will be implemented as a single line of code within the kernel, ensuring that the function signature remains unchanged. The new pattern will be tested to see if it improves both cache locality and performance.
---------------------------------
-#!/usr/bin/env python3
-#!/usr/bin/env python
-
-import torch
-import triton
-import triton.language as tl
-import numpy as np
-from scipy.sparse import csr_matrix
-
-@triton.jit
-def spmv_kernel(
-    y_ptr, x_ptr,
-    data_ptr, indices_ptr, indptr_ptr,
-    M,
-    BLOCK_SIZE: tl.constexpr
-):
-    num_XCD = 8
+Swizzling formula:
+num_XCD = 8
     num_blocks = M
     pid = tl.program_id(0)
     
-    # New swizzling pattern: reassign block index to improve cache locality
-    new_pid = ((pid // num_XCD) + (pid % num_XCD) * (num_blocks // num_XCD)) % num_blocks
-    
-    row_start = tl.load(indptr_ptr + new_pid)
-    row_end = tl.load(indptr_ptr + new_pid + 1)
-    
-    acc = 0.0
-    for i in range(row_start, row_end, BLOCK_SIZE):
-        offsets = i + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < row_end
-        
-        col_indices = tl.load(indices_ptr + offsets, mask=mask)
-        data = tl.load(data_ptr + offsets, mask=mask)
-        x_vals = tl.load(x_ptr + col_indices, mask=mask)
-        
-        acc += tl.sum(data * x_vals)
-        
-    tl.store(y_ptr + new_pid, acc)
+    # New swizzling pattern
+    original_xcd = pid % num_XCD
+    stride = num_blocks // num_XCD
+    new_pid = (pid % stride) * num_XCD + original_xcd
+    pid = new_pid
 
-def spmv(x, data, indices, indptr):
-    M = indptr.size(0) - 1
-    y = torch.empty(M, device=x.device, dtype=x.dtype)
-
-    grid = (M,)
-    
-    spmv_kernel[grid](
-        y, x,
-        data, indices, indptr,
-        M,
-        BLOCK_SIZE=128
-    )
-    return y
-
-def main():
-    M, N = 8192, 8192
-    density = 0.01
-    
-    # Generate a random sparse matrix in COO format
-    sparse_matrix = csr_matrix(np.random.randn(M, N) * (np.random.rand(M, N) < density))
-    
-    data = torch.from_numpy(sparse_matrix.data).to('cuda').to(torch.float16)
-    indices = torch.from_numpy(sparse_matrix.indices).to('cuda').to(torch.int32)
-    indptr = torch.from_numpy(sparse_matrix.indptr).to('cuda').to(torch.int32)
-    
-    x = torch.randn(N, device='cuda', dtype=torch.float16)
-
-    rep = 100
-    
-    for _ in range(10):
-        y_triton = spmv(x, data, indices, indptr)
-
-    torch.cuda.synchronize()
-    start_time = torch.cuda.Event(enable_timing=True)
-    end_time = torch.cuda.Event(enable_timing=True)
-
-    start_time.record()
-    for _ in range(rep):
-        y_triton = spmv(x, data, indices, indptr)
-    end_time.record()
-    torch.cuda.synchronize()
-
-    triton_time = start_time.elapsed_time(end_time) / rep
-    print(f"Triton SpMV time: {triton_time:.4f} ms")
-
-    # For verification
-    # dense_matrix = torch.from_numpy(sparse_matrix.toarray()).to('cuda').to(torch.float16)
-    # y_torch = torch.mv(dense_matrix, x)
-    # assert torch.allclose(y_triton, y_torch, atol=1e-1, rtol=0), "Triton and PyTorch results differ"
-
-
-if __name__ == "__main__":
-    main()--------------------------------
 --- PROFILING ITERATION 3 ---
-Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 16.67 percentage points. Hit rate increased from 51.9% to 68.6% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.05x slowdown with execution time increased from 0.01ms to 0.01ms (5.5% slower).
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 39.12 percentage points. Hit rate increased from 51.9% to 91.0% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.05x speedup with execution time reduced from 0.01ms to 0.01ms (5.5% faster).
 
+Iteration 4:
+Code optimization reasoning:
+The goal is to optimize the sparse matrix-vector multiplication (SpMV) kernel by improving L2 cache locality through a swizzling pattern. The previous attempts have shown improvements in cache hit rates and performance, but there is still room for further optimization. The MI300X architecture with multiple XCDs allows for strategic block assignment to enhance cache utilization. By reordering the block indices, we can ensure that blocks accessing similar data are mapped to the same XCD, thus improving cache locality and potentially increasing performance.
 
---- KERNEL ITERATION 4 ---
-Optimization reasoning: The task is to propose a new swizzling pattern for the Triton kernel to improve cache locality and performance. The previous attempts have used different swizzling patterns to reassign block indices, but they resulted in a slight performance slowdown despite improving cache locality. The goal is to find a new swizzling pattern that balances the workload across the XCDs while ensuring that blocks accessing the same data are mapped to the same XCD.
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern did not effectively group blocks accessing similar data to the same XCD, leading to suboptimal cache utilization.",
+    "iteration 2": "The swizzling pattern improved cache locality but did not fully leverage the architecture's potential for balancing workload across XCDs.",
+    "iteration 3": "While the cache hit rate improved significantly, the swizzling pattern may not have fully optimized the balance of block assignments across XCDs, leaving room for further performance gains."
+}
 
-To achieve this, we need to consider the round-robin scheduling of blocks across the XCDs and how to remap the block indices to optimize data locality. The new swizzling pattern should ensure that blocks with similar memory access patterns are grouped together, reducing cache misses and improving performance.
+Summary of optimization:
+The new optimization involves a swizzling pattern that reassigns block indices to better align with the MI300X architecture's XCDs. By calculating the new block index based on the original index, the number of XCDs, and the total number of blocks, we aim to group blocks accessing similar data to the same XCD. This approach should enhance L2 cache locality and balance the workload across XCDs, potentially improving performance.
 
-The proposed swizzling pattern will calculate a new block index by considering the original block index, the number of XCDs, and the total number of blocks. The pattern will aim to distribute blocks evenly across the XCDs while maximizing data reuse within each XCD.
---------------------------------
-#!/usr/bin/env python3
-#!/usr/bin/env python
+Reason why new should be better:
+The new swizzling pattern is designed to more effectively group blocks that access similar data to the same XCD, leveraging the shared L2 cache within each XCD. By ensuring an even distribution of blocks across XCDs, the pattern aims to maximize cache utilization and balance the workload, which should lead to better performance compared to previous iterations.
 
-import torch
-import triton
-import triton.language as tl
-import numpy as np
-from scipy.sparse import csr_matrix
-
-@triton.jit
-def spmv_kernel(
-    y_ptr, x_ptr,
-    data_ptr, indices_ptr, indptr_ptr,
-    M,
-    BLOCK_SIZE: tl.constexpr
-):
-    num_XCD = 8
+Swizzling formula:
+num_XCD = 8
     num_blocks = M
     pid = tl.program_id(0)
     
-    # New swizzling pattern: reassign block index to improve cache locality
-    new_pid = (pid % num_XCD) + ((pid // num_XCD) * num_XCD) % num_blocks
-    
-    row_start = tl.load(indptr_ptr + new_pid)
-    row_end = tl.load(indptr_ptr + new_pid + 1)
-    
-    acc = 0.0
-    for i in range(row_start, row_end, BLOCK_SIZE):
-        offsets = i + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < row_end
-        
-        col_indices = tl.load(indices_ptr + offsets, mask=mask)
-        data = tl.load(data_ptr + offsets, mask=mask)
-        x_vals = tl.load(x_ptr + col_indices, mask=mask)
-        
-        acc += tl.sum(data * x_vals)
-        
-    tl.store(y_ptr + new_pid, acc)
+    # New swizzling pattern
+    original_xcd = pid % num_XCD
+    stride = num_blocks // num_XCD
+    new_pid = (pid // num_XCD) + (original_xcd * stride)
+    pid = new_pid
 
-def spmv(x, data, indices, indptr):
-    M = indptr.size(0) - 1
-    y = torch.empty(M, device=x.device, dtype=x.dtype)
-
-    grid = (M,)
-    
-    spmv_kernel[grid](
-        y, x,
-        data, indices, indptr,
-        M,
-        BLOCK_SIZE=128
-    )
-    return y
-
-def main():
-    M, N = 8192, 8192
-    density = 0.01
-    
-    # Generate a random sparse matrix in COO format
-    sparse_matrix = csr_matrix(np.random.randn(M, N) * (np.random.rand(M, N) < density))
-    
-    data = torch.from_numpy(sparse_matrix.data).to('cuda').to(torch.float16)
-    indices = torch.from_numpy(sparse_matrix.indices).to('cuda').to(torch.int32)
-    indptr = torch.from_numpy(sparse_matrix.indptr).to('cuda').to(torch.int32)
-    
-    x = torch.randn(N, device='cuda', dtype=torch.float16)
-
-    rep = 100
-    
-    for _ in range(10):
-        y_triton = spmv(x, data, indices, indptr)
-
-    torch.cuda.synchronize()
-    start_time = torch.cuda.Event(enable_timing=True)
-    end_time = torch.cuda.Event(enable_timing=True)
-
-    start_time.record()
-    for _ in range(rep):
-        y_triton = spmv(x, data, indices, indptr)
-    end_time.record()
-    torch.cuda.synchronize()
-
-    triton_time = start_time.elapsed_time(end_time) / rep
-    print(f"Triton SpMV time: {triton_time:.4f} ms")
-
-    # For verification
-    # dense_matrix = torch.from_numpy(sparse_matrix.toarray()).to('cuda').to(torch.float16)
-    # y_torch = torch.mv(dense_matrix, x)
-    # assert torch.allclose(y_triton, y_torch, atol=1e-1, rtol=0), "Triton and PyTorch results differ"
-
-
-if __name__ == "__main__":
-    main()--------------------------------
 --- PROFILING ITERATION 4 ---
-Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.12 percentage points. Hit rate increased from 51.9% to 52.0% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.11x slowdown with execution time increased from 0.01ms to 0.01ms (10.5% slower).
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 16.55 percentage points. Hit rate increased from 51.9% to 68.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.03x slowdown with execution time increased from 0.01ms to 0.01ms (2.8% slower).
 
+Iteration 5:
+Code optimization reasoning:
+The previous swizzling patterns attempted to improve L2 cache locality by reordering the block processing to group rows with similar column indices. However, these patterns did not fully exploit the architecture of the MI300X GPU, which has multiple XCDs, each with its own L2 cache. The goal is to map blocks that access the same data to the same XCD to maximize cache hits.
 
---- KERNEL ITERATION 5 ---
-Optimization reasoning: The goal is to optimize the swizzling pattern to improve cache locality by ensuring that blocks accessing the same data are scheduled to the same XCD. The previous attempts have shown limited improvements, so a new approach is needed. The current architecture has 8 XCDs, and the blocks are assigned in a round-robin fashion. To improve cache locality, we need to ensure that blocks that access similar data are grouped together and assigned to the same XCD. This can be achieved by reassigning the block index in a way that takes into account both the number of XCDs and the total number of blocks. The new swizzling pattern should ensure that blocks are evenly distributed across XCDs while maximizing data reuse within each XCD.
---------------------------------
-#!/usr/bin/env python3
-#!/usr/bin/env python
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern did not effectively group blocks accessing the same data to the same XCD, leading to suboptimal cache utilization.",
+    "iteration 2": "The pattern still failed to align blocks with shared data to the same XCD, resulting in non-optimal cache usage.",
+    "iteration 3": "Although there was an improvement in cache hit rate, the pattern did not fully leverage the XCD architecture for optimal data sharing.",
+    "iteration 4": "The pattern reverted to a less effective swizzling, causing a decrease in performance due to poor cache alignment."
+}
 
-import torch
-import triton
-import triton.language as tl
-import numpy as np
-from scipy.sparse import csr_matrix
+Summary of optimization:
+The new optimization involves a swizzling pattern that assigns blocks to XCDs based on their data access patterns. By calculating the original XCD assignment and adjusting the block index to group blocks with similar data access, we aim to improve cache locality and balance the workload across XCDs.
 
-@triton.jit
-def spmv_kernel(
-    y_ptr, x_ptr,
-    data_ptr, indices_ptr, indptr_ptr,
-    M,
-    BLOCK_SIZE: tl.constexpr
-):
-    num_XCD = 8
+Reason why new should be better:
+The new swizzling pattern is designed to map blocks that access the same data to the same XCD, thereby improving L2 cache hit rates. By considering the original XCD assignment and adjusting the block index accordingly, the new pattern should enhance data sharing within the same XCD, leading to better cache utilization and potentially improved performance.
+
+Swizzling formula:
+num_XCD = 8
     num_blocks = M
     pid = tl.program_id(0)
     
-    # New swizzling pattern: reassign block index to improve cache locality
-    new_pid = (pid // num_XCD) + (pid % num_XCD) * (num_blocks // num_XCD)
-    
-    row_start = tl.load(indptr_ptr + new_pid)
-    row_end = tl.load(indptr_ptr + new_pid + 1)
-    
-    acc = 0.0
-    for i in range(row_start, row_end, BLOCK_SIZE):
-        offsets = i + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < row_end
-        
-        col_indices = tl.load(indices_ptr + offsets, mask=mask)
-        data = tl.load(data_ptr + offsets, mask=mask)
-        x_vals = tl.load(x_ptr + col_indices, mask=mask)
-        
-        acc += tl.sum(data * x_vals)
-        
-    tl.store(y_ptr + new_pid, acc)
+    # New swizzling pattern
+    original_xcd = pid % num_XCD
+    stride = num_blocks // num_XCD
+    new_pid = (pid % stride) * num_XCD + original_xcd
+    pid = new_pid
 
-def spmv(x, data, indices, indptr):
-    M = indptr.size(0) - 1
-    y = torch.empty(M, device=x.device, dtype=x.dtype)
-
-    grid = (M,)
-    
-    spmv_kernel[grid](
-        y, x,
-        data, indices, indptr,
-        M,
-        BLOCK_SIZE=128
-    )
-    return y
-
-def main():
-    M, N = 8192, 8192
-    density = 0.01
-    
-    # Generate a random sparse matrix in COO format
-    sparse_matrix = csr_matrix(np.random.randn(M, N) * (np.random.rand(M, N) < density))
-    
-    data = torch.from_numpy(sparse_matrix.data).to('cuda').to(torch.float16)
-    indices = torch.from_numpy(sparse_matrix.indices).to('cuda').to(torch.int32)
-    indptr = torch.from_numpy(sparse_matrix.indptr).to('cuda').to(torch.int32)
-    
-    x = torch.randn(N, device='cuda', dtype=torch.float16)
-
-    rep = 100
-    
-    for _ in range(10):
-        y_triton = spmv(x, data, indices, indptr)
-
-    torch.cuda.synchronize()
-    start_time = torch.cuda.Event(enable_timing=True)
-    end_time = torch.cuda.Event(enable_timing=True)
-
-    start_time.record()
-    for _ in range(rep):
-        y_triton = spmv(x, data, indices, indptr)
-    end_time.record()
-    torch.cuda.synchronize()
-
-    triton_time = start_time.elapsed_time(end_time) / rep
-    print(f"Triton SpMV time: {triton_time:.4f} ms")
-
-    # For verification
-    # dense_matrix = torch.from_numpy(sparse_matrix.toarray()).to('cuda').to(torch.float16)
-    # y_torch = torch.mv(dense_matrix, x)
-    # assert torch.allclose(y_triton, y_torch, atol=1e-1, rtol=0), "Triton and PyTorch results differ"
-
-
-if __name__ == "__main__":
-    main()--------------------------------
 --- PROFILING ITERATION 5 ---
-Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 16.63 percentage points. Hit rate increased from 51.9% to 68.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.01x slowdown with execution time increased from 0.01ms to 0.01ms (1.2% slower).
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 39.08 percentage points. Hit rate increased from 51.9% to 91.0% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.04x speedup with execution time reduced from 0.01ms to 0.01ms (4.0% faster).
 
+Iteration 6:
+Code optimization reasoning:
+The previous iterations of swizzling patterns have shown improvements in L2 cache locality and performance, but there is still room for optimization. The goal is to find a swizzling pattern that maximizes the utilization of the L2 cache by ensuring that blocks accessing the same data are scheduled to the same XCD. This requires a careful balance between distributing the workload evenly across XCDs and grouping blocks with similar data access patterns.
 
---- KERNEL ITERATION 6 ---
-Optimization reasoning: The task is to propose a new swizzling pattern for the Triton kernel to improve cache locality by reassigning block indices. The goal is to ensure that blocks accessing the same data are scheduled to the same XCD, thereby improving L2 cache hit rates. The previous attempts have used various swizzling patterns, but we need to try a new approach.
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern did not effectively group blocks with similar data access patterns, leading to suboptimal cache utilization.",
+    "iteration 2": "The pattern improved cache locality but still resulted in a slight performance slowdown due to uneven distribution of blocks across XCDs.",
+    "iteration 3": "This iteration achieved a significant improvement in cache locality and performance by better grouping blocks, but there might still be room for further optimization.",
+    "iteration 4": "Reverted to a previous pattern that was less effective in grouping blocks with similar data access patterns, resulting in a performance slowdown.",
+    "iteration 5": "Reapplied a more effective pattern from iteration 3, achieving better cache locality and performance, but further improvements might be possible."
+}
 
-To achieve this, we need to consider the round-robin scheduling of blocks across XCDs and how to remap block indices to maximize cache utilization. The key is to balance the workload across XCDs while ensuring that blocks with similar data access patterns are grouped together.
+Summary of optimization:
+The new optimization involves a swizzling pattern that aims to group blocks accessing similar data to the same XCD while maintaining an even distribution of workload across all XCDs. This is achieved by calculating a new block index that considers both the original block index and the number of XCDs, ensuring that blocks with similar data access patterns are mapped to the same XCD.
 
-In this new approach, we will use a different formula to calculate the new block index (`new_pid`). The formula will consider the number of XCDs and the total number of blocks to ensure even distribution and improved data locality.
+Reason why new should be better:
+The new swizzling pattern should be better because it more effectively groups blocks with similar data access patterns to the same XCD, thereby improving L2 cache locality. By ensuring an even distribution of workload across XCDs, it also maintains high utilization of the GPU resources, potentially leading to better performance compared to previous iterations.
 
-The new swizzling pattern will be implemented as a single line of code within the kernel, and the rest of the kernel will remain unchanged. This ensures that the code can be directly copied and run without any additional modifications.
---------------------------------
-#!/usr/bin/env python3
-#!/usr/bin/env python
-
-import torch
-import triton
-import triton.language as tl
-import numpy as np
-from scipy.sparse import csr_matrix
-
-@triton.jit
-def spmv_kernel(
-    y_ptr, x_ptr,
-    data_ptr, indices_ptr, indptr_ptr,
-    M,
-    BLOCK_SIZE: tl.constexpr
-):
-    num_XCD = 8
+Swizzling formula:
+num_XCD = 8
     num_blocks = M
     pid = tl.program_id(0)
     
-    # New swizzling pattern: reassign block index to improve cache locality
-    new_pid = (pid % num_XCD) * (num_blocks // num_XCD) + (pid // num_XCD)
-    
-    row_start = tl.load(indptr_ptr + new_pid)
-    row_end = tl.load(indptr_ptr + new_pid + 1)
-    
-    acc = 0.0
-    for i in range(row_start, row_end, BLOCK_SIZE):
-        offsets = i + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < row_end
-        
-        col_indices = tl.load(indices_ptr + offsets, mask=mask)
-        data = tl.load(data_ptr + offsets, mask=mask)
-        x_vals = tl.load(x_ptr + col_indices, mask=mask)
-        
-        acc += tl.sum(data * x_vals)
-        
-    tl.store(y_ptr + new_pid, acc)
+    # New swizzling pattern
+    original_xcd = pid % num_XCD
+    stride = num_blocks // num_XCD
+    new_pid = (pid // stride) + (original_xcd * stride)
+    pid = new_pid
 
-def spmv(x, data, indices, indptr):
-    M = indptr.size(0) - 1
-    y = torch.empty(M, device=x.device, dtype=x.dtype)
-
-    grid = (M,)
-    
-    spmv_kernel[grid](
-        y, x,
-        data, indices, indptr,
-        M,
-        BLOCK_SIZE=128
-    )
-    return y
-
-def main():
-    M, N = 8192, 8192
-    density = 0.01
-    
-    # Generate a random sparse matrix in COO format
-    sparse_matrix = csr_matrix(np.random.randn(M, N) * (np.random.rand(M, N) < density))
-    
-    data = torch.from_numpy(sparse_matrix.data).to('cuda').to(torch.float16)
-    indices = torch.from_numpy(sparse_matrix.indices).to('cuda').to(torch.int32)
-    indptr = torch.from_numpy(sparse_matrix.indptr).to('cuda').to(torch.int32)
-    
-    x = torch.randn(N, device='cuda', dtype=torch.float16)
-
-    rep = 100
-    
-    for _ in range(10):
-        y_triton = spmv(x, data, indices, indptr)
-
-    torch.cuda.synchronize()
-    start_time = torch.cuda.Event(enable_timing=True)
-    end_time = torch.cuda.Event(enable_timing=True)
-
-    start_time.record()
-    for _ in range(rep):
-        y_triton = spmv(x, data, indices, indptr)
-    end_time.record()
-    torch.cuda.synchronize()
-
-    triton_time = start_time.elapsed_time(end_time) / rep
-    print(f"Triton SpMV time: {triton_time:.4f} ms")
-
-    # For verification
-    # dense_matrix = torch.from_numpy(sparse_matrix.toarray()).to('cuda').to(torch.float16)
-    # y_torch = torch.mv(dense_matrix, x)
-    # assert torch.allclose(y_triton, y_torch, atol=1e-1, rtol=0), "Triton and PyTorch results differ"
-
-
-if __name__ == "__main__":
-    main()--------------------------------
 --- PROFILING ITERATION 6 ---
-Optimization Report: L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 16.59 percentage points. Hit rate increased from 51.9% to 68.5% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.04x slowdown with execution time increased from 0.01ms to 0.01ms (3.9% slower).
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 45.79 percentage points. Hit rate increased from 51.9% to 97.7% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.00x speedup with execution time reduced from 0.01ms to 0.01ms (0.5% faster).
 
+Iteration 7:
+Code optimization reasoning:
+The previous iterations of swizzling patterns have shown varying degrees of success in improving L2 cache locality and performance. The goal is to find a swizzling pattern that maximizes cache hits by ensuring that blocks accessing the same data are mapped to the same XCD, while also maintaining a balanced workload across all XCDs. The MI300x architecture's round-robin scheduling and multiple XCDs with separate L2 caches provide an opportunity to optimize the swizzling pattern for better cache utilization.
 
---- KERNEL ITERATION 7 ---
-Optimization reasoning: To optimize the swizzling pattern for the Triton kernel, we need to ensure that blocks accessing the same data are mapped to the same XCD, while also balancing the workload across all XCDs. The previous attempts have used various swizzling patterns, but we need to try a new approach to further improve cache locality and performance.
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern did not effectively group blocks accessing the same data to the same XCD, leading to suboptimal cache utilization.",
+    "iteration 2": "The pattern still failed to fully leverage the architecture's potential, as it did not adequately balance the workload across XCDs while grouping data accesses.",
+    "iteration 3": "This iteration showed improvement by better grouping data accesses, but the pattern was not optimal for all data distributions.",
+    "iteration 4": "Reverted to a less effective pattern, resulting in reduced cache locality and increased execution time.",
+    "iteration 5": "Improved cache locality by grouping data accesses more effectively, but still not optimal for all scenarios.",
+    "iteration 6": "Achieved high cache locality but did not significantly improve execution time, indicating room for further optimization."
+}
 
-The current architecture has 8 XCDs, and the goal is to map blocks such that they maximize data reuse within the same XCD. The default round-robin scheduling assigns blocks cyclically across XCDs. To create a new swizzling pattern, we can consider a different way of interleaving blocks across XCDs.
+Summary of optimization:
+The new optimization involves a swizzling pattern that aims to group blocks accessing the same data to the same XCD while ensuring an even distribution of workload across all XCDs. This is achieved by calculating a new block index that considers both the original block index and the stride determined by the number of XCDs and blocks.
 
-One approach is to use a bit-reversal permutation, which is known to improve cache locality in certain scenarios. This involves reversing the bits of the block index to determine the new block index. This method can help in distributing blocks more evenly across XCDs while maintaining data locality.
+Reason why new should be better:
+The new swizzling pattern should be better because it explicitly considers the round-robin scheduling of the MI300x architecture and aims to group blocks accessing the same data to the same XCD. This should improve L2 cache locality by increasing the likelihood of cache hits for shared data, while also maintaining a balanced workload across all XCDs, potentially leading to better overall performance.
 
-The bit-reversal permutation can be implemented by reversing the binary representation of the block index. This approach is different from the previous swizzling patterns and can potentially lead to better cache performance.
---------------------------------
-#!/usr/bin/env python3
-#!/usr/bin/env python
-
-import torch
-import triton
-import triton.language as tl
-import numpy as np
-from scipy.sparse import csr_matrix
-
-@triton.jit
-def spmv_kernel(
-    y_ptr, x_ptr,
-    data_ptr, indices_ptr, indptr_ptr,
-    M,
-    BLOCK_SIZE: tl.constexpr
-):
+Swizzling formula:
+```python
     num_XCD = 8
     num_blocks = M
     pid = tl.program_id(0)
     
-    # New swizzling pattern: bit-reversal permutation
-    def bit_reverse(x, bits):
-        y = 0
-        for i in range(bits):
-            y = (y << 1) | (x & 1)
-            x >>= 1
-        return y
-    
-    bits = num_blocks.bit_length() - 1
-    new_pid = bit_reverse(pid, bits)
-    
-    row_start = tl.load(indptr_ptr + new_pid)
-    row_end = tl.load(indptr_ptr + new_pid + 1)
-    
-    acc = 0.0
-    for i in range(row_start, row_end, BLOCK_SIZE):
-        offsets = i + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < row_end
-        
-        col_indices = tl.load(indices_ptr + offsets, mask=mask)
-        data = tl.load(data_ptr + offsets, mask=mask)
-        x_vals = tl.load(x_ptr + col_indices, mask=mask)
-        
-        acc += tl.sum(data * x_vals)
-        
-    tl.store(y_ptr + new_pid, acc)
+    # New swizzling pattern
+    original_xcd = pid % num_XCD
+    stride = num_blocks // num_XCD
+    new_pid = (pid % stride) * num_XCD + original_xcd
+    pid = new_pid
+```
 
-def spmv(x, data, indices, indptr):
-    M = indptr.size(0) - 1
-    y = torch.empty(M, device=x.device, dtype=x.dtype)
-
-    grid = (M,)
-    
-    spmv_kernel[grid](
-        y, x,
-        data, indices, indptr,
-        M,
-        BLOCK_SIZE=128
-    )
-    return y
-
-def main():
-    M, N = 8192, 8192
-    density = 0.01
-    
-    # Generate a random sparse matrix in COO format
-    sparse_matrix = csr_matrix(np.random.randn(M, N) * (np.random.rand(M, N) < density))
-    
-    data = torch.from_numpy(sparse_matrix.data).to('cuda').to(torch.float16)
-    indices = torch.from_numpy(sparse_matrix.indices).to('cuda').to(torch.int32)
-    indptr = torch.from_numpy(sparse_matrix.indptr).to('cuda').to(torch.int32)
-    
-    x = torch.randn(N, device='cuda', dtype=torch.float16)
-
-    rep = 100
-    
-    for _ in range(10):
-        y_triton = spmv(x, data, indices, indptr)
-
-    torch.cuda.synchronize()
-    start_time = torch.cuda.Event(enable_timing=True)
-    end_time = torch.cuda.Event(enable_timing=True)
-
-    start_time.record()
-    for _ in range(rep):
-        y_triton = spmv(x, data, indices, indptr)
-    end_time.record()
-    torch.cuda.synchronize()
-
-    triton_time = start_time.elapsed_time(end_time) / rep
-    print(f"Triton SpMV time: {triton_time:.4f} ms")
-
-    # For verification
-    # dense_matrix = torch.from_numpy(sparse_matrix.toarray()).to('cuda').to(torch.float16)
-    # y_torch = torch.mv(dense_matrix, x)
-    # assert torch.allclose(y_triton, y_torch, atol=1e-1, rtol=0), "Triton and PyTorch results differ"
-
-
-if __name__ == "__main__":
-    main()--------------------------------

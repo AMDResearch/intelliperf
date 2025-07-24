@@ -3,6 +3,7 @@
 import torch
 import triton
 import triton.language as tl
+import argparse
 
 @triton.jit
 def lbm_d2q9_kernel(
@@ -132,14 +133,10 @@ def lbm_d2q9_step(fin, omega):
     )
     return fout
 
-def main():
-    Nx, Ny = 2048, 2048
-    omega = 1.0 # Relaxation parameter
-    
+def main(Nx=2048, Ny=2048, n_iters=100, omega=1.0):
     # Initial state: 9 distributions, (Nx, Ny) grid
     fin = torch.ones(9, Nx, Ny, device='cuda', dtype=torch.float32) / 9.0
     
-    n_iters = 100
     rep = 10
     
     # Warm-up
@@ -165,4 +162,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    parser = argparse.ArgumentParser(description="Triton LBM-D2Q9 Benchmark")
+    parser.add_argument("--Nx", type=int, default=2048, help="Grid size in X dimension")
+    parser.add_argument("--Ny", type=int, default=2048, help="Grid size in Y dimension")
+    parser.add_argument("--n_iters", type=int, default=100, help="Number of iterations")
+    parser.add_argument("--omega", type=float, default=1.0, help="Relaxation parameter")
+    args = parser.parse_args()
+    
+    main(args.Nx, args.Ny, args.n_iters, args.omega) 
