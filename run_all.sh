@@ -1,5 +1,11 @@
 #!/bin/bash
 
+SKIP_DUPLICATES=false
+if [[ "$1" == "--skip-duplicates" ]]; then
+    SKIP_DUPLICATES=true
+    echo "Skipping existing log files."
+fi
+
 # Create swizzling_logs directories if they don't exist
 mkdir -p examples/triton/autogen_10/swizzling_logs_2
 mkdir -p examples/triton/autogen_science_10/swizzling_logs_2
@@ -22,6 +28,11 @@ AUTOGEN_KERNELS=(
 
 for kernel in "${AUTOGEN_KERNELS[@]}"; do
     output_file="$AUTOGEN_LOG_DIR/${kernel%.py}_log.txt"
+
+    if [ "$SKIP_DUPLICATES" = true ] && [ -f "$output_file" ]; then
+        echo "Log file $output_file already exists, skipping $kernel."
+        continue
+    fi
 
     kernel_path="$AUTOGEN_DIR/$kernel"
     echo "Adding execute permission to $kernel_path"
@@ -49,6 +60,11 @@ AUTOGEN_SCIENCE_KERNELS=(
 
 for kernel in "${AUTOGEN_SCIENCE_KERNELS[@]}"; do
     output_file="$AUTOGEN_SCIENCE_LOG_DIR/${kernel%.py}_log.txt"
+
+    if [ "$SKIP_DUPLICATES" = true ] && [ -f "$output_file" ]; then
+        echo "Log file $output_file already exists, skipping $kernel."
+        continue
+    fi
 
     kernel_path="$AUTOGEN_SCIENCE_DIR/$kernel"
     echo "Adding execute permission to $kernel_path"

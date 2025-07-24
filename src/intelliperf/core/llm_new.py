@@ -50,7 +50,7 @@ class LLM:
 			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key, max_tokens=16000)
 			dspy.configure(lm=self.lm)
 
-	def ask(self, user_prompt: str, answer_type: str = "optimized_code") -> str:
+	def ask(self, user_prompt: str, signature=None, answer_type: str = "optimized_code"):
 		if self.use_amd:
 			# AMD/Azure REST call
 			body = {
@@ -64,35 +64,25 @@ class LLM:
 			url = f"{self.provider}/engines/{self.model}/chat/completions"
 			resp = requests.post(url, json=body, headers=self.header)
 			resp.raise_for_status()
-			return resp.json()["choices"][0]["message"]["content"]
-
-		# DSPy path: use ChainOfThought with clear signature
-		# Define signature mapping input prompt to optimized code
-
-		# output struct
-		#{iteration 1: why didnt it work
-		# iteration 2: why didnt it work
-		# ...
-		# optimization rationale
-		# final optimized code}
+			# This path does not support structured output or reasoning.
+			# It returns the content and None for reasoning to maintain a consistent return type.
+			return resp.json()["choices"][0]["message"]["content"], None
 
 		dspy.context(description=self.system_prompt)
-		signature = f"prompt: str -> {answer_type}"
+		
+		is_simple_signature = False
+		if signature is None:
+			is_simple_signature = True
+			signature = f"prompt: str -> {answer_type}: str"
+		
 		chain = dspy.ChainOfThought(signature)
-		ct_response = chain(prompt=user_prompt)
+		response = chain(prompt=user_prompt)
+		
+		reasoning = getattr(response, "reasoning", None)
 
-		logging.debug(f"CT: {ct_response}")
+		if is_simple_signature:
+			answer = getattr(response, answer_type)
+			return answer, reasoning
 
-		answer_fields = [a.strip() for a in answer_type.split(',')]
-		answers = {}
-		for ans_type in answer_fields:
-			field_name = ans_type.split(':')[0].strip()
-			answers[field_name] = getattr(ct_response, field_name, str(ct_response))
-
-		reasoning = getattr(ct_response, "reasoning", None)
-		logging.debug(f"Answer: {answers}")
-		logging.debug(f"Reasoning: {reasoning}")
-
-		if len(answers) == 1:
-			return list(answers.values())[0], reasoning
-		return answers, reasoning
+		# For complex signatures, return the whole Prediction object
+		return response, reasoning 

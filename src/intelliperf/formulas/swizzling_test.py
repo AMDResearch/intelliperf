@@ -26,8 +26,9 @@ import json
 import logging
 import os
 import difflib
+import dspy
 
-from intelliperf.core.llm import LLM
+from intelliperf.core.llm_new import LLM
 from intelliperf.formulas.formula_base import (
 	Formula_Base,
 	Result,
@@ -35,6 +36,30 @@ from intelliperf.formulas.formula_base import (
 	get_kernel_name,
 )
 from intelliperf.utils.env import get_llm_api_key
+
+
+class SwizzlingOptimization(dspy.Signature):
+	"""Optimize GPU kernel code by applying a swizzling pattern to improve L2 cache locality."""
+
+	prompt = dspy.InputField(
+		desc="The user prompt containing the original code, memory analysis, and optimization history."
+	)
+
+	reason_why_old_was_slow = dspy.OutputField(
+		desc='JSON dictionary where keys are "iteration X" and values are sentences explaining why the swizzling pattern in that iteration was suboptimal.'
+	)
+	summary_of_optimization = dspy.OutputField(
+		desc="An overview of the new code swizzling optimization that will be implemented."
+	)
+	reason_why_new_should_be_better = dspy.OutputField(
+		desc="A comparison of the new optimization to the old optimizations, explaining why it should be better."
+	)
+	result_code = dspy.OutputField(
+		desc="The full kernel code with the new swizzling optimization applied. This code should be complete and runnable."
+	)
+	swizzling_pattern = dspy.OutputField(
+		desc="ONLY the swizzling pattern that maps old pid's to new pid's. This will be used for visualization. I need the full swizzling pattern, which starts from grabbing the tl.program_id and ending with remapping the pid. Note that I always want the original pid to be written to a variable called pid and ending in a variable called pid. If we have a 2D grid of pids, they must be called pid_m and pid_n. It is very important that you name the variables by this format and write the whole code based around these variable names so that it runs successfully. "
+	)
 
 
 class swizzling_test(Formula_Base):
@@ -79,6 +104,13 @@ class swizzling_test(Formula_Base):
 		self.memory_analysis_output = None
 		self.success = False
 		
+		# New fields for logging
+		self.memory_analysis_prompt = None
+		self.optimization_prompt = None
+		self.current_swizzling_pattern = None
+		self.memory_analysis_reasoning = None
+		self.optimization_reasoning = None
+
 		# New fields for iteration history tracking
 		self.iteration_history = []  # List of dicts with {iteration, diff, report, success}
 		self.current_iteration = 0
@@ -92,6 +124,9 @@ class swizzling_test(Formula_Base):
 		self.best_diff = ""
 		self.best_kernel_name = ""
 		self.best_iteration_report = ""
+		self.best_kernel_code = ""
+		self.best_swizzling_pattern = ""
+		self.l2_improvement_history = []
 
 	def compute_diff(self, file_paths: list) -> str:
 		"""
@@ -258,6 +293,7 @@ class swizzling_test(Formula_Base):
 					"I have this triton kernel and am trying to understand the memory access patterns of the kernel, and where there is memory locality that can be taken advantage of in the hardware cache. I will use this to swizzle the block id to better align the work so we have better cache locality.\n\n"
 					"I DO NOT want you to rewrite any code. I only want you to give me an overview for the memory access patterns and memory locality of the kernel. This will be used as context for future prompts that will take advantage of your insights. Make sure these insights on memory access patterns and locality between blocks in the kernel are accuracy and insightful so that I can actually take advantage of them to improve locality."
 				)
+				self.memory_analysis_prompt = analysis_prompt
 
 				self.bottleneck_report = (
 					f"L2 Cache Locality Detection: IntelliPerf identified suboptimal L2 cache hit rate "
@@ -269,11 +305,24 @@ class swizzling_test(Formula_Base):
 				# Stage 1: Get memory access analysis
 				try:
 					logging.debug(f"Analysis prompt: {analysis_prompt}")
-					self.memory_analysis_output, self.memory_analysis_reasoning = analysis_llm.ask(analysis_prompt, "memory_analysis_output")
+					self.memory_analysis_output, self.memory_analysis_reasoning = analysis_llm.ask(
+						analysis_prompt, answer_type="memory_analysis_output"
+					)
 					self.memory_analysis_output = self.memory_analysis_output.strip()
 					self.memory_analysis_reasoning = self.memory_analysis_reasoning.strip()
+					
 					logging.debug(f"Memory analysis output: {self.memory_analysis_output}")
 					logging.debug(f"Memory analysis reasoning: {self.memory_analysis_reasoning}")
+
+					if self.output_kernel_file:
+						with open(self.output_kernel_file, "w") as f:
+							f.write("Memory access pattern prompt:\n")
+							f.write(f"{self.memory_analysis_prompt}\n\n")
+							f.write("Memory access pattern reasoning:\n")
+							f.write(f"{self.memory_analysis_reasoning or 'Not provided.'}\n\n")
+							f.write("Memory access pattern response:\n")
+							f.write(f"{self.memory_analysis_output}\n\n")
+
 					self.memory_analysis_done = True
 				except Exception as e:
 					logging.error(f"Failed to get memory analysis - {str(e)}")
@@ -296,8 +345,6 @@ class swizzling_test(Formula_Base):
 				f"The memory analysis is: {self.memory_analysis_output}\n\n"
 				f"{history_prompt_part}"
 				"Pay special attention to the swizzling pattern in the diff. If you see a swizzling pattern in the diff, do not reimplement it. Instead, try to implement an completely new approach to swizzling."
-				"Notes\n\n"
-				"Summary\n\n"
 				"On the MI300x GPU there are multiple XCDs, and each XCD has its own L2 cache. So that blocks on the same XCD that access the same memory will likely hit in the shared L2 cache and thus improve the L2 hit rate of the program. For this reason, blocks that share the same data should be scheduled to the same XCD. Your task is to find the swizzling formulation such that blocks that access the same memory will be scheduled to the same XCD.\n\n"
 				"MI300X architecture specification\n\n"
 				"The GPU contains 8 XCDs.\n\n"
@@ -320,11 +367,12 @@ class swizzling_test(Formula_Base):
 				"Task\n\n"
 				"num_XCD = 8 in this hardware architecture. In the case of this program, num_blocks is equal to num_SMS, so you can directly use that argument. Make sure you do not change the parameters in the kernel function, as this will break the code. The function signature must stay exactly the same or the code will fail.\n\n"
 				"Propose a swizzling pattern as one or a few lines of code inside the kernel that reassigns the block index. For HIP kernels, you must still eventually assign threadId. For the HIP kernels, also make sure that you use the new swizzled block ids for all thread id computation. For Triton kernels, you must still eventually assign pid. Rewrite the code of the entire kernel without putting in any placeholders. I want to be able to take the code, copy it into a new file, and run it on the testbench without any extra work. Again, make sure to not change the kernel function signature and only add new swizzling lines within the kernel using the available parameters.\n\n"
-				"For the pattern:\n\n"
-				"Rationale: Step through how you calculate strides, offsets, and packing.\n\n"
-				"Code: Show the full kernel with your single-line swizzle expression.\n\n"
-				"EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work."
+				"EXTREMELY IMPORTANT - Make sure that you keep trying to push the performance of the kernel with your swizzling pattern. It is possible for the implementation to be faster, so try to find this."
+				"EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work."
 				"EXTREMELY IMPORTANT - Make sure to try new approaches to swizzling. Do not just use the same approach as the previous time. If you have previously tried an approach and it is shown in the diff, do not reimplement it. Instead, try to implement an completely new approach to swizzling."
+				"EXTREMELY IMPORTANT - Make sure to not change the kernel function signature. Do not add any new parameters to the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function."
+				"EXTREMELY IMPORTANT - I always want the original pid to be written to a variable called pid and ending in a variable called pid. If we have a 2D grid of pids, they must be called pid_m and pid_n. It is very important that you name the variables by this format and write the whole code based around these variable names so that it runs successfully."
+				"EXTREMELY IMPORTANT - Make sure your output is in the correct format. The fields are reason_why_old_was_slow, summary_of_optimization, reason_why_new_should_be_better, result_code, and swizzling_pattern."
 			)
 
 			if self.current_summary is not None:
@@ -350,9 +398,15 @@ class swizzling_test(Formula_Base):
 			with open(kernel_file, "r") as f:
 				code_before_opt = f.read()
 
-			optimized_file_content, self.optimization_reasoning = optimization_llm.ask(optimization_prompt, "optimized_code")
-			optimized_file_content = optimized_file_content.strip()
-			self.optimization_reasoning = self.optimization_reasoning.strip()
+			response, self.optimization_reasoning = optimization_llm.ask(
+				optimization_prompt, signature=SwizzlingOptimization
+			)
+			optimized_file_content = response.result_code.strip()
+			self.current_swizzling_pattern = response.swizzling_pattern.strip()
+   
+			if self.optimization_reasoning:
+				self.optimization_reasoning = self.optimization_reasoning.strip()
+			
 			logging.debug(f"Optimization reasoning: {self.optimization_reasoning}")
 			
 			diff = difflib.unified_diff(
@@ -364,23 +418,28 @@ class swizzling_test(Formula_Base):
 			self.last_applied_diff = "".join(list(diff))
 
 			with open(kernel_file, "w") as f:
-				f.write('#!/usr/bin/env python3\n' + optimized_file_content)
+				f.write(optimized_file_content)
 
 			if self.output_kernel_file and self.current_iteration == 1:
 				with open(self.output_kernel_file, "w") as f:
-					f.write(f"--- MEMORY ANALYSIS")
-					f.write(f"Memory analysis reasoning: {self.memory_analysis_reasoning}\n")
-					f.write("--------------------------------\n")
-					f.write(f"Memory analysis results: {self.memory_analysis_output}\n")
-					f.write("--------------------------------\n")	
-			
+					f.write(f"--- MEMORY ANALYSIS ---\n")
+					f.write(f"{self.memory_analysis_output}\n\n")
+					f.write(f"--- MEMORY ANALYSIS REASONING ---\n")
+					f.write(f"{self.memory_analysis_reasoning}\n\n")
+
 			if self.output_kernel_file:
 				with open(self.output_kernel_file, "a") as f:
-					f.write(f"--- KERNEL ITERATION {self.current_iteration} ---\n")
-					f.write(f"Optimization reasoning: {self.optimization_reasoning}\n")
-					f.write("--------------------------------\n")
-					f.write('#!/usr/bin/env python3\n' + optimized_file_content)
-					f.write("--------------------------------\n")
+					f.write(f"Iteration {self.current_iteration}:\n")
+					f.write("Code optimization reasoning:\n")
+					f.write(f"{self.optimization_reasoning or 'Not provided.'}\n\n")
+					f.write("Reason why old was slow:\n")
+					f.write(f"{response.reason_why_old_was_slow}\n\n")
+					f.write("Summary of optimization:\n")
+					f.write(f"{response.summary_of_optimization}\n\n")
+					f.write("Reason why new should be better:\n")
+					f.write(f"{response.reason_why_new_should_be_better}\n\n")
+					f.write("Swizzling formula:\n")
+					f.write(f"{self.current_swizzling_pattern}\n\n")
 
 			logging.debug(f"Optimized file content: {optimized_file_content}")
 			return Result(
@@ -447,6 +506,7 @@ class swizzling_test(Formula_Base):
 		l2_improvement = optimized_l2_hit_rate - unoptimized_l2_hit_rate
 
 		self.optimization_report = ""
+		self.l2_improvement_history.append(l2_improvement)
 
 		# Format the L2 cache improvement message
 		if l2_improvement > 0:
@@ -492,40 +552,55 @@ class swizzling_test(Formula_Base):
 			self.best_speedup = speedup
 			self.best_diff = self.last_applied_diff
 			self.best_iteration_report = self.optimization_report
+			with open(self.current_kernel_files[0], "r") as f:
+				self.best_kernel_code = f.read()
+				self.best_swizzling_pattern = self.current_swizzling_pattern
 
 		if self.output_kernel_file:
 			with open(self.output_kernel_file, "a") as f:
 				f.write(f"--- PROFILING ITERATION {self.current_iteration} ---\n")
-				f.write(f"Optimization Report: {self.optimization_report}\n")
-				f.write("\n\n")
+				f.write(f"{self.optimization_report}\n\n")
 
+		terminate = False
+		if self.current_iteration >= self.max_iterations:
+			logging.warning(f"Max iterations reached ({self.max_iterations}). Terminating optimization.")
+			terminate = True
+
+		self.success = self.best_l2_improvement > 0
+		
+		if self.success and self.output_kernel_file:
+			name, ext = os.path.splitext(self.output_kernel_file)
+			final_output_path = f"{name}_final{ext}"
+			with open(final_output_path, "w") as f:
+				f.write(f"L2 Hit Rate Improvement %: {self.best_l2_improvement}\n")
+				f.write(f"Speedup: {self.best_speedup}\n\n")
+				f.write(f"Swizzling Pattern:\n")
+				f.write(f"[[[{self.best_swizzling_pattern}]]]\n")
+				f.write("Full Kernel Code:\n")
+				f.write(f"[[[{self.best_kernel_code}]]]\n")
 		if self.current_iteration < self.max_iterations:
 			self.current_summary = self.optimization_report
 			# Always return success=False to continue iterating
-			return Result(success=False, error_report=self.optimization_report)
-
-		# After max_iterations, determine final success and write best results
-		self.success = self.best_l2_improvement > 0
-
-		if self.output_kernel_file:
-			with open(self.output_kernel_file, "a") as f:
-				f.write("--- BEST RESULT ---\n")
-				f.write(f"Kernel Name: {self.best_kernel_name}\n")
-				f.write(f"Best Swizzling Pattern:\n{self.best_diff}\n")
-				f.write(f"L2 Hit Rate Improvement %: {self.best_l2_improvement}\n")
-				f.write(f"Speedup: {self.best_speedup}\n")
-				f.write("--- END BEST RESULT ---\n")
-
-		if self.success:
-			logging.info(self.best_iteration_report)
-			return Result(success=True, asset={"log": self.best_iteration_report})
+			return Result(success=False, error_report=self.best_iteration_report)
 		
-		return Result(success=False, error_report=self.best_iteration_report)
+		return Result(success=True, asset={"log": self.best_iteration_report})
 
 	def write_results(self, output_file: str = None):
 		"""
 		Writes the results to the output file.
 		"""
+		if self.success and self.best_kernel_code:
+			output_dir = os.path.join(self.project_directory, "outputted_optimizations")
+			os.makedirs(output_dir, exist_ok=True)
+			
+			# Sanitize kernel name to be a valid filename
+			kernel_filename = "".join(c if c.isalnum() or c in ('_') else '_' for c in self.best_kernel_name)
+			output_path = os.path.join(output_dir, f"{kernel_filename}.py")
+
+			with open(output_path, "w") as f:
+				f.write("#!/usr/bin/env python3\n")
+				f.write(self.best_kernel_code)
+
 		super().write_results(
 			output_file=output_file,
 			additional_results={"formula": "swizzling", "success": self.success},
