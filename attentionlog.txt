@@ -1,0 +1,107 @@
+[92m22:38:18 - LiteLLM:DEBUG[0m: http_handler.py:579 - Using AiohttpTransport...
+[INTELLIPERF] DEBUG: Using AiohttpTransport...
+[92m22:38:18 - LiteLLM:DEBUG[0m: http_handler.py:636 - Creating AiohttpTransport...
+[INTELLIPERF] DEBUG: Creating AiohttpTransport...
+[INTELLIPERF] DEBUG: connect_tcp.started host='raw.githubusercontent.com' port=443 local_address=None timeout=5 socket_options=None
+[INTELLIPERF] DEBUG: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x71e63e5f9940>
+[INTELLIPERF] DEBUG: start_tls.started ssl_context=<ssl.SSLContext object at 0x71e63e5c6b50> server_hostname='raw.githubusercontent.com' timeout=5
+[INTELLIPERF] DEBUG: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x71e63e5f9880>
+[INTELLIPERF] DEBUG: send_request_headers.started request=<Request [b'GET']>
+[INTELLIPERF] DEBUG: send_request_headers.complete
+[INTELLIPERF] DEBUG: send_request_body.started request=<Request [b'GET']>
+[INTELLIPERF] DEBUG: send_request_body.complete
+[INTELLIPERF] DEBUG: receive_response_headers.started request=<Request [b'GET']>
+[INTELLIPERF] DEBUG: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Connection', b'keep-alive'), (b'Content-Length', b'29220'), (b'Cache-Control', b'max-age=300'), (b'Content-Security-Policy', b"default-src 'none'; style-src 'unsafe-inline'; sandbox"), (b'Content-Type', b'text/plain; charset=utf-8'), (b'ETag', b'W/"2a9da95ebc17f7c59f68ef74519a8041c664b2de0fc65e6e54764f3b1ac116b4"'), (b'Strict-Transport-Security', b'max-age=31536000'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'deny'), (b'X-XSS-Protection', b'1; mode=block'), (b'X-GitHub-Request-Id', b'C726:938D4:16BEB:1CC81:6883BACE'), (b'Content-Encoding', b'gzip'), (b'Accept-Ranges', b'bytes'), (b'Date', b'Fri, 25 Jul 2025 22:38:18 GMT'), (b'Via', b'1.1 varnish'), (b'X-Served-By', b'cache-lga21972-LGA'), (b'X-Cache', b'HIT'), (b'X-Cache-Hits', b'4'), (b'X-Timer', b'S1753483099.506869,VS0,VE0'), (b'Vary', b'Authorization,Accept-Encoding'), (b'Access-Control-Allow-Origin', b'*'), (b'Cross-Origin-Resource-Policy', b'cross-origin'), (b'X-Fastly-Request-ID', b'289ec4ada9b428431f5218ba282853d1ddddbbd1'), (b'Expires', b'Fri, 25 Jul 2025 22:43:18 GMT'), (b'Source-Age', b'64')])
+[INTELLIPERF] INFO: HTTP Request: GET https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json "HTTP/1.1 200 OK"
+[INTELLIPERF] DEBUG: receive_response_body.started request=<Request [b'GET']>
+[INTELLIPERF] DEBUG: receive_response_body.complete
+[INTELLIPERF] DEBUG: response_closed.started
+[INTELLIPERF] DEBUG: response_closed.complete
+[INTELLIPERF] DEBUG: close.started
+[INTELLIPERF] DEBUG: close.complete
+[92m22:38:18 - LiteLLM:DEBUG[0m: litellm_logging.py:182 - [Non-Blocking] Unable to import GenericAPILogger - LiteLLM Enterprise Feature - No module named 'litellm_enterprise'
+[INTELLIPERF] DEBUG: [Non-Blocking] Unable to import GenericAPILogger - LiteLLM Enterprise Feature - No module named 'litellm_enterprise'
+[92m22:38:18 - LiteLLM:DEBUG[0m: transformation.py:17 - [Non-Blocking] Unable to import _ENTERPRISE_ResponsesSessionHandler - LiteLLM Enterprise Feature - No module named 'litellm_enterprise'
+[INTELLIPERF] DEBUG: [Non-Blocking] Unable to import _ENTERPRISE_ResponsesSessionHandler - LiteLLM Enterprise Feature - No module named 'litellm_enterprise'
+[92m22:38:18 - LiteLLM:DEBUG[0m: http_handler.py:579 - Using AiohttpTransport...
+[INTELLIPERF] DEBUG: Using AiohttpTransport...
+[92m22:38:18 - LiteLLM:DEBUG[0m: http_handler.py:636 - Creating AiohttpTransport...
+[INTELLIPERF] DEBUG: Creating AiohttpTransport...
+[92m22:38:18 - LiteLLM:DEBUG[0m: http_handler.py:579 - Using AiohttpTransport...
+[INTELLIPERF] DEBUG: Using AiohttpTransport...
+[92m22:38:18 - LiteLLM:DEBUG[0m: http_handler.py:636 - Creating AiohttpTransport...
+[INTELLIPERF] DEBUG: Creating AiohttpTransport...
+[92m22:38:19 - LiteLLM:DEBUG[0m: http_handler.py:579 - Using AiohttpTransport...
+[INTELLIPERF] DEBUG: Using AiohttpTransport...
+[92m22:38:19 - LiteLLM:DEBUG[0m: http_handler.py:636 - Creating AiohttpTransport...
+[INTELLIPERF] DEBUG: Creating AiohttpTransport...
+[INTELLIPERF] DEBUG: name: 2025_07_25-22_38_17
+[INTELLIPERF] DEBUG: build_command: None
+[INTELLIPERF] DEBUG: instrument_command: None
+[INTELLIPERF] DEBUG: project_directory: ./examples
+[INTELLIPERF] DEBUG: app_cmd: ['./triton/attention/test_lean_attn.py']
+[INTELLIPERF] INFO: Creating temporary project directory: /tmp/tmpz2t1vvv6
+[INTELLIPERF] DEBUG: Copied project from ./examples to /tmp/tmpz2t1vvv6
+[INTELLIPERF] DEBUG: --------------------------------
+[INTELLIPERF] DEBUG: Showing application details of 2025_07_25-22_38_17
+[INTELLIPERF] DEBUG: Project directory: ./examples
+[INTELLIPERF] DEBUG: Build command: None
+[INTELLIPERF] DEBUG: Instrument command: None
+[INTELLIPERF] DEBUG: App command: ['./triton/attention/test_lean_attn.py']
+[INTELLIPERF] DEBUG: App args: 
+[INTELLIPERF] DEBUG: App cmd without args: ./triton/attention/test_lean_attn.py
+[INTELLIPERF] DEBUG: --------------------------------
+[INTELLIPERF] DEBUG: Showing application details of 2025_07_25-22_38_17_clone
+[INTELLIPERF] DEBUG: Project directory: /tmp/tmpz2t1vvv6
+[INTELLIPERF] DEBUG: Build command: None
+[INTELLIPERF] DEBUG: Instrument command: None
+[INTELLIPERF] DEBUG: App command: ['./triton/attention/test_lean_attn.py']
+[INTELLIPERF] DEBUG: App args: 
+[INTELLIPERF] DEBUG: App cmd without args: ./triton/attention/test_lean_attn.py
+[INTELLIPERF] DEBUG: --------------------------------
+[INTELLIPERF] DEBUG: --------------------------------
+[INTELLIPERF] DEBUG: Profiling app with name 2025_07_25-22_38_17_clone
+[INTELLIPERF] DEBUG: Profiling app with command ['./triton/attention/test_lean_attn.py']
+[INTELLIPERF] DEBUG: Running the command: rm -rf /root/intelliperf/external/guided-tuning/workloads/
+[INTELLIPERF] DEBUG: Working directory: /tmp/tmpz2t1vvv6
+[INTELLIPERF] DEBUG: PATH: /root/intelliperf/external/rocprofiler-compute/src:/root/intelliperf_env/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+[INTELLIPERF] DEBUG: Running the command: rm -rf /root/intelliperf/external/guided-tuning/data/guided.db
+[INTELLIPERF] DEBUG: Working directory: /tmp/tmpz2t1vvv6
+[INTELLIPERF] DEBUG: PATH: /root/intelliperf/external/rocprofiler-compute/src:/root/intelliperf_env/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+[INTELLIPERF] DEBUG: Running the command: /root/intelliperf/external/guided-tuning/bin/gt profile -n 2025_07_25-22_38_17_clone --top-n 1 -- ./triton/attention/test_lean_attn.py
+[INTELLIPERF] DEBUG: Working directory: /tmp/tmpz2t1vvv6
+[INTELLIPERF] DEBUG: PATH: /root/intelliperf/external/rocprofiler-compute/src:/root/intelliperf_env/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+
+
+Traceback (most recent call last):
+  File "/root/intelliperf_env/bin/intelliperf", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/root/intelliperf/src/intelliperf/__main__.py", line 233, in main
+    optimizer.profile_pass()
+  File "/root/intelliperf/src/intelliperf/formulas/swizzling_test.py", line 174, in profile_pass
+    return super().profile_pass()
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/intelliperf/src/intelliperf/formulas/formula_base.py", line 153, in profile_pass
+    self._initial_profiler_results = self._application.profile(top_n=self.top_n)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/intelliperf/src/intelliperf/core/application.py", line 92, in profile
+    success, output = capture_subprocess_output(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/intelliperf/src/intelliperf/utils/process.py", line 65, in capture_subprocess_output
+    result = subprocess.run(
+             ^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 1209, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/subprocess.py", line 2115, in _communicate
+    ready = selector.select(timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/selectors.py", line 415, in select
+    fd_event_list = self._selector.poll(timeout)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+[INTELLIPERF] DEBUG: Using selector: EpollSelector

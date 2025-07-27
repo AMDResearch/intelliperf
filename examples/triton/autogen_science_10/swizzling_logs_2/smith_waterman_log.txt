@@ -1,0 +1,84 @@
+--- MEMORY ANALYSIS ---
+The Triton kernel for the Smith-Waterman algorithm processes sequences in blocks, with each block accessing a unique portion of the sequences. The memory access patterns exhibit good spatial locality due to the contiguous access of sequence fragments within each block. Temporal locality is limited to within-block reuse, as each block operates independently. To improve cache performance, consider block swizzling techniques such as Z-order or Hilbert curves to enhance spatial locality across blocks. Additionally, ensure that memory strides align with cache line sizes to optimize cache efficiency. These insights can guide future optimizations to better leverage hardware cache capabilities.
+
+--- MEMORY ANALYSIS REASONING ---
+The Triton kernel for the Smith-Waterman algorithm is designed to perform sequence alignment by comparing two sequences, `seq1` and `seq2`. The kernel operates on blocks of these sequences, with each block being processed by a separate program instance. The memory access patterns and locality are crucial for optimizing performance, especially when considering the use of hardware caches.
+
+1. **Memory Access Patterns:**
+   - The kernel uses a block-based approach, where each block of size `BLOCK_SIZE_M x BLOCK_SIZE_N` is processed independently. This means that each program instance (or block) will load a sub-section of `seq1` and `seq2` into local memory.
+   - The `offsets_m` and `offsets_n` arrays determine which elements of `seq1` and `seq2` are loaded into the block. These offsets are calculated based on the block's program ID (`pid_m` and `pid_n`), ensuring that each block accesses a unique portion of the sequences.
+   - The `tl.load` function is used to load sequence fragments into local memory, with masking to handle boundary conditions where the block might exceed the sequence length.
+
+2. **Memory Locality:**
+   - **Spatial Locality:** The kernel exhibits spatial locality as it accesses contiguous blocks of memory for both `seq1` and `seq2`. This is beneficial for cache performance, as accessing contiguous memory locations can reduce cache misses.
+   - **Temporal Locality:** Temporal locality is less pronounced in this kernel because each block processes its own unique section of the sequences, and there is no reuse of data across different blocks. However, within a block, the same data is used multiple times for comparison, which can be beneficial for cache reuse.
+   - **Inter-block Locality:** Since each block operates independently, there is limited inter-block locality. However, aligning blocks such that they access contiguous memory regions can improve cache performance by reducing cache line evictions.
+
+3. **Opportunities for Optimization:**
+   - **Block Swizzling:** By adjusting the order in which blocks are processed (block swizzling), it may be possible to improve cache locality. For example, processing blocks in a Z-order curve or Hilbert curve can enhance spatial locality by ensuring that blocks accessing nearby memory regions are processed consecutively.
+   - **Stride Optimization:** The current implementation uses strides to calculate memory addresses for storing scores. Ensuring that these strides align well with cache line sizes can further improve cache efficiency.
+
+Overall, the kernel's memory access patterns are well-suited for exploiting spatial locality, but there is room for optimization in terms of inter-block locality and cache alignment.
+
+Iteration 1:
+Code optimization reasoning:
+The original kernel code processes sequence data in blocks, with each block independently accessing a unique portion of the sequences. The memory access pattern is efficient within each block due to contiguous access, but the inter-block access pattern could be improved to better utilize the L2 cache on the MI300X GPU. By default, blocks are assigned to XCDs in a round-robin fashion, which may not optimize for data locality across blocks. A swizzling pattern that groups blocks accessing similar data onto the same XCD could improve cache hit rates and overall performance.
+
+Reason why old was slow:
+{
+    "iteration 1": "The original swizzling pattern did not consider the distribution of blocks across XCDs, leading to suboptimal L2 cache utilization. Blocks were assigned in a round-robin manner, which did not ensure that blocks accessing the same data were mapped to the same XCD, potentially causing cache misses and increased memory latency."
+}
+
+Summary of optimization:
+The new optimization involves implementing a swizzling pattern that reassigns block indices to ensure that blocks accessing similar data are mapped to the same XCD. This is achieved by computing a new block index based on the original block index, the number of XCDs, and the total number of blocks. The goal is to maximize cache locality by keeping related data within the same XCD's L2 cache, while also balancing the workload evenly across all XCDs.
+
+Reason why new should be better:
+The new swizzling pattern should improve performance by enhancing L2 cache locality. By mapping blocks that access the same data to the same XCD, the likelihood of cache hits increases, reducing memory access latency. Additionally, the workload is balanced across XCDs, ensuring that no single XCD becomes a bottleneck. This approach leverages the architecture of the MI300X GPU more effectively than the default round-robin scheduling.
+
+Swizzling formula:
+pid_m = tl.program_id(0)
+pid_n = tl.program_id(1)
+
+num_XCD = 8
+num_blocks_m = (M + BLOCK_SIZE_M - 1) // BLOCK_SIZE_M
+num_blocks_n = (N + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
+num_blocks = num_blocks_m * num_blocks_n
+
+block_id = pid_m * num_blocks_n + pid_n
+xcd_id = block_id % num_XCD
+round_id = block_id // num_XCD
+new_block_id = round_id * num_XCD + xcd_id
+
+pid_m = new_block_id // num_blocks_n
+pid_n = new_block_id % num_blocks_n
+
+--- PROFILING ITERATION 1 ---
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 51.0% to 51.0% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.01x slowdown with execution time increased from 0.02ms to 0.02ms (0.6% slower).
+
+Iteration 2:
+Code optimization reasoning:
+The original code uses a straightforward block assignment strategy where each block is assigned to a unique portion of the sequences. This approach does not take advantage of the potential for improved cache locality through swizzling. The previous optimization attempt used a simple round-robin swizzling pattern, which did not yield any improvement in L2 cache hit rate or performance. This suggests that the swizzling pattern did not effectively group blocks that access the same data onto the same XCD, which is crucial for improving cache locality on the MI300X architecture.
+
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern used a simple round-robin approach that did not effectively group blocks accessing the same data onto the same XCD. This resulted in no improvement in L2 cache hit rate and a slight performance slowdown, as the pattern did not align well with the memory access patterns of the Smith-Waterman algorithm."
+}
+
+Summary of optimization:
+The new optimization will implement a Z-order curve swizzling pattern. This pattern is known for its ability to improve spatial locality by mapping multidimensional data into one dimension while preserving locality. By using a Z-order curve, blocks that access similar data will be more likely to be assigned to the same XCD, improving cache locality and potentially enhancing performance.
+
+Reason why new should be better:
+The Z-order curve swizzling pattern should be better than the previous round-robin approach because it is specifically designed to preserve spatial locality in multidimensional data. This means that blocks accessing similar data will be more likely to be grouped together, improving the likelihood that they will be assigned to the same XCD and thus benefit from shared L2 cache. This should lead to an improved L2 cache hit rate and potentially better performance.
+
+Swizzling formula:
+pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # Z-order curve swizzling pattern
+    block_id = pid_m * num_blocks_n + pid_n
+    z_order_id = ((block_id & 0xAAAAAAAA) >> 1) | ((block_id & 0x55555555) << 1)
+    new_block_id = z_order_id % num_blocks
+
+    pid_m = new_block_id // num_blocks_n
+    pid_n = new_block_id % num_blocks_n
+
