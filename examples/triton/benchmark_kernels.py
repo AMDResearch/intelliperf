@@ -37,6 +37,68 @@ PROBLEM_SIZES = {
         {'M': 16384, 'N': 16384, 'density': 0.02},
         {'M': 4096, 'N': 16384, 'density': 0.01},
         {'M': 16384, 'N': 4096, 'density': 0.01},
+    ],
+    'fft': [
+        {'N': 2**12}, {'N': 2**13}, {'N': 2**14}, {'N': 2**15},
+        {'N': 2**16}, {'N': 2**17}, {'N': 2**18}, {'N': 2**19},
+        {'N': 2**20}, {'N': 2**21}
+    ],
+    'fused_attention': [
+        {'Z': 16, 'H': 24, 'N_CTX': 2048, 'D_HEAD': 64},
+        {'Z': 32, 'H': 48, 'N_CTX': 4096, 'D_HEAD': 64},
+        {'Z': 64, 'H': 96, 'N_CTX': 1024, 'D_HEAD': 64},
+        {'Z': 32, 'H': 48, 'N_CTX': 4096, 'D_HEAD': 128},
+        {'Z': 16, 'H': 24, 'N_CTX': 8192, 'D_HEAD': 64},
+        {'Z': 32, 'H': 48, 'N_CTX': 2048, 'D_HEAD': 128},
+        {'Z': 8, 'H': 12, 'N_CTX': 16384, 'D_HEAD': 64},
+        {'Z': 16, 'H': 48, 'N_CTX': 4096, 'D_HEAD': 64},
+        {'Z': 32, 'H': 24, 'N_CTX': 4096, 'D_HEAD': 128},
+        {'Z': 4, 'H': 96, 'N_CTX': 8192, 'D_HEAD': 32},
+    ],
+    'fused_elementwise': [
+        {'size': 2**16}, {'size': 2**17}, {'size': 2**18}, {'size': 2**19},
+        {'size': 2**20}, {'size': 2**21}, {'size': 2**22}, {'size': 2**23},
+        {'size': 2**24}, {'size': 2**25}
+    ],
+    'gemm': [
+        {'M': 4096, 'N': 4096, 'K': 4096},
+        {'M': 8192, 'N': 8192, 'K': 8192},
+        {'M': 16384, 'N': 16384, 'K': 16384},
+        {'M': 8192, 'N': 4096, 'K': 8192},
+        {'M': 4096, 'N': 8192, 'K': 4096},
+        {'M': 8192, 'N': 8192, 'K': 4096},
+        {'M': 16384, 'N': 8192, 'K': 16384},
+        {'M': 4096, 'N': 16384, 'K': 8192},
+        {'M': 2048, 'N': 2048, 'K': 2048},
+        {'M': 1024, 'N': 1024, 'K': 1024},
+    ],
+    'layer_norm': [
+        {'M': 4096, 'N': 4096}, {'M': 8192, 'N': 8192},
+        {'M': 16384, 'N': 16384}, {'M': 32768, 'N': 32768},
+        {'M': 8192, 'N': 4096}, {'M': 4096, 'N': 8192},
+        {'M': 16384, 'N': 8192}, {'M': 8192, 'N': 16384},
+        {'M': 2048, 'N': 2048}, {'M': 1024, 'N': 1024},
+    ],
+    'softmax': [
+        {'n_rows': 4096, 'n_cols': 4096}, {'n_rows': 8192, 'n_cols': 8192},
+        {'n_rows': 16384, 'n_cols': 16384}, {'n_rows': 32768, 'n_cols': 32768},
+        {'n_rows': 8192, 'n_cols': 4096}, {'n_rows': 4096, 'n_cols': 8192},
+        {'n_rows': 16384, 'n_cols': 8192}, {'n_rows': 8192, 'n_cols': 16384},
+        {'n_rows': 2048, 'n_cols': 2048}, {'n_rows': 1024, 'n_cols': 1024},
+    ],
+    'stencil_2d': [
+        {'M': 1024, 'N': 1024}, {'M': 2048, 'N': 2048},
+        {'M': 4096, 'N': 4096}, {'M': 8192, 'N': 8192},
+        {'M': 16384, 'N': 16384}, {'M': 8192, 'N': 4096},
+        {'M': 4096, 'N': 8192}, {'M': 16384, 'N': 8192},
+        {'M': 8192, 'N': 16384}, {'M': 512, 'N': 512},
+    ],
+    'transpose': [
+        {'M': 4096, 'N': 4096}, {'M': 8192, 'N': 8192},
+        {'M': 16384, 'N': 16384}, {'M': 32768, 'N': 32768},
+        {'M': 8192, 'N': 4096}, {'M': 4096, 'N': 8192},
+        {'M': 16384, 'N': 8192}, {'M': 8192, 'N': 16384},
+        {'M': 2048, 'N': 2048}, {'M': 1024, 'N': 1024},
     ]
 }
 
@@ -65,33 +127,34 @@ def run_benchmark(script_path, params):
     """Runs a kernel script with given parameters and returns the execution time in ms."""
     if not os.path.exists(script_path):
         print(f"Warning: Script not found at {script_path}, skipping benchmark.")
-        return "not_found"
+        return "not_found", False
         
     cmd = ['python', script_path]
     for key, value in params.items():
         cmd.extend([f'--{key}', str(value)])
-    
+    cmd.append('--validate')
     try:
         # Using a timeout for safety, in case a kernel hangs
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=300)
         output = result.stdout
+        success = result.returncode == 0
         
         # Example output: "Triton conv2d time: 1.2345 ms"
         match = re.search(r"time: ([\d\.]+) ms", output)
         if match:
-            return float(match.group(1))
+            return float(match.group(1)), success
         else:
             print(f"Warning: Could not parse runtime from output of {script_path} with params {params}")
             print("STDOUT:", output)
-            return "parse_error"
+            return "parse_error", success
     except subprocess.CalledProcessError as e:
         print(f"Error running {script_path} with params {params}:")
         print("STDOUT:", e.stdout)
         print("STDERR:", e.stderr)
-        return "runtime_error"
+        return "runtime_error", success
     except subprocess.TimeoutExpired:
         print(f"Timeout running {script_path} with params {params}")
-        return "timeout"
+        return "timeout", success
 
 def main():
     parser = argparse.ArgumentParser(description="Benchmark optimized and unoptimized Triton kernels.")
@@ -136,16 +199,16 @@ def main():
                 
                 with open(csv_path, 'w', newline='') as f:
                     writer = csv.writer(f)
-                    writer.writerow(param_names + ['unoptimized_ms', 'optimized_ms'])
+                    writer.writerow(param_names + ['unoptimized_ms', 'optimized_ms', 'unoptimized_success', 'optimized_success'])
 
                     # 3. Run benchmarks for all problem sizes
                     for i, params in enumerate(problem_params):
                         print(f"  Running problem size {i+1}/{len(problem_params)}...")
                         
-                        unoptimized_time = run_benchmark(unoptimized_script_path, params)
-                        optimized_time = run_benchmark(optimized_script_path, params)
+                        unoptimized_time, unoptimized_success = run_benchmark(unoptimized_script_path, params)
+                        optimized_time, optimized_success = run_benchmark(optimized_script_path, params)
                         
-                        row = [params[k] for k in param_names] + [unoptimized_time, optimized_time]
+                        row = [params[k] for k in param_names] + [unoptimized_time, optimized_time, unoptimized_success, optimized_success]
                         writer.writerow(row)
                 
                 print(f"Results for {kernel_name} written to {csv_path}")
