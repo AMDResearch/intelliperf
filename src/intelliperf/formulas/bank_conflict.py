@@ -219,34 +219,23 @@ class bank_conflict(Formula_Base):
 			provider=provider,
 		)
 
-		kernel_to_optimize = self.get_top_kernel()
-		if kernel_to_optimize is None:
-			return Result(
-				success=False,
-				error_report="No source code or bank conflicts found. Please compile your code with -g.",
-			)
-
 		kernel = None
 		kernel_file = None
 
 		# Get the file from the results
 		if self._instrumentation_results is None:
-			# Get the file from the results
-			filtered_report_card = filter_json_field(
-				self._initial_profiler_results,
-				field="lds",
-				subfield="bc",
-				comparison_func=lambda x: x > 0,
-			)
-
-			if len(filtered_report_card) == 0:
-				return Result(success=False, error_report="No bank conflicts found.")
-
-			logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
-
-			kernel = filtered_report_card[0]["kernel"]
-			files = filtered_report_card[0]["source"]["files"]
+			pass
+		else:
+			kernel = self._instrumentation_results["kernel_analysis"]["kernel_info"]["name"]
 			kernel_name = get_kernel_name(kernel)
+			files = []
+			
+			# Extract files from bank conflict accesses
+			bank_conflicts = self._instrumentation_results["kernel_analysis"]["bank_conflicts"]["accesses"]
+			for access in bank_conflicts:
+				file_path = access["source_location"]["file"]
+				if file_path not in files:
+					files.append(file_path)
 			kernel_file = None
 			for file in files:
 				if os.path.exists(file):
@@ -257,7 +246,8 @@ class bank_conflict(Formula_Base):
 							break
 			if kernel_file is None:
 				return Result(success=False, error_report="Kernel file not found.")
-
+			
+			# Create user prompt and required reports
 			user_prompt = (
 				f"There is a bank conflict in the kernel {kernel} in the source code {unoptimized_file_content}."
 				f" Please fix the conflict but do not change the semantics of the program."
@@ -277,8 +267,6 @@ class bank_conflict(Formula_Base):
 				f"`{kernel_name}` with arguments `{args}`. Bank conflicts occur when multiple threads "
 				f"access the same memory bank simultaneously, causing serialization and performance degradation."
 			)
-		else:
-			pass
 
 		if kernel is None:
 			return Result(success=False, error_report="Failed to extract the kernel name.")
