@@ -321,10 +321,13 @@ class bank_conflict(Formula_Base):
 		return result
 
 	def performance_validation_pass(self) -> Result:
+		# Currently, Omniprobe appends the '[clone .kd]' suffix to the kernel name
+		# this needs to me adjusted to reflect the actual kernel name
+		kernel_signature_non_cloned = self.current_kernel_signature.split(" [clone .kd]")[0]
 		unoptimized_results = filter_json_field(
 			self._initial_profiler_results,
 			field="kernel",
-			comparison_func=lambda x: x == self.current_kernel_signature,
+			comparison_func=lambda x: x == kernel_signature_non_cloned,
 		)
 
 		unoptimized_time = unoptimized_results[0]["durations"]["ns"]
@@ -336,7 +339,7 @@ class bank_conflict(Formula_Base):
 		optimized_results = filter_json_field(
 			self._optimization_results,
 			field="kernel",
-			comparison_func=lambda x: x == self.current_kernel_signature,
+			comparison_func=lambda x: x == kernel_signature_non_cloned,
 		)
 		optimized_time = optimized_results[0]["durations"]["ns"]
 		optimized_conflicts = optimized_results[0]["lds"]["bc"]
