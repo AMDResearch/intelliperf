@@ -114,6 +114,12 @@ def intelliperf_parser():
 		help="Control the tolerance for the Accordo validation (default: 1e-6)",
 	)
 	optional_args.add_argument(
+		"--unittest_command",
+		type=str,
+		metavar="",
+		help="A command to run unit tests for correctness validation.",
+	)
+	optional_args.add_argument(
 		"-m",
 		"--model",
 		type=str,
@@ -209,6 +215,7 @@ def main():
 		model=args.model,
 		provider=args.provider,
 		in_place=args.in_place,
+		unittest_command=args.unittest_command,
 	)
 
 	num_attempts = 0 if args.formula == "diagnoseOnly" else args.num_attempts
@@ -236,14 +243,16 @@ def main():
 			continue
 
 		# Compile the new application
-		build_result = optimizer.build_pass(validate_build_result=False)
+		build_result = optimizer.build(validate_build_result=False)
 		if not build_result:
 			build_result.report_out()
 			logging.warning(f"Build pass {attempt + 1} failed. Retrying...")
 			continue
 
 		# Validate the new application
-		correctness_result = optimizer.correctness_validation_pass(args.accordo_absolute_tolerance)
+		correctness_result = optimizer.correctness_validation_pass(
+			accordo_absolute_tolerance=args.accordo_absolute_tolerance
+		)
 		if not correctness_result:
 			correctness_result.report_out()
 			logging.warning(f"Correctness validation pass {attempt + 1} failed. Retrying...")

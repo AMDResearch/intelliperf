@@ -173,6 +173,11 @@ class Application:
 		"""Runs the application."""
 		return process.capture_subprocess_output(self.app_cmd)
 
+	def run_unit_test(self, unittest_command):
+		"""Runs the unit test command."""
+		cmd = unittest_command.split() + ["--validate"]
+		return process.capture_subprocess_output(cmd, working_directory=self.get_project_directory())
+
 	def get_name(self):
 		return self.name
 

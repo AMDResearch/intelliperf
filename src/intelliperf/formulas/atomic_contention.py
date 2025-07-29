@@ -48,6 +48,7 @@ class atomic_contention(Formula_Base):
 		model: str = "gpt-4o",
 		provider: str = "openai",
 		in_place: bool = False,
+		**kwargs,
 	):
 		super().__init__(
 			name,
@@ -59,6 +60,7 @@ class atomic_contention(Formula_Base):
 			model,
 			provider,
 			in_place,
+			**kwargs,
 		)
 
 		self._instrumentation_results = None

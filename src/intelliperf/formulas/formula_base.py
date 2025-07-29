@@ -40,7 +40,7 @@ from accordo.python.communicate import get_kern_arg_data, send_response
 from accordo.python.utils import run_subprocess
 from intelliperf.core.application import Application
 from intelliperf.utils.env import get_accordo_path
-from intelliperf.utils.process import exit_on_fail
+from intelliperf.utils.process import exit_on_fail, capture_subprocess_output
 
 
 class Result:
@@ -82,6 +82,7 @@ class Formula_Base:
 		model: str = "gpt-4o",
 		provider: str = "openai",
 		in_place: bool = False,
+		unittest_command: str = None,
 	):
 		# Private
 		self.__name = name  # name of the run
@@ -112,16 +113,39 @@ class Formula_Base:
 		self.model = model
 		self.provider = provider
 		self.in_place = in_place
+		self.unittest_command = unittest_command
 		self.current_kernel_files = []
 
 		self.build()
 
 	def build(self, validate_build_result=True):
 		if not self._application.get_build_command():
-			return Result(
-				success=True,
-				asset={"log": "No build script provided. Skipping build step."},
-			)
+			if self._application.get_app_cmd():
+				success, result = capture_subprocess_output(
+					self._application.get_app_cmd(),
+					working_directory=self._application.get_project_directory(),
+				)
+				if validate_build_result and not success:
+					logging.debug(
+						f"Exiting because of JIT run failure: validate_build_result={validate_build_result}, success={success}, result={result}"
+					)
+					exit_on_fail(
+						success=success,
+						message=f"Failed to run {self.__name} application.",
+						log=result,
+					)
+				if success:
+					return Result(success=success, asset={"log": result})
+				else:
+					return Result(
+						success=success,
+						error_report="The application failed to run. Here is the log: " + result,
+					)
+			else:
+				return Result(
+					success=True,
+					asset={"log": "No build script or app command provided. Skipping build step."},
+				)
 		else:
 			success, result = self._application.build()
 			if validate_build_result and not success:
@@ -173,6 +197,15 @@ class Formula_Base:
 		"""
 		Validates the the application.
 		"""
+		if self.unittest_command:
+			success, output = self._application.run_unit_test(self.unittest_command)
+			if not success:
+				return Result(
+					success=False,
+					error_report=f"Unit test validation failed. Output:\n{output}",
+				)
+			return Result(success=True, asset={"log": output})
+
 		self._application.build()
 
 		unoptimized_binary = self._application.get_app_cmd()[0]

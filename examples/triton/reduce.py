@@ -27,6 +27,8 @@
 import torch
 import triton
 import triton.language as tl
+import argparse
+import sys
 
 
 @triton.jit
@@ -44,6 +46,10 @@ def reduce(input_ptr, output_ptr, num_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def main():
+	parser = argparse.ArgumentParser()
+	parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
+	args = parser.parse_args()
+
 	data_type = torch.int32
 	BLOCK_SIZE = 128
 	num_elements = 1_000_000
@@ -55,9 +61,17 @@ def main():
 	reduce[grid](x, y, num_elements, BLOCK_SIZE=BLOCK_SIZE)
 
 	actual = y.item()
-	expected = int(x.cpu().sum())
 
-	print(f"Expected: {expected:,} Actual: {actual:,}")
+	if args.validate:
+		expected = int(x.cpu().sum())
+		print(f"Expected: {expected:,} Actual: {actual:,}")
+		if actual != expected:
+			print("Validation Failed: Triton output does not match PyTorch output.")
+			sys.exit(1)
+		else:
+			print("Validation Successful!")
+	else:
+		print(f"Actual: {actual:,}")
 
 
 if __name__ == "__main__":

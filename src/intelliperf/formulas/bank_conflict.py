@@ -52,6 +52,7 @@ class bank_conflict(Formula_Base):
 		model: str = "gpt-4o",
 		provider: str = "openai",
 		in_place: bool = False,
+		**kwargs,
 	):
 		super().__init__(
 			name,
@@ -63,6 +64,7 @@ class bank_conflict(Formula_Base):
 			model,
 			provider,
 			in_place,
+			**kwargs,
 		)
 
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
