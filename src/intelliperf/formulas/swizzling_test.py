@@ -330,7 +330,7 @@ class swizzling_test(Formula_Base):
 
 			history_prompt_part = ""
 			if self.iteration_history:
-				history_prompt_part += "Here is the history of previous optimization attempts:\n\n"
+				history_prompt_part += "Here is the history of previous optimization attempts (Note that YOU ARE NOT ALLOWED TO REIMPLEMENT THE SAME SWIZZLING PATTERN):\n\n"
 				for item in self.iteration_history:
 					history_prompt_part += f"--- Iteration {item['iteration']} ---\n"
 					history_prompt_part += f"Applied diff:\n{item['diff']}\n"
@@ -341,8 +341,8 @@ class swizzling_test(Formula_Base):
 
 			# Stage 2: Swizzling optimization
 			optimization_prompt = (
-				f"The original code is: {self.initial_source_code}\n\n"
-				f"The memory analysis is: {self.memory_analysis_output}\n\n"
+				f"The original code is:\n\n {self.initial_source_code}\n\n"
+				f"The memory analysis is:\n\n {self.memory_analysis_output}\n\n"
 				f"{history_prompt_part}"
 				"Pay special attention to the swizzling pattern in the diff. If you see a swizzling pattern in the diff, do not reimplement it. Instead, try to implement an completely new approach to swizzling."
 				"On the MI300x GPU there are multiple XCDs, and each XCD has its own L2 cache. So that blocks on the same XCD that access the same memory will likely hit in the shared L2 cache and thus improve the L2 hit rate of the program. For this reason, blocks that share the same data should be scheduled to the same XCD. Your task is to find the swizzling formulation such that blocks that access the same memory will be scheduled to the same XCD.\n\n"
@@ -354,9 +354,9 @@ class swizzling_test(Formula_Base):
 				"HIP runtime scheduling of blocks:\n\n"
 				'By default, the hardware scheduler assigns each incoming block, in order, to XCDs in a cyclic ("round-robin") sequence:\n\n'
 				"// pseudocode for default mapping for each block in [0, num_blocks):\n\n"
-				"assigned_xcd = block % num_XCDs; // execute old_blockIdx on XCD assigned_xcd\n\n"
-				'Once it reaches XCD num_XCD–1, it "wraps around" and continues assigning the next blocks to XCD 0, then XCD 1, and so on.\n\n'
-				'If there are more blocks than XCDs, the scheduler effectively makes multiple "rounds," each of size num_XCD.\n\n'
+				"assigned_xcd = block % number of XCDs; // execute block id on assigned XCD\n\n"
+				'Once it reaches total XCD number - 1, it "wraps around" and continues assigning the next blocks to XCD 0, then XCD 1, and so on.\n\n'
+				'If there are more blocks than XCDs, the scheduler effectively makes multiple "rounds," each of size number of XCDs.\n\n'
 				"Swizzling goal\n\n"
 				"Recompute the block index with the old block index, number of XCDs on the GPU, and total number of blocks in the program so that:\n\n"
 				"Blocks that share the same data map to the same XCD until that XCD's share is filled.\n\n"
@@ -365,14 +365,14 @@ class swizzling_test(Formula_Base):
 				"There are potentially many more question that you might want to ask when understanding how to best swizzle the kernel to take advantage of locality. To be very clear, the optimal swizzling pattern will change by algorithm. Different algorithms reuse data differently, and thus the blocks that should share the same L2 cache will change by different algorithms based on memory access patterns. I want you to deeply understand how to do this for the specific algorithm we are working on.\n\n"
 				"I want you to consider the swizzling pattern step by step and then put everything together in the formula.\n\n"
 				"Task\n\n"
-				"num_XCD = 8 in this hardware architecture. In the case of this program, num_blocks is equal to num_SMS, so you can directly use that argument. Make sure you do not change the parameters in the kernel function, as this will break the code. The function signature must stay exactly the same or the code will fail.\n\n"
+				"number of XCDs = 8 in this hardware architecture. In the case of this program, number of blocks is equal to number of SMS, so you can directly use that argument. Make sure you do not change the parameters in the kernel function, as this will break the code. The function signature must stay exactly the same or the code will fail.\n\n"
 				"Propose a swizzling pattern as one or a few lines of code inside the kernel that reassigns the block index. For HIP kernels, you must still eventually assign threadId. For the HIP kernels, also make sure that you use the new swizzled block ids for all thread id computation. For Triton kernels, you must still eventually assign pid. Rewrite the code of the entire kernel without putting in any placeholders. I want to be able to take the code, copy it into a new file, and run it on the testbench without any extra work. Again, make sure to not change the kernel function signature and only add new swizzling lines within the kernel using the available parameters.\n\n"
-				"EXTREMELY IMPORTANT - Make sure that you keep trying to push the performance of the kernel with your swizzling pattern. It is possible for the implementation to be faster, so try to find this."
-				"EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work."
-				"EXTREMELY IMPORTANT - Make sure to try new approaches to swizzling. Do not just use the same approach as the previous time. If you have previously tried an approach and it is shown in the diff, do not reimplement it. Instead, try to implement an completely new approach to swizzling."
-				"EXTREMELY IMPORTANT - Make sure to not change the kernel function signature. Do not add any new parameters to the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function."
-				"EXTREMELY IMPORTANT - I always want the original pid to be written to a variable called pid and ending in a variable called pid. If we have a 2D grid of pids, they must be called pid_x and pid_y, and so on. It is very important that you name the variables by this format and write the whole code based around these variable names so that it runs successfully."
-				"EXTREMELY IMPORTANT - Make sure your output is in the correct format. The fields are reason_why_old_was_slow, summary_of_optimization, reason_why_new_should_be_better, result_code, and swizzling_pattern."
+				"EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work.\n\n"
+				"EXTREMELY IMPORTANT - Make sure to not change the kernel function signature. Do not add any new parameters to the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function.\n\n"
+				"EXTREMELY IMPORTANT - I always want the original pid to be written to a variable called pid and ending in a variable called pid. If we have a 2D grid of pids, they must be called pid_x and pid_y, and so on. It is very important that you name the variables by this format and write the whole code based around these variable names so that it runs successfully.\n\n"
+				"EXTREMELY IMPORTANT - Make sure your output is in the correct format. The fields are reason_why_old_was_slow, summary_of_optimization, reason_why_new_should_be_better, result_code, and swizzling_pattern.\n\n"
+				"**OPTIMIZATION GOAL** - You have not reached the maximum performance yet. DO NOT REIMPLEMENT A PREVIOUS SWIZZLING PATTERN. If you have previously tried an approach and it is shown in the diff, do not reimplement it.\n\n"
+
 			)
 
 			if self.current_summary is not None:
@@ -402,6 +402,18 @@ class swizzling_test(Formula_Base):
 				optimization_prompt, signature=SwizzlingOptimization
 			)
 			optimized_file_content = response.result_code.strip()
+
+			# Strip markdown code blocks if present
+			if optimized_file_content.startswith("```python"):
+				optimized_file_content = optimized_file_content[len("```python") :].lstrip()
+			elif optimized_file_content.startswith("python"):
+				optimized_file_content = optimized_file_content[len("python") :].lstrip()
+			elif optimized_file_content.startswith("```"):
+				optimized_file_content = optimized_file_content[len("```") :].lstrip()
+
+			if optimized_file_content.endswith("```"):
+				optimized_file_content = optimized_file_content[: -len("```")].rstrip()
+				
 			self.current_swizzling_pattern = response.swizzling_pattern.strip()
    
 			if self.optimization_reasoning:
