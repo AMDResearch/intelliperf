@@ -226,12 +226,12 @@ class bank_conflict(Formula_Base):
 		if self._instrumentation_results is None:
 			pass
 		else:
-			kernel = self._instrumentation_results["kernel_analysis"]["kernel_info"]["name"]
+			kernel = self._instrumentation_results[0]["kernel_analysis"]["kernel_info"]["name"]
 			kernel_name = get_kernel_name(kernel)
 			files = []
 			
 			# Extract files from bank conflict accesses
-			bank_conflicts = self._instrumentation_results["kernel_analysis"]["bank_conflicts"]["accesses"]
+			bank_conflicts = self._instrumentation_results[0]["kernel_analysis"]["bank_conflicts"]["accesses"]
 			for access in bank_conflicts:
 				file_path = access["source_location"]["file"]
 				if file_path not in files:
