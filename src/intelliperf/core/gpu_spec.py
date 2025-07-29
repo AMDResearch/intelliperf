@@ -197,6 +197,17 @@ def get_xcd_count(device_id=None):
 	return 8
 
 
+def get_hip_runtime_scheduling_info():
+	return (
+		"HIP runtime scheduling of blocks:\n\n"
+		'By default, the hardware scheduler assigns each incoming block, in order, to XCDs in a cyclic ("round-robin") sequence:\n\n'
+		"// pseudocode for default mapping for each block in [0, num_blocks):\n\n"
+		"assigned_xcd = block % number of XCDs; // execute block id on assigned XCD\n\n"
+		'Once it reaches total XCD number - 1, it "wraps around" and continues assigning the next blocks to XCD 0, then XCD 1, and so on.\n\n'
+		'If there are more blocks than XCDs, the scheduler effectively makes multiple "rounds," each of size number of XCDs.\n\n'
+	)
+
+
 def get_wall_clock_rate(device_id=None):
 	if device_id is None:
 		device_id = get_device()
@@ -271,6 +282,25 @@ def get_l2_cache_size_kb(device_id=None):
 	return l2.value / 1024.0
 
 
+def get_l2_cache_size_per_xcd_kb(device_id=None):
+	"""Return L2 cache size per XCD in KB."""
+	total_l2 = get_l2_cache_size_kb(device_id)
+	num_xcds = get_xcd_count(device_id)
+	if num_xcds == 0:
+		return 0
+	return total_l2 / num_xcds
+
+
+def get_cus_per_xcd(device_id=None):
+	"""Return number of CUs per XCD."""
+	total_cus = get_cu_count(device_id)
+	num_xcds = get_xcd_count(device_id)
+	if num_xcds == 0:
+		return 0
+	# Use integer division as CUs can't be fractional
+	return total_cus // num_xcds
+
+
 def measure_atomic_latency_ns(device_id=None, iters=1000000, block_size=256):
 	return 1000
 
@@ -311,6 +341,10 @@ class GPUSpec:
 		"""Return L2 cache size in KB."""
 		return get_l2_cache_size_kb(self.device_id)
 
+	def get_l2_cache_size_per_xcd(self):
+		"""Return L2 cache size per XCD in KB."""
+		return get_l2_cache_size_per_xcd_kb(self.device_id)
+
 	def get_num_cus(self):
 		"""Return number of compute units (multiprocessors)."""
 		return get_cu_count(self.device_id)
@@ -318,6 +352,14 @@ class GPUSpec:
 	def get_num_xcds(self):
 		"""Return number of XCDs."""
 		return get_xcd_count(self.device_id)
+
+	def get_num_cus_per_xcd(self):
+		"""Return number of CUs per XCD."""
+		return get_cus_per_xcd(self.device_id)
+
+	def get_hip_runtime_scheduling_info(self):
+		"""Return HIP runtime scheduling info."""
+		return get_hip_runtime_scheduling_info()
 
 	def get_atomic_latency(self):
 		"""Return average atomic-add latency in nanoseconds."""
