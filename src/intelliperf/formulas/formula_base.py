@@ -40,7 +40,7 @@ from accordo.python.communicate import get_kern_arg_data, send_response
 from accordo.python.utils import run_subprocess
 from intelliperf.core.application import Application
 from intelliperf.utils.env import get_accordo_path
-from intelliperf.utils.process import exit_on_fail, capture_subprocess_output
+from intelliperf.utils.process import capture_subprocess_output, exit_on_fail
 
 
 class Result:
