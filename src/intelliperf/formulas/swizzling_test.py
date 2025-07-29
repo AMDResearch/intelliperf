@@ -27,8 +27,10 @@ import logging
 import os
 import difflib
 import dspy
+import textwrap
 
 from intelliperf.core.llm_new import LLM
+from intelliperf.core.gpu_spec import GPUSpec
 from intelliperf.formulas.formula_base import (
 	Formula_Base,
 	Result,
@@ -127,6 +129,7 @@ class swizzling_test(Formula_Base):
 		self.best_kernel_code = ""
 		self.best_swizzling_pattern = ""
 		self.l2_improvement_history = []
+		self.gpu_spec = GPUSpec()
 
 	def compute_diff(self, file_paths: list) -> str:
 		"""
@@ -148,6 +151,88 @@ class swizzling_test(Formula_Base):
 			diff_str += f"+++ b/{file_path}\n"
 			diff_str += "".join(diff)
 		return diff_str
+
+	def _validate_swizzling_pattern(self, pattern_code: str, num_pids: int = 100) -> bool:
+		"""
+		Validates the swizzling pattern by running it on a range of pids.
+		It checks if the output pids are a permutation of the input pids,
+		ensuring no duplicates or missing values.
+		"""
+		logging.debug(f"Validating swizzling pattern:\n{pattern_code}")
+		
+		# The LLM sometimes includes comments before the code with different indentation.
+		# We need to find the first line of actual code and dedent from there.
+		lines = pattern_code.split('\n')
+		first_code_line_index = -1
+		for i, line in enumerate(lines):
+			if line.strip() and not line.strip().startswith('#'):
+				first_code_line_index = i
+				break
+
+		if first_code_line_index != -1:
+			code_block_lines = lines[first_code_line_index:]
+			executable_code = textwrap.dedent('\n'.join(code_block_lines))
+		else:
+			# No actual code found, just comments or empty lines
+			executable_code = ""
+
+		if not executable_code.strip():
+			logging.info("Swizzling pattern is empty or contains only comments. Skipping validation.")
+			return True
+
+		# A simple heuristic to detect 2D patterns.
+		is_2d = any(p in executable_code for p in ['pid_m', 'pid_n', 'pid_x', 'pid_y'])
+		if is_2d:
+			logging.warning("Skipping validation for 2D swizzling pattern as it's not yet supported.")
+			return True
+
+		original_pids = set(range(num_pids))
+		swizzled_pids = set()
+
+		class MockTriton:
+			def __init__(self):
+				self.pid = 0
+			def program_id(self, axis):
+				if axis == 0:
+					return self.pid
+				return 0
+
+		mock_tl = MockTriton()
+
+		# The swizzling pattern might depend on other variables from the kernel,
+		# like num_sms. For this testbench, we'll mock it.
+		exec_globals = {
+			'tl': mock_tl,
+			'num_sms': num_pids,
+			'NUM_SMS': num_pids,
+			'NUM_XCDS': 8,
+		}
+
+		for i in range(num_pids):
+			mock_tl.pid = i
+			local_scope = {'pid': i}
+			try:
+				exec(executable_code, exec_globals, local_scope)
+				if 'pid' in local_scope:
+					swizzled_pids.add(local_scope['pid'])
+				else:
+					logging.error("Swizzling pattern validation failed: 'pid' variable not found in the output.")
+					return False
+			except Exception as e:
+				logging.error(f"Error executing swizzling pattern for pid={i}: {e}")
+				return False
+
+		if original_pids != swizzled_pids:
+			logging.error(
+				f"Swizzling validation failed. "
+				f"Output pids do not match input pids.\n"
+				f"Missing: {original_pids - swizzled_pids}\n"
+				f"Extra: {swizzled_pids - original_pids}"
+			)
+			return False
+
+		logging.info("Swizzling pattern validation successful.")
+		return True
 
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
@@ -347,16 +432,11 @@ class swizzling_test(Formula_Base):
 				"Pay special attention to the swizzling pattern in the diff. If you see a swizzling pattern in the diff, do not reimplement it. Instead, try to implement an completely new approach to swizzling."
 				"On the MI300x GPU there are multiple XCDs, and each XCD has its own L2 cache. So that blocks on the same XCD that access the same memory will likely hit in the shared L2 cache and thus improve the L2 hit rate of the program. For this reason, blocks that share the same data should be scheduled to the same XCD. Your task is to find the swizzling formulation such that blocks that access the same memory will be scheduled to the same XCD.\n\n"
 				"MI300X architecture specification\n\n"
-				"The GPU contains 8 XCDs.\n\n"
-				"Each XCD has its own L2 cache.\n\n"
-				"XCDs contain multiple Compute Units (CUs) and blocks are assigned to CUs.\n\n"
+				f"The GPU contains {self.gpu_spec.get_num_xcds()} XCDs.\n\n"
+				f"Each XCD has its own L2 cache of {self.gpu_spec.get_l2_cache_size_per_xcd()} KB.\n\n"
+				f"Each XCD has {self.gpu_spec.get_num_cus_per_xcd()} CUs, and blocks are assigned to CUs.\n\n"
 				"We want to maximize utilization by assigning an equal number of blocks to each XCD.\n\n"
-				"HIP runtime scheduling of blocks:\n\n"
-				'By default, the hardware scheduler assigns each incoming block, in order, to XCDs in a cyclic ("round-robin") sequence:\n\n'
-				"// pseudocode for default mapping for each block in [0, num_blocks):\n\n"
-				"assigned_xcd = block % number of XCDs; // execute block id on assigned XCD\n\n"
-				'Once it reaches total XCD number - 1, it "wraps around" and continues assigning the next blocks to XCD 0, then XCD 1, and so on.\n\n'
-				'If there are more blocks than XCDs, the scheduler effectively makes multiple "rounds," each of size number of XCDs.\n\n'
+				f"{self.gpu_spec.get_hip_runtime_scheduling_info()}"
 				"Swizzling goal\n\n"
 				"Recompute the block index with the old block index, number of XCDs on the GPU, and total number of blocks in the program so that:\n\n"
 				"Blocks that share the same data map to the same XCD until that XCD's share is filled.\n\n"
@@ -365,7 +445,7 @@ class swizzling_test(Formula_Base):
 				"There are potentially many more question that you might want to ask when understanding how to best swizzle the kernel to take advantage of locality. To be very clear, the optimal swizzling pattern will change by algorithm. Different algorithms reuse data differently, and thus the blocks that should share the same L2 cache will change by different algorithms based on memory access patterns. I want you to deeply understand how to do this for the specific algorithm we are working on.\n\n"
 				"I want you to consider the swizzling pattern step by step and then put everything together in the formula.\n\n"
 				"Task\n\n"
-				"number of XCDs = 8 in this hardware architecture. In the case of this program, number of blocks is equal to number of SMS, so you can directly use that argument. Make sure you do not change the parameters in the kernel function, as this will break the code. The function signature must stay exactly the same or the code will fail.\n\n"
+				f"number of XCDs = {self.gpu_spec.get_num_xcds()} in this hardware architecture. In the case of this program, number of blocks is equal to number of SMS, so you can directly use that argument. Make sure you do not change the parameters in the kernel function, as this will break the code. The function signature must stay exactly the same or the code will fail.\n\n"
 				"Propose a swizzling pattern as one or a few lines of code inside the kernel that reassigns the block index. For HIP kernels, you must still eventually assign threadId. For the HIP kernels, also make sure that you use the new swizzled block ids for all thread id computation. For Triton kernels, you must still eventually assign pid. Rewrite the code of the entire kernel without putting in any placeholders. I want to be able to take the code, copy it into a new file, and run it on the testbench without any extra work. Again, make sure to not change the kernel function signature and only add new swizzling lines within the kernel using the available parameters.\n\n"
 				"EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work.\n\n"
 				"EXTREMELY IMPORTANT - Make sure to not change the kernel function signature. Do not add any new parameters to the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function.\n\n"
@@ -415,6 +495,25 @@ class swizzling_test(Formula_Base):
 				optimized_file_content = optimized_file_content[: -len("```")].rstrip()
 				
 			self.current_swizzling_pattern = response.swizzling_pattern.strip()
+
+			# Strip markdown from swizzling pattern as well
+			if self.current_swizzling_pattern.startswith("```python"):
+				self.current_swizzling_pattern = self.current_swizzling_pattern[len("```python") :].lstrip()
+			elif self.current_swizzling_pattern.startswith("python"):
+				self.current_swizzling_pattern = self.current_swizzling_pattern[len("python") :].lstrip()
+			elif self.current_swizzling_pattern.startswith("```"):
+				self.current_swizzling_pattern = self.current_swizzling_pattern[len("```") :].lstrip()
+
+			if self.current_swizzling_pattern.endswith("```"):
+				self.current_swizzling_pattern = self.current_swizzling_pattern[: -len("```")].rstrip()
+
+			# if not self._validate_swizzling_pattern(self.current_swizzling_pattern):
+			# 	error_msg = "Generated swizzling pattern failed validation."
+			# 	logging.error(error_msg)
+			# 	# Revert file to its state before this optimization attempt
+			# 	with open(kernel_file, "w") as f:
+			# 		f.write(code_before_opt)
+			# 	return Result(success=False, error_report=error_msg)
    
 			if self.optimization_reasoning:
 				self.optimization_reasoning = self.optimization_reasoning.strip()
