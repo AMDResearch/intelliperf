@@ -54,16 +54,19 @@ def streamk_gemm(
         group_id = tile_id // num_pid_in_group
         first_pid_m = group_id * GROUP_SIZE_M
         group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
-        pid_m = first_pid_m + ((tile_id % num_pid_in_group) % group_size_m)
-        pid_n = (tile_id % num_pid_in_group) // group_size_m
-        tl.assume(pid_m > 0)
-        tl.assume(pid_n > 0)
+        pid_in_group = tile_id % num_pid_in_group
 
-        rm = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
-        rn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
+        pid_m = first_pid_m + pid_in_group % group_size_m
+        pid_n = pid_in_group // group_size_m
+        tl.assume(pid_m >= 0)
+        tl.assume(pid_n >= 0)
+
+        rm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+        rn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+        rm = rm % M
+        rn = rn % N
+
         rk = tl.arange(0, BLOCK_SIZE_K)
-        rm = tl.max_contiguous(tl.multiple_of(rm, BLOCK_SIZE_M), BLOCK_SIZE_M)
-        rn = tl.max_contiguous(tl.multiple_of(rn, BLOCK_SIZE_N), BLOCK_SIZE_N)
         A_BASE = A + rm[:, None] * stride_am + rk[None, :] * stride_ak
         B_BASE = B + rk[:, None] * stride_bk + rn[None, :] * stride_bn
 
@@ -98,10 +101,12 @@ def streamk_gemm(
         if BIAS:
             c += bias[:, None]
 
-        rm = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
-        rn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
-        rm = tl.max_contiguous(tl.multiple_of(rm, BLOCK_SIZE_M), BLOCK_SIZE_M)
-        rn = tl.max_contiguous(tl.multiple_of(rn, BLOCK_SIZE_N), BLOCK_SIZE_N)
+        pid_m = first_pid_m + pid_in_group % group_size_m
+        pid_n = pid_in_group // group_size_m
+        rm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+        rn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+        rm = rm % M
+        rn = rn % N
         C_ = C + rm[:, None] * stride_cm + rn[None, :] * stride_cn
         mask = (rm < M)[:, None] & (rn < N)[None, :]
         tl.store(C_, c, mask=mask)
@@ -121,16 +126,18 @@ def streamk_gemm(
         group_id = tile_id // num_pid_in_group
         first_pid_m = group_id * GROUP_SIZE_M
         group_size_m = min(num_pid_m - first_pid_m, GROUP_SIZE_M)
-        pid_m = first_pid_m + ((tile_id % num_pid_in_group) % group_size_m)
-        pid_n = (tile_id % num_pid_in_group) // group_size_m
-        tl.assume(pid_m > 0)
-        tl.assume(pid_n > 0)
+        pid_in_group = tile_id % num_pid_in_group
 
-        rm = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
-        rn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
+        pid_m = first_pid_m + pid_in_group % group_size_m
+        pid_n = pid_in_group // group_size_m
+        tl.assume(pid_m >= 0)
+        tl.assume(pid_n >= 0)
+
+        rm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+        rn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+        rm = rm % M
+        rn = rn % N
         rk = tl.arange(0, BLOCK_SIZE_K)
-        rm = tl.max_contiguous(tl.multiple_of(rm, BLOCK_SIZE_M), BLOCK_SIZE_M)
-        rn = tl.max_contiguous(tl.multiple_of(rn, BLOCK_SIZE_N), BLOCK_SIZE_N)
         A_BASE = A + rm[:, None] * stride_am + rk[None, :] * stride_ak + BLOCK_SIZE_K * stride_ak * remainder
         B_BASE = B + rk[:, None] * stride_bk + rn[None, :] * stride_bn + BLOCK_SIZE_K * stride_bk * remainder
         A_BASE = tl.multiple_of(A_BASE, (1, 16))
@@ -159,8 +166,6 @@ def streamk_gemm(
         if start_iter != tile_iter:
             rm1 = tl.arange(0, BLOCK_SIZE_M)
             rn1 = tl.arange(0, BLOCK_SIZE_N)
-            rm1 = tl.max_contiguous(tl.multiple_of(rm1, BLOCK_SIZE_M), BLOCK_SIZE_M)
-            rn1 = tl.max_contiguous(tl.multiple_of(rn1, BLOCK_SIZE_N), BLOCK_SIZE_N)
             P_ = P + pid * BLOCK_SIZE_M * BLOCK_SIZE_N + rm1[:, None] * BLOCK_SIZE_N + rn1[None, :]
             tl.store(P_, acc, cache_modifier=".wt")
             tl.debug_barrier()
@@ -174,8 +179,6 @@ def streamk_gemm(
                     pass
                 rm1 = tl.arange(0, BLOCK_SIZE_M)
                 rn1 = tl.arange(0, BLOCK_SIZE_N)
-                rm1 = tl.max_contiguous(tl.multiple_of(rm1, BLOCK_SIZE_M), BLOCK_SIZE_M)
-                rn1 = tl.max_contiguous(tl.multiple_of(rn1, BLOCK_SIZE_N), BLOCK_SIZE_N)
                 P_ = P + next_pid * BLOCK_SIZE_M * BLOCK_SIZE_N + rm1[:, None] * BLOCK_SIZE_N + rn1[None, :]
                 acc += tl.load(tl.multiple_of(P_, (1, 16)), cache_modifier=".cv")
                 end += streamk_iters_pcu + (next_pid < streamk_remainder_iters)
@@ -185,10 +188,12 @@ def streamk_gemm(
             if BIAS:
                 c += bias[:, None]
 
-            rm = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)) % M
-            rn = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)) % N
-            rm = tl.max_contiguous(tl.multiple_of(rm, BLOCK_SIZE_M), BLOCK_SIZE_M)
-            rn = tl.max_contiguous(tl.multiple_of(rn, BLOCK_SIZE_N), BLOCK_SIZE_N)
+            pid_m = first_pid_m + pid_in_group % group_size_m
+            pid_n = pid_in_group // group_size_m
+            rm = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+            rn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+            rm = rm % M
+            rn = rn % N
             C_ = C + rm[:, None] * stride_cm + rn[None, :] * stride_cn
             mask = (rm < M)[:, None] & (rn < N)[None, :]
             tl.store(C_, c, mask=mask)
