@@ -40,12 +40,12 @@ python3 -m pip install -r requirements.txt
 
 [tool.omniprobe]
 git = "https://github.com/AMDResearch/omniprobe.git"
-branch = "47e7e9ac1e8daba5fd35797e950e44ba2b20e0ce"
+branch = "4eb1b3d49b83f2d50823525e073eea356661e871"
 build_command = """
 export CC=${ROCM_PATH}/bin/hipcc
 export CXX=${ROCM_PATH}/bin/hipcc
 git submodule update --init --recursive
-python3 -m pip install omniprobe/requirements.txt
+python3 -m pip install -r omniprobe/requirements.txt
 #TODO: search for a Triton LLVM.
 if [ -d "/root/.triton/llvm/llvm-ubuntu-x64" ]; then
     export TRITON_LLVM_PATH="/root/.triton/llvm/llvm-ubuntu-x64"
