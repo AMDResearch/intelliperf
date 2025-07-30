@@ -166,7 +166,7 @@ class Formula_Base:
 			else:
 				return Result(
 					success=True,
-					asset={"log": "No build script or app command provided. Skipping build step."},
+					asset={"log": "No build command provided. Skipping build step."},
 				)
 		else:
 			success, result = self._application.build()
