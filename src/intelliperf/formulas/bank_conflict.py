@@ -150,7 +150,7 @@ class bank_conflict(Formula_Base):
 				"--analyzers",
 				"MemoryAnalysis",
 				"--kernels",
-				ecma_regex,
+				f"\"{ecma_regex}\"",
 				"--log-format",
 				"json",
 				"--log-location",
