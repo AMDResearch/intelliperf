@@ -39,7 +39,8 @@ from intelliperf.utils.env import (
 )
 from intelliperf.utils.process import capture_subprocess_output, exit_on_fail
 
-#todo add unittest command to constructor and do not pass parameter through the function
+
+# todo add unittest command to constructor and do not pass parameter through the function
 class Application:
 	def __init__(
 		self,

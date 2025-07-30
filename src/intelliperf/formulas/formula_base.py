@@ -346,7 +346,7 @@ class Formula_Base:
 			if kernel_name not in df_results["kernels"]:
 				kernel_name = kernel_name + ".kd"
 			entry["source"] = df_results["kernels"].get(kernel_name, empty)
-	
+
 		logging.debug(f"results with source code info: {json.dumps(self._initial_profiler_results, indent=2)}")
 
 		return Result(success=True, asset=self._initial_profiler_results)
