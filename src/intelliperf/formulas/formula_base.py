@@ -93,7 +93,14 @@ class Formula_Base:
 		logging.debug(f"app_cmd: {app_cmd}")
 
 		# Create a reference copy for comparison
-		self._reference_app = Application(name, build_command, instrument_command, project_directory, app_cmd)
+		self._reference_app = Application(
+			name,
+			build_command,
+			instrument_command,
+			project_directory,
+			app_cmd,
+			unittest_command,
+		)
 		self._application = self._reference_app.clone()
 
 		logging.debug("--------------------------------")
@@ -115,8 +122,28 @@ class Formula_Base:
 		self.in_place = in_place
 		self.unittest_command = unittest_command
 		self.current_kernel_files = []
+		self.current_kernel = None
+		self.current_args = None
+		self.current_kernel_signature = None
 
 		self.build()
+
+	def _parse_kernel_signature(self, kernel_signature: str):
+		"""
+		Parses a kernel signature to extract the kernel name and its arguments.
+		"""
+		self.current_kernel_signature = kernel_signature
+		if "(" in kernel_signature:
+			self.current_kernel = kernel_signature.split("(")[0]
+			# Safely extract arguments, handling cases with no arguments
+			args_str = kernel_signature.split("(", 1)[1].rsplit(")", 1)[0]
+			if args_str:
+				self.current_args = [arg.strip() for arg in args_str.split(",")]
+			else:
+				self.current_args = []
+		else:
+			self.current_kernel = kernel_signature
+			self.current_args = []
 
 	def build(self, validate_build_result=True):
 		if not self._application.get_build_command():
@@ -128,11 +155,6 @@ class Formula_Base:
 				if validate_build_result and not success:
 					logging.debug(
 						f"Exiting because of JIT run failure: validate_build_result={validate_build_result}, success={success}, result={result}"
-					)
-					exit_on_fail(
-						success=success,
-						message=f"Failed to run {self.__name} application.",
-						log=result,
 					)
 				if success:
 					return Result(success=success, asset={"log": result})
@@ -198,7 +220,7 @@ class Formula_Base:
 		Validates the the application.
 		"""
 		if self.unittest_command:
-			success, output = self._application.run_unit_test(self.unittest_command)
+			success, output = self._application.run_unit_test()
 			if not success:
 				return Result(
 					success=False,
@@ -324,6 +346,8 @@ class Formula_Base:
 			if kernel_name not in df_results["kernels"]:
 				kernel_name = kernel_name + ".kd"
 			entry["source"] = df_results["kernels"].get(kernel_name, empty)
+	
+		logging.debug(f"results with source code info: {json.dumps(self._initial_profiler_results, indent=2)}")
 
 		return Result(success=True, asset=self._initial_profiler_results)
 

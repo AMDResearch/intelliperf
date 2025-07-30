@@ -168,11 +168,16 @@ class atomic_contention(Formula_Base):
 			logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
 
 			kernel = filtered_report_card[0]["kernel"]
+			self._parse_kernel_signature(kernel)
 			files = filtered_report_card[0]["source"]["files"]
 			kernel_name = get_kernel_name(kernel)
 			kernel_file = None
+			unoptimized_file_content = None
 			for file in files:
-				if os.path.exists(file):
+				project_dir = os.path.abspath(self._application.get_project_directory())
+				file_path = os.path.abspath(file)
+				isfile_in_project = os.path.commonpath([project_dir, file_path]) == project_dir
+				if os.path.exists(file) and isfile_in_project:
 					with open(file, "r") as f:
 						unoptimized_file_content = f.read()
 						if kernel_name in unoptimized_file_content:
@@ -197,12 +202,18 @@ class atomic_contention(Formula_Base):
 
 			self.previous_source_code = unoptimized_file_content
 
-			args = kernel.split("(")[1].split(")")[0]
-			self.bottleneck_report = (
-				f"Atomic Contention Detection: IntelliPerf identified high atomic contention in kernel "
-				f"`{kernel_name}` with arguments `{args}`. Atomic contention occurs when multiple threads "
-				f"compete for the same atomic operations, causing serialization and increased latency."
-			)
+			if self.current_args:
+				self.bottleneck_report = (
+					f"Atomic Contention Detection: IntelliPerf identified high atomic contention in kernel "
+					f"`{self.current_kernel}` with arguments `{self.current_args}`. Atomic contention occurs when multiple threads "
+					f"compete for the same atomic operations, causing serialization and increased latency."
+				)
+			else:
+				self.bottleneck_report = (
+					f"Atomic Contention Detection: IntelliPerf identified high atomic contention in kernel "
+					f"`{self.current_kernel}`. Atomic contention occurs when multiple threads "
+					f"compete for the same atomic operations, causing serialization and increased latency."
+				)
 
 		else:
 			pass
@@ -217,9 +228,6 @@ class atomic_contention(Formula_Base):
 		logging.debug(f"LLM prompt: {user_prompt}")
 		logging.debug(f"System prompt: {system_prompt}")
 
-		self.current_kernel = kernel.split("(")[0]
-		self.current_args = kernel.split("(")[1].split(")")[0].split(",")
-		self.current_kernel_signature = kernel
 		try:
 			optimized_file_content = llm.ask(user_prompt).strip()
 			with open(kernel_file, "w") as f:

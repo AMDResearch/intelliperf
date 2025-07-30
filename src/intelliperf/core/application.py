@@ -39,7 +39,7 @@ from intelliperf.utils.env import (
 )
 from intelliperf.utils.process import capture_subprocess_output, exit_on_fail
 
-
+#todo add unittest command to constructor and do not pass parameter through the function
 class Application:
 	def __init__(
 		self,
@@ -48,12 +48,14 @@ class Application:
 		instrument_command: list,
 		project_directory: str,
 		app_cmd: list,
+		unittest_command: list,
 	):
 		self.name = name
 		self.build_command = None
 		self.instrument_command = None
 		self.app_cmd = app_cmd
 		self.project_directory = project_directory
+		self.unittest_command = unittest_command
 
 		if build_command is not None:
 			self.build_command = build_command if isinstance(build_command, list) else build_command.split()
@@ -173,9 +175,9 @@ class Application:
 		"""Runs the application."""
 		return process.capture_subprocess_output(self.app_cmd)
 
-	def run_unit_test(self, unittest_command):
-		"""Runs the unit test command."""
-		cmd = unittest_command.split() + ["--validate"]
+	def run_unit_test(self):
+		"""Runs the unit test commaunitnd."""
+		cmd = self.unittest_command.split()
 		return process.capture_subprocess_output(cmd, working_directory=self.get_project_directory())
 
 	def get_name(self):
@@ -218,6 +220,7 @@ class Application:
 			self.instrument_command,
 			temp_dir,
 			self.app_cmd,
+			self.unittest_command,
 		)
 
 	def collect_source_code(self):
