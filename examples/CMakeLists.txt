@@ -31,7 +31,10 @@ function(add_example name source_file)
     add_executable(${name} ${source_file})
     # CMake instrumentation integration example
     if(INSTRUMENT)
-        set(OMNIPROBE_PATH ${CMAKE_SOURCE_DIR}/../external/omniprobe/install)
+        # Use provided OMNIPROBE_PATH or default to the standard location
+        if(NOT DEFINED OMNIPROBE_PATH)
+            set(OMNIPROBE_PATH ${CMAKE_SOURCE_DIR}/../external/omniprobe/install)
+        endif()
         # Only use omniprobe if the path exists
         if(EXISTS ${OMNIPROBE_PATH}/lib/libAMDGCNSubmitAddressMessages-rocm.so)
             # Use the plugin to instrument the code
