@@ -232,9 +232,6 @@ class memory_access(Formula_Base):
 
 		self.current_kernel_files = [kernel_file]
 		try:
-			with open(kernel_file, "r") as f:
-				code_before_opt = f.read()
-
 			optimized_file_content = llm.ask(user_prompt).strip()
 
 			with open(kernel_file, "w") as f:
@@ -284,7 +281,6 @@ class memory_access(Formula_Base):
 
 		unoptimized_time = unoptimized_results[0]["durations"]["ns"]
 		unoptimized_coal = unoptimized_results[0]["l1"]["coal"]
-		kernel = unoptimized_results[0]["kernel"]
 
 		# Profile the optimized application
 		self._optimization_results = self._application.profile(top_n=self.top_n)
