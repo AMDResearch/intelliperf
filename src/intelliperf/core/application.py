@@ -177,7 +177,7 @@ class Application:
 		return process.capture_subprocess_output(self.app_cmd)
 
 	def run_unit_test(self):
-		"""Runs the unit test commaunitnd."""
+		"""Runs the unit test command."""
 		cmd = self.unittest_command.split()
 		return process.capture_subprocess_output(cmd, working_directory=self.get_project_directory())
 
