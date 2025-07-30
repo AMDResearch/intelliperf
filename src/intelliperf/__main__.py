@@ -243,7 +243,7 @@ def main():
 			continue
 
 		# Compile the new application
-		build_result = optimizer.build(validate_build_result=False)
+		build_result = optimizer.build_pass(validate_build_result=False)
 		if not build_result:
 			build_result.report_out()
 			logging.warning(f"Build pass {attempt + 1} failed. Retrying...")
