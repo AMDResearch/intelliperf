@@ -301,6 +301,32 @@ class Formula_Base:
 		"""
 		pass
 
+	def postprocess_llm_code(self, optimized_file_content: str) -> str:
+		"""
+		Post-process the LLM generated code before writing to file.
+		Removes markdown code blocks (```c++, ```python, etc.) from the LLM response.
+		
+		Args:
+			optimized_file_content (str): The LLM generated code
+			
+		Returns:
+			str: The post-processed code
+		"""
+		# Remove markdown code blocks if present
+		content = optimized_file_content.strip()
+		if content.startswith('```') and content.endswith('```'):
+			# Remove the opening ``` and any language identifier
+			content = content[3:]  # Remove opening ```
+			# Find the first newline or end of string
+			first_newline = content.find('\n')
+			if first_newline != -1:
+				content = content[first_newline + 1:]  # Skip language identifier line
+			# Remove the closing ```
+			if content.endswith('```'):
+				content = content[:-3]
+		
+		return content
+
 	def compute_diff(self, filepaths: list[str]) -> str:
 		diffs = []
 		for filepath in filepaths:
