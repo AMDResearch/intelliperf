@@ -248,12 +248,6 @@ class bank_conflict(Formula_Base):
 			logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
 
 			kernel = filtered_report_card[0]["kernel"]
-			if "(" not in kernel:
-				self.current_args = None
-				self.current_kernel = kernel
-			else:
-				self.current_args = kernel.split("(")[1].split(")")[0].split(",")
-				self.current_kernel = kernel.split("(")[0]
 			self._parse_kernel_signature(kernel)
 			files = filtered_report_card[0]["source"]["files"]
 			kernel_name = get_kernel_name(kernel)

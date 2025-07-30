@@ -162,7 +162,7 @@ intelliperf -- python3 gemm.py
 | `-m, --model` | Specify the model to use for optimization (default: gpt-4o) |
 | `-r, --provider` | Specify the provider to use for optimization (default: openai) |
 | `-l, --in_place` | Modify source files in place during optimization (default: creates backups) |
-| `--unittest_command` | Command to run unit tests for validation |
+| `--unittest_command` | Command to run unit tests for additional validation |
 
 
 > [!NOTE]
