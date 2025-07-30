@@ -117,7 +117,7 @@ def intelliperf_parser():
 		"--unittest_command",
 		type=str,
 		metavar="",
-		help="A command to run unit tests for correctness validation.",
+		help="Command to run unit tests for correctness validation; must be relative to the project directory.",
 	)
 	optional_args.add_argument(
 		"-m",
