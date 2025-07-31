@@ -150,7 +150,7 @@ class bank_conflict(Formula_Base):
 				"--analyzers",
 				"MemoryAnalysis",
 				"--kernels",
-				f"\"{ecma_regex}\"",
+				f'"{ecma_regex}"',
 				"--log-format",
 				"json",
 				"--log-location",
@@ -224,12 +224,57 @@ class bank_conflict(Formula_Base):
 
 		# Get the file from the results
 		if self._instrumentation_results is None:
-			pass
+			# Get the file from the results
+			filtered_report_card = filter_json_field(
+				self._initial_profiler_results,
+				field="lds",
+				subfield="bc",
+				comparison_func=lambda x: x > 0,
+			)
+
+			if len(filtered_report_card) == 0:
+				return Result(success=False, error_report="No bank conflicts found.")
+
+			logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
+
+			kernel = filtered_report_card[0]["kernel"]
+			files = filtered_report_card[0]["source"]["files"]
+			kernel_name = get_kernel_name(kernel)
+			kernel_file = None
+			for file in files:
+				if os.path.exists(file):
+					with open(file, "r") as f:
+						unoptimized_file_content = f.read()
+						if kernel_name in unoptimized_file_content:
+							kernel_file = file
+							break
+			if kernel_file is None:
+				return Result(success=False, error_report="Kernel file not found.")
+
+			user_prompt = (
+				f"There is a bank conflict in the kernel {kernel} in the source code {unoptimized_file_content}."
+				f" Please fix the conflict but do not change the semantics of the program."
+				" Do not remove any comments or licenses."
+				" Do not include any markdown code blocks or text other than the code."
+			)
+			if self.current_summary is not None:
+				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
+				cur_diff = self.compute_diff([kernel_file])
+				user_prompt += f"\nThe diff between the current and initial code is: {cur_diff}"
+
+			self.previous_source_code = unoptimized_file_content
+
+			args = kernel.split("(")[1].split(")")[0]
+			self.bottleneck_report = (
+				f"Bank Conflict Detection: IntelliPerf identified shared memory bank conflicts in kernel "
+				f"`{kernel_name}` with arguments `{args}`. Bank conflicts occur when multiple threads "
+				f"access the same memory bank simultaneously, causing serialization and performance degradation."
+			)
 		else:
 			kernel = self._instrumentation_results[0]["kernel_analysis"]["kernel_info"]["name"]
 			kernel_name = get_kernel_name(kernel)
 			files = []
-			
+
 			# Extract files from bank conflict accesses
 			bank_conflicts = self._instrumentation_results[0]["kernel_analysis"]["bank_conflicts"]["accesses"]
 			for access in bank_conflicts:
@@ -246,7 +291,7 @@ class bank_conflict(Formula_Base):
 							break
 			if kernel_file is None:
 				return Result(success=False, error_report="Kernel file not found.")
-			
+
 			# Create user prompt and required reports
 			user_prompt = (
 				f"There is a bank conflict in the kernel {kernel} in the source code {unoptimized_file_content}."
