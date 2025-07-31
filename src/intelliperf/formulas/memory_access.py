@@ -49,6 +49,7 @@ class memory_access(Formula_Base):
 		model: str = "gpt-4o",
 		provider: str = "openai",
 		in_place: bool = False,
+		**kwargs,
 	):
 		super().__init__(
 			name,
@@ -60,6 +61,7 @@ class memory_access(Formula_Base):
 			model,
 			provider,
 			in_place,
+			**kwargs,
 		)
 
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
@@ -67,7 +69,6 @@ class memory_access(Formula_Base):
 		self._instrumentation_results = None
 		self.current_kernel = None
 		self.current_args = None
-		self.current_kernel_signature = None
 		self.kernel_to_optimize = None
 		self.optimization_report = None
 		self.bottleneck_report = None
@@ -167,13 +168,20 @@ class memory_access(Formula_Base):
 			logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
 
 			kernel = filtered_report_card[0]["kernel"]
+			self._parse_kernel_signature(kernel)
+
 			files = filtered_report_card[0]["source"]["files"]
 			kernel_name = get_kernel_name(kernel)
 
 			logging.debug(f"Kernel name: {kernel_name}")
 			kernel_file = None
+			unoptimized_file_content = None
 			for file in files:
-				if os.path.exists(file):
+				project_dir = os.path.abspath(self._application.get_project_directory())
+				file_path = os.path.abspath(file)
+				isfile_in_project = os.path.commonpath([project_dir, file_path]) == project_dir
+
+				if os.path.exists(file) and isfile_in_project:
 					with open(file, "r") as f:
 						unoptimized_file_content = f.read()
 						if kernel_name in unoptimized_file_content:
@@ -199,12 +207,18 @@ class memory_access(Formula_Base):
 
 			self.previous_source_code = unoptimized_file_content
 
-			args = kernel.split("(")[1].split(")")[0]
-			self.bottleneck_report = (
-				f"Memory Access Pattern Detection: IntelliPerf identified inefficient memory access patterns "
-				f"in kernel `{kernel_name}` with arguments `{args}`. Uncoalesced memory accesses occur when "
-				f"threads access memory in non-sequential patterns, reducing memory bandwidth utilization."
-			)
+			if self.current_args:
+				self.bottleneck_report = (
+					f"Memory Access Pattern Detection: IntelliPerf identified inefficient memory access patterns "
+					f"in kernel `{self.current_kernel}` with arguments `{self.current_args}`. Uncoalesced memory accesses occur when "
+					f"threads access memory in non-sequential patterns, reducing memory bandwidth utilization."
+				)
+			else:
+				self.bottleneck_report = (
+					f"Memory Access Pattern Detection: IntelliPerf identified inefficient memory access patterns "
+					f"in kernel `{self.current_kernel}`. Uncoalesced memory accesses occur when "
+					f"threads access memory in non-sequential patterns, reducing memory bandwidth utilization."
+				)
 		else:
 			pass
 
@@ -216,13 +230,10 @@ class memory_access(Formula_Base):
 		logging.debug(f"System prompt: {system_prompt}")
 		logging.debug(f"LLM prompt: {user_prompt}")
 
-		self.current_kernel = kernel.split("(")[0]
-		self.current_args = kernel.split("(")[1].split(")")[0].split(",")
-		self.current_kernel_signature = kernel
-
 		self.current_kernel_files = [kernel_file]
 		try:
 			optimized_file_content = llm.ask(user_prompt).strip()
+
 			with open(kernel_file, "w") as f:
 				f.write(optimized_file_content)
 			logging.debug(f"Optimized file content: {optimized_file_content}")
@@ -270,7 +281,6 @@ class memory_access(Formula_Base):
 
 		unoptimized_time = unoptimized_results[0]["durations"]["ns"]
 		unoptimized_coal = unoptimized_results[0]["l1"]["coal"]
-		kernel = unoptimized_results[0]["kernel"]
 
 		# Profile the optimized application
 		self._optimization_results = self._application.profile(top_n=self.top_n)
@@ -278,7 +288,7 @@ class memory_access(Formula_Base):
 		optimized_results = filter_json_field(
 			self._optimization_results,
 			field="kernel",
-			comparison_func=lambda x: x == kernel,
+			comparison_func=lambda x: x == self.current_kernel_signature,
 		)
 
 		optimized_time = optimized_results[0]["durations"]["ns"]
