@@ -273,28 +273,32 @@ class bank_conflict(Formula_Base):
 		else:
 			kernel = self._instrumentation_results[0]["kernel_analysis"]["kernel_info"]["name"]
 			kernel_name = get_kernel_name(kernel)
-			files = []
+			files = {}  # supposed to be a dict of file_path -> list of line numbers
+			line_numbers = []
 
 			# Extract files from bank conflict accesses
 			bank_conflicts = self._instrumentation_results[0]["kernel_analysis"]["bank_conflicts"]["accesses"]
 			for access in bank_conflicts:
 				file_path = access["source_location"]["file"]
+				line_number = access["source_location"]["line"]
 				if file_path not in files:
-					files.append(file_path)
+					files[file_path].append(line_number)
+
 			kernel_file = None
-			for file in files:
+			for file in files.keys():
 				if os.path.exists(file):
 					with open(file, "r") as f:
 						unoptimized_file_content = f.read()
 						if kernel_name in unoptimized_file_content:
 							kernel_file = file
+							line_numbers.append(files[file])
 							break
 			if kernel_file is None:
 				return Result(success=False, error_report="Kernel file not found.")
 
 			# Create user prompt and required reports
 			user_prompt = (
-				f"There is a bank conflict in the kernel {kernel} in the source code {unoptimized_file_content}."
+				f"There is a bank conflict in the kernel {kernel} at line(s) numbered {line_numbers} in the source code {unoptimized_file_content}."
 				f" Please fix the conflict but do not change the semantics of the program."
 				" Do not remove any comments or licenses."
 				" Do not include any markdown code blocks or text other than the code."
