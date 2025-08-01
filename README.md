@@ -67,6 +67,13 @@ That's it! The run script will:
 - ✅ Start an interactive session where you can run IntelliPerf
 - ✅ Persist all output files to your host machine
 
+Or use our prebuilt Docker image:
+```bash
+docker pull audacioussw/intelliperf:latest
+export LLM_GATEWAY_KEY="your_api_key_here"
+docker run -it --rm --device=/dev/kfd --device=/dev/dri --group-add video -e LLM_GATEWAY_KEY="$LLM_GATEWAY_KEY" audacioussw/intelliperf
+```
+
 #### For baremetal installation
 
 
@@ -159,6 +166,8 @@ intelliperf -- python3 gemm.py
 | `-m, --model` | Specify the model to use for optimization (default: gpt-4o) |
 | `-r, --provider` | Specify the provider to use for optimization (default: openai) |
 | `-l, --in_place` | Modify source files in place during optimization (default: creates backups) |
+| `--unittest_command` | Command to run unit tests for additional validation |
+
 
 > [!NOTE]
 > IntelliPerf copies the entire project directory to a temporary location. Make sure your project doesn't include any temporary CMake files if you pass the `project_directory` flag.
