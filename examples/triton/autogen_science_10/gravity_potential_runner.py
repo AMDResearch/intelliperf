@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import torch
 import triton
 import argparse
@@ -33,13 +35,13 @@ def gravity_potential(masses, pos, Nx, Ny, validate=False):
     return grid
 
 
-def main(Nx=4096, Ny=4096, n_masses=16384, validate=False):
+def main(Nx=2048, Ny=2048, n_masses=2048, validate=False):
     masses = torch.rand(n_masses, device='cuda', dtype=torch.float32) * 100
     pos = torch.rand(2, n_masses, device='cuda', dtype=torch.float32)
     pos[0, :] *= Nx
     pos[1, :] *= Ny
 
-    rep = 100
+    rep = 10
 
     for _ in range(10):
         gravity_potential(masses, pos, Nx, Ny)
@@ -63,9 +65,9 @@ def main(Nx=4096, Ny=4096, n_masses=16384, validate=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Triton Gravitational Potential Benchmark")
-    parser.add_argument("--Nx", type=int, default=4096, help="Grid size in X dimension")
-    parser.add_argument("--Ny", type=int, default=4096, help="Grid size in Y dimension")
-    parser.add_argument("--n_masses", type=int, default=16384, help="Number of masses")
+    parser.add_argument("--Nx", type=int, default=2048, help="Grid size in X dimension")
+    parser.add_argument("--Ny", type=int, default=2048, help="Grid size in Y dimension")
+    parser.add_argument("--n_masses", type=int, default=2048, help="Number of masses")
     parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
     args = parser.parse_args()
 

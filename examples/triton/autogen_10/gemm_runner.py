@@ -115,7 +115,7 @@ def main(M=8192, N=8192, K=8192, validate=False):
     P = torch.zeros((total_sm, BLK_M * BLK_N), device="cuda", dtype=torch.float32)
     
     # repetitions for performance measurement
-    rep = 1
+    rep = 10
     
     # Warm-up
     for _ in range(1):

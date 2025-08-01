@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import torch
 import triton
 import argparse
@@ -6,13 +7,13 @@ from conv2d import conv2d
 
 def main(validate=False):
     # Setup a small test case
-    batch_size = 2
-    channels = 3
-    height = 16
-    width = 16
-    kernels = 4
-    kernel_height = 4
-    kernel_width = 4
+    batch_size = 32
+    channels = 12
+    height = 128
+    width = 128
+    kernels = 16
+    kernel_height = 64
+    kernel_width = 64
 
     # Move to GPU and set dtype
     device = 'cuda:0'
@@ -23,8 +24,25 @@ def main(validate=False):
     kernel_tensor = torch.randint(0, 10, (kernels, channels, kernel_height, kernel_width), device=device, dtype=dtype)
     bias_tensor = torch.randn(kernels, device=device, dtype=dtype)
 
-    # Run Triton implementation
-    y_triton = conv2d(input_tensor, kernel_tensor, bias_tensor)
+    # Warm-up
+    for _ in range(10):
+        y_triton = conv2d(input_tensor, kernel_tensor, bias_tensor)
+    torch.cuda.synchronize()
+
+    # Benchmark
+    rep = 10
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+
+    start_event.record()
+    for _ in range(rep):
+        y_triton = conv2d(input_tensor, kernel_tensor, bias_tensor)
+    end_event.record()
+    torch.cuda.synchronize()
+
+    elapsed_time_ms = start_event.elapsed_time(end_event)
+    runtime_ms = elapsed_time_ms / rep
+    print(f"Triton kernel runtime: {runtime_ms:.4f} ms")
 
     if validate:
         # PyTorch's Conv2d for comparison

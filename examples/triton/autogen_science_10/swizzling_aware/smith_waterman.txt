@@ -1,0 +1,126 @@
+--- MEMORY ANALYSIS ---
+The memory access patterns in the `smith_waterman_kernel` are characterized by block-based processing, sequential access within blocks, and stride-based access for the score matrix. Each block processes a sub-matrix of the score matrix, accessing sequence data and scores in a contiguous manner, which is beneficial for cache locality. The use of masks ensures boundary conditions are respected, preventing invalid memory accesses.
+
+To improve memory locality, especially between blocks, consider swizzling the block ids (`pid_m` and `pid_n`) to follow a space-filling curve like a Z-order or Hilbert curve. This can enhance spatial locality by ensuring that blocks that are close in the problem space are also close in memory, reducing cache misses and improving performance.
+
+--- MEMORY ANALYSIS REASONING ---
+The kernel is designed to perform a Smith-Waterman alignment on two sequences, `seq1` and `seq2`. The memory access patterns are primarily determined by how the sequences and the score matrix are accessed and stored. The kernel uses a block-based approach, where each block processes a sub-matrix of the score matrix. The key aspects of memory access patterns and locality are as follows:
+
+1. **Block-Based Access**: The kernel divides the work into blocks of size `BLOCK_SIZE_M` by `BLOCK_SIZE_N`. Each block is responsible for computing a sub-matrix of the score matrix. This block-based approach is beneficial for cache locality because it allows each block to work on a contiguous section of memory, reducing cache misses.
+
+2. **Sequential Access within Blocks**: Within each block, the kernel accesses the sequence data and score matrix in a sequential manner. This is evident from the use of `tl.arange` to generate offsets for loading sequence fragments and storing scores. Sequential access patterns are generally cache-friendly because they allow prefetching and reduce cache line evictions.
+
+3. **Masking for Boundary Conditions**: The use of masks (`mask_m` and `mask_n`) ensures that the kernel does not access memory outside the bounds of the sequences. This is important for avoiding invalid memory accesses and potential cache pollution with unnecessary data.
+
+4. **Stride-Based Access for Scores**: The score matrix is accessed using strides (`stride_m` and `stride_n`), which determine how the scores are laid out in memory. Proper choice of strides can enhance cache locality by ensuring that scores computed by adjacent blocks are stored in nearby memory locations.
+
+5. **Potential for Swizzling**: The current block id assignment (`pid_m` and `pid_n`) is straightforward, but there is potential to swizzle these ids to improve cache locality. For example, a Z-order curve or Hilbert curve could be used to assign block ids in a way that maximizes spatial locality, especially when the sequences are large and the score matrix does not fit entirely in cache.
+
+Overall, the kernel exhibits good memory locality within blocks due to sequential access patterns and block-based processing. However, there is room for improvement in inter-block locality, which could be achieved by reordering block ids to better align with the hardware cache architecture.
+
+Iteration 1:
+Code optimization reasoning:
+The original kernel code processes blocks of sequence data and scores them using a block-based approach. The memory access pattern is sequential within blocks, which is good for cache locality. However, the inter-block memory access pattern could be improved by swizzling the block IDs to enhance spatial locality and better utilize the L2 cache on the MI300X architecture. The goal is to map blocks that access the same data to the same XCD, thereby improving cache hit rates and overall performance.
+
+Reason why old was slow:
+{
+    "iteration 1": "The original swizzling pattern did not consider the MI300X architecture's multiple XCDs and their separate L2 caches. Blocks were assigned in a straightforward manner without optimizing for cache locality across XCDs, leading to potential cache misses and suboptimal performance."
+}
+
+Summary of optimization:
+The new optimization involves a swizzling pattern that reassigns block indices based on their original mapping to XCDs. By computing the XCD ID and adjusting the block index accordingly, we ensure that blocks accessing the same data are mapped to the same XCD. This approach balances the workload across XCDs while maximizing cache locality, leading to improved performance.
+
+Reason why new should be better:
+The new swizzling pattern takes into account the architecture of the MI300X GPU, specifically its multiple XCDs and their associated L2 caches. By ensuring that blocks accessing the same data are mapped to the same XCD, we improve cache hit rates and reduce memory access latency. This approach is more efficient than the original pattern, which did not consider the architecture's specific characteristics.
+
+Swizzling formula:
+pid_m = tl.program_id(0)
+pid_n = tl.program_id(1)
+
+num_xcds = 8
+num_blocks_m = (M + BLOCK_SIZE_M - 1) // BLOCK_SIZE_M
+num_blocks_n = (N + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
+total_blocks = num_blocks_m * num_blocks_n
+
+xcd_id_m = (pid_m * num_xcds) // num_blocks_m
+xcd_id_n = (pid_n * num_xcds) // num_blocks_n
+
+new_pid_m = (pid_m % (num_blocks_m // num_xcds)) * num_xcds + xcd_id_m
+new_pid_n = (pid_n % (num_blocks_n // num_xcds)) * num_xcds + xcd_id_n
+
+pid_m = new_pid_m
+pid_n = new_pid_n
+
+--- PROFILING ITERATION 1 ---
+L2 Cache Locality Degradation: L2 cache hit rate decreased by 0.17 percentage points. Hit rate decreased from 51.0% to 50.9% (lower percentages indicate worse cache locality). Performance Gain: Achieved 1.33x speedup with execution time reduced from 0.02ms to 0.02ms (33.0% faster).
+
+Iteration 2:
+Code optimization reasoning:
+The original kernel code processes blocks of a matrix in a straightforward manner, which can lead to suboptimal cache usage due to the default round-robin scheduling of blocks across XCDs. The goal is to improve cache locality by ensuring that blocks accessing the same data are scheduled to the same XCD, thereby reducing cache misses and improving performance.
+
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern attempted to map blocks to XCDs based on a simple division and modulo operation, which did not effectively group blocks accessing the same data onto the same XCD. This led to a decrease in L2 cache hit rate because the spatial locality of data was not improved, resulting in more cache misses."
+}
+
+Summary of optimization:
+The new optimization involves a swizzling pattern that uses a combination of bit manipulation and arithmetic operations to map blocks to XCDs in a way that enhances spatial locality. This pattern aims to group blocks that access contiguous data onto the same XCD, thereby improving cache utilization.
+
+Reason why new should be better:
+The new swizzling pattern should be better because it uses a more sophisticated approach to map blocks to XCDs, taking into account the spatial locality of data. By ensuring that blocks accessing contiguous data are scheduled to the same XCD, the new pattern is expected to reduce cache misses and improve the L2 cache hit rate, leading to better overall performance.
+
+Swizzling formula:
+pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    num_xcds = 8
+    num_blocks_m = (M + BLOCK_SIZE_M - 1) // BLOCK_SIZE_M
+    num_blocks_n = (N + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
+
+    linear_pid = pid_m * num_blocks_n + pid_n
+
+    swizzled_pid = ((linear_pid & 0xAAAAAAAA) >> 1) | ((linear_pid & 0x55555555) << 1)
+
+    pid_m = swizzled_pid // num_blocks_n
+    pid_n = swizzled_pid % num_blocks_n
+
+Iteration 3:
+Code optimization reasoning:
+The goal is to optimize the memory access pattern of the Smith-Waterman kernel to improve L2 cache locality by using a swizzling pattern. The previous attempts at swizzling did not achieve the desired performance improvements, and the latest attempt resulted in a compilation error due to an out-of-range value for bit manipulation. A new swizzling pattern needs to be devised that effectively maps blocks to XCDs, ensuring that blocks accessing the same data are scheduled to the same XCD, thereby improving cache locality and performance.
+
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern used a simple modulo and division approach to remap block indices, which did not effectively group blocks accessing the same data onto the same XCD, leading to suboptimal cache locality.",
+    "iteration 2": "The bit manipulation approach attempted to create a new swizzling pattern but resulted in a compilation error due to an out-of-range value for the bitmask, preventing the code from running and thus failing to achieve any performance improvement."
+}
+
+Summary of optimization:
+The new optimization will use a Morton order (Z-order curve) swizzling pattern to remap the block indices. This pattern is known for its ability to preserve spatial locality, which should help in grouping blocks that access similar data onto the same XCD. The Morton order will be calculated by interleaving the bits of the block indices, which should improve cache locality and performance.
+
+Reason why new should be better:
+The Morton order swizzling pattern is designed to improve spatial locality by interleaving the bits of the block indices, which helps in mapping blocks that are close in the problem space to be close in memory. This should result in better cache utilization compared to the previous attempts, as it more effectively groups blocks accessing the same data onto the same XCD, thereby improving L2 cache hit rates and overall performance.
+
+Swizzling formula:
+pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # New swizzling pattern using Morton order (Z-order curve)
+    num_blocks_m = (M + BLOCK_SIZE_M - 1) // BLOCK_SIZE_M
+    num_blocks_n = (N + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
+
+    # Calculate linear block id
+    linear_pid = pid_m * num_blocks_n + pid_n
+
+    # Morton order swizzling
+    def interleave_bits(x, y):
+        z = 0
+        for i in range(32):  # Assuming 32-bit integers
+            z |= ((x & (1 << i)) << i) | ((y & (1 << i)) << (i + 1))
+        return z
+
+    swizzled_pid = interleave_bits(pid_m, pid_n)
+
+    # Map swizzled pid back to 2D grid
+    pid_m = swizzled_pid // num_blocks_n
+    pid_n = swizzled_pid % num_blocks_n
+

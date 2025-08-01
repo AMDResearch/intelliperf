@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import torch
 import triton
 import argparse
@@ -37,7 +39,7 @@ def fdtd_2d_step(ex, ey, hz, validate=False):
     return ex_new, ey_new, hz_new
 
 
-def main(Nx=4096, Ny=4096, n_iters=100, validate=False):
+def main(Nx=8192, Ny=8192, n_iters=100, validate=False):
     ex = torch.zeros(Nx, Ny, device='cuda', dtype=torch.float32)
     ey = torch.zeros(Nx, Ny, device='cuda', dtype=torch.float32)
     hz = torch.zeros(Nx, Ny, device='cuda', dtype=torch.float32)
@@ -72,8 +74,8 @@ def main(Nx=4096, Ny=4096, n_iters=100, validate=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Triton 2D-FDTD Benchmark")
-    parser.add_argument("--Nx", type=int, default=4096, help="Grid size in X dimension")
-    parser.add_argument("--Ny", type=int, default=4096, help="Grid size in Y dimension")
+    parser.add_argument("--Nx", type=int, default=8192, help="Grid size in X dimension")
+    parser.add_argument("--Ny", type=int, default=8192, help="Grid size in Y dimension")
     parser.add_argument("--n_iters", type=int, default=100, help="Number of iterations")
     parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
     args = parser.parse_args()

@@ -7,10 +7,10 @@ if [[ "$1" == "--skip-duplicates" ]]; then
 fi
 
 # Create swizzling directories if they don't exist
-mkdir -p examples/triton/autogen_10/swizzling_aware
-mkdir -p examples/triton/autogen_10/swizzling_unaware
-mkdir -p examples/triton/autogen_science_10/swizzling_aware
-mkdir -p examples/triton/autogen_science_10/swizzling_unaware
+mkdir -p examples/triton/autogen_10/swizzling_aware/logs
+mkdir -p examples/triton/autogen_10/swizzling_unaware/logs
+mkdir -p examples/triton/autogen_science_10/swizzling_aware/logs
+mkdir -p examples/triton/autogen_science_10/swizzling_unaware/logs
 
 # autogen_10 kernels
 AUTOGEN_DIR="examples/triton/autogen_10"
@@ -39,7 +39,7 @@ for kernel in "${AUTOGEN_KERNELS[@]}"; do
         echo "Log file $output_file_aware already exists, skipping."
     else
         echo "Running $runner_kernel with swizzling_test, output to $output_file_aware"
-        echo timeout 20m intelliperf -vvv --top_n 1 --project_directory=./examples --formula=swizzling_test --output_kernel_file="$output_file_aware" --unittest_command="\"./triton/autogen_10/$runner_kernel --validate\"" -- "./triton/autogen_10/$runner_kernel" > "${output_file_aware%.txt}_log.txt" 2>&1
+        timeout 20m intelliperf -vvv --top_n 1 --project_directory=./examples --formula=swizzling_test --output_kernel_file="$output_file_aware" --unittest_command="\"./triton/autogen_10/$runner_kernel --validate\"" -- "./triton/autogen_10/$runner_kernel" > "$AUTOGEN_LOG_DIR_AWARE/logs/${kernel%.py}_log.txt" 2>&1
     fi
 
     # Swizzling unaware
@@ -48,7 +48,7 @@ for kernel in "${AUTOGEN_KERNELS[@]}"; do
         echo "Log file $output_file_unaware already exists, skipping."
     else
         echo "Running $runner_kernel with swizzling_baseline, output to $output_file_unaware"
-        echo timeout 20m intelliperf -vvv --top_n 1 --project_directory=./examples --formula=swizzling_baseline --output_kernel_file="$output_file_unaware" --unittest_command="\"./triton/autogen_10/$runner_kernel --validate\"" -- "./triton/autogen_10/$runner_kernel" > "${output_file_unaware%.txt}_log.txt" 2>&1
+        timeout 20m intelliperf -vvv --top_n 1 --project_directory=./examples --formula=swizzling_baseline --output_kernel_file="$output_file_unaware" --unittest_command="\"./triton/autogen_10/$runner_kernel --validate\"" -- "./triton/autogen_10/$runner_kernel" > "$AUTOGEN_LOG_DIR_UNAWARE/logs/${kernel%.py}_log.txt" 2>&1
     fi
 done
 
@@ -77,7 +77,7 @@ for kernel in "${AUTOGEN_SCIENCE_KERNELS[@]}"; do
         echo "Log file $output_file_aware already exists, skipping."
     else
         echo "Running $runner_kernel with swizzling_test, output to $output_file_aware"
-        echo timeout 20m intelliperf -vvv --top_n 1 --project_directory=./examples --formula=swizzling_test --output_kernel_file="$output_file_aware" --unittest_command="\"./triton/autogen_science_10/$runner_kernel --validate\"" -- "./triton/autogen_science_10/$runner_kernel" > "${output_file_aware%.txt}_log.txt" 2>&1
+        timeout 20m intelliperf -vvv --top_n 1 --project_directory=./examples --formula=swizzling_test --output_kernel_file="$output_file_aware" --unittest_command="\"./triton/autogen_science_10/$runner_kernel --validate\"" -- "./triton/autogen_science_10/$runner_kernel" > "$AUTOGEN_SCIENCE_LOG_DIR_AWARE/logs/${kernel%.py}_log.txt" 2>&1
     fi
 
     # Swizzling unaware
@@ -86,7 +86,7 @@ for kernel in "${AUTOGEN_SCIENCE_KERNELS[@]}"; do
         echo "Log file $output_file_unaware already exists, skipping."
     else
         echo "Running $runner_kernel with swizzling_baseline, output to $output_file_unaware"
-        echo timeout 20m intelliperf -vvv --top_n 1 --project_directory=./examples --formula=swizzling_baseline --output_kernel_file="$output_file_unaware" --unittest_command="\"./triton/autogen_science_10/$runner_kernel --validate\"" -- "./triton/autogen_science_10/$runner_kernel" > "${output_file_unaware%.txt}_log.txt" 2>&1
+        timeout 20m intelliperf -vvv --top_n 1 --project_directory=./examples --formula=swizzling_baseline --output_kernel_file="$output_file_unaware" --unittest_command="\"./triton/autogen_science_10/$runner_kernel --validate\"" -- "./triton/autogen_science_10/$runner_kernel" > "$AUTOGEN_SCIENCE_LOG_DIR_UNAWARE/logs/${kernel%.py}_log.txt" 2>&1
     fi
 done
 

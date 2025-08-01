@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import torch
 import triton
 import argparse
@@ -41,7 +43,7 @@ def ising_model_step(spins, beta, validate=False):
     return new_spins
 
 
-def main(Nx=4096, Ny=4096, n_iters=100, beta=0.44, validate=False):
+def main(Nx=8192, Ny=8192, n_iters=10000, beta=0.44, validate=False):
     spins = torch.randint(0, 2, (Nx, Ny), device='cuda', dtype=torch.int8) * 2 - 1
 
     rep = 10
@@ -72,9 +74,9 @@ def main(Nx=4096, Ny=4096, n_iters=100, beta=0.44, validate=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Triton Ising Model Benchmark")
-    parser.add_argument("--Nx", type=int, default=4096, help="Grid size in X dimension")
-    parser.add_argument("--Ny", type=int, default=4096, help="Grid size in Y dimension")
-    parser.add_argument("--n_iters", type=int, default=100, help="Number of iterations")
+    parser.add_argument("--Nx", type=int, default=8192, help="Grid size in X dimension")
+    parser.add_argument("--Ny", type=int, default=8192, help="Grid size in Y dimension")
+    parser.add_argument("--n_iters", type=int, default=10000, help="Number of iterations")
     parser.add_argument("--beta", type=float, default=0.44, help="Inverse temperature")
     parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
     args = parser.parse_args()

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import torch
 import triton
 import argparse
@@ -33,10 +35,10 @@ def transpose(x, validate=False):
     return y
 
 
-def main(M=8192, N=8192, validate=False):
+def main(M=4096*8, N=4096*8, validate=False):
     x = torch.randn((M, N), device='cuda', dtype=torch.float16)
 
-    rep = 100
+    rep = 10
 
     for _ in range(10):
         transpose(x)
@@ -60,8 +62,8 @@ def main(M=8192, N=8192, validate=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Triton Transpose Benchmark")
-    parser.add_argument("--M", type=int, default=8192, help="Number of rows")
-    parser.add_argument("--N", type=int, default=8192, help="Number of columns")
+    parser.add_argument("--M", type=int, default=4096*8, help="Number of rows")
+    parser.add_argument("--N", type=int, default=4096*8, help="Number of columns")
     parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
     args = parser.parse_args()
 

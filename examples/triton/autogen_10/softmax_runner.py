@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import torch
 import triton
 import argparse
@@ -36,10 +38,10 @@ def softmax(x, validate=False):
     return y
 
 
-def main(n_rows=8192, n_cols=8192, validate=False):
+def main(n_rows=32768, n_cols=32768, validate=False):
     x = torch.randn((n_rows, n_cols), device='cuda', dtype=torch.float16)
 
-    rep = 100
+    rep = 10
 
     for _ in range(10):
         softmax(x)
@@ -63,8 +65,8 @@ def main(n_rows=8192, n_cols=8192, validate=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Triton Softmax Benchmark")
-    parser.add_argument("--n_rows", type=int, default=8192, help="Number of rows")
-    parser.add_argument("--n_cols", type=int, default=8192, help="Number of columns")
+    parser.add_argument("--n_rows", type=int, default=32768, help="Number of rows")
+    parser.add_argument("--n_cols", type=int, default=32768, help="Number of columns")
     parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
     args = parser.parse_args()
 

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import torch
 import triton
 import argparse
@@ -41,7 +43,7 @@ def stencil_2d(x, validate=False):
 def main(M=8192, N=8192, validate=False):
     x = torch.randn((M, N), device='cuda', dtype=torch.float16)
 
-    rep = 100
+    rep = 10
 
     for _ in range(10):
         stencil_2d(x)

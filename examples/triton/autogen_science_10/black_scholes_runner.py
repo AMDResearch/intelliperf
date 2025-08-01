@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import torch
 import triton
 import argparse
@@ -41,7 +43,7 @@ def black_scholes_step(s, v, r, sigma, dt, validate=False):
     return new_v
 
 
-def main(n_assets=2**18, n_timesteps=1000, r=0.05, sigma=0.2, validate=False):
+def main(n_assets=2**28, n_timesteps=10000000, r=0.2, sigma=0.6, validate=False):
     T = 1.0
     dt = T / n_timesteps
 
@@ -49,7 +51,7 @@ def main(n_assets=2**18, n_timesteps=1000, r=0.05, sigma=0.2, validate=False):
     K = 100.0
     v = torch.clamp(s - K, min=0)
 
-    rep = 100
+    rep = 10
 
     for _ in range(5):
         black_scholes_step(s, v.clone(), r, sigma, dt)
@@ -73,10 +75,10 @@ def main(n_assets=2**18, n_timesteps=1000, r=0.05, sigma=0.2, validate=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Triton Black-Scholes Benchmark")
-    parser.add_argument("--n_assets", type=int, default=2**18, help="Number of assets")
-    parser.add_argument("--n_timesteps", type=int, default=1000, help="Number of timesteps")
-    parser.add_argument("--r", type=float, default=0.05, help="Risk-free interest rate")
-    parser.add_argument("--sigma", type=float, default=0.2, help="Volatility")
+    parser.add_argument("--n_assets", type=int, default=2**28, help="Number of assets")
+    parser.add_argument("--n_timesteps", type=int, default=10000000, help="Number of timesteps")
+    parser.add_argument("--r", type=float, default=0.2, help="Risk-free interest rate")
+    parser.add_argument("--sigma", type=float, default=0.6, help="Volatility")
     parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
     args = parser.parse_args()
 
