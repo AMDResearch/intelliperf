@@ -35,14 +35,12 @@ We provide both Apptainer and Docker images containing all the dependencies. To 
 #### Using Apptainer
 
 ```bash
-./apptainer/build.sh
-./apptainer/run.sh
+./containers/run.sh --apptainer
 ```
 
 #### Using Docker
 ```bash
-./docker/build.sh
-./docker/run.sh
+./containers/run.sh --docker
 ```
 
 ### Setting Up Development Environment

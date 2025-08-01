@@ -45,7 +45,7 @@ def capture_subprocess_output(
 	"""
 	verbose = logging.getLogger().getEffectiveLevel() <= logging.DEBUG
 
-	logging.debug(f"Running the command: {' '.join(subprocess_args)}")
+	# logging.debug(f"Running the command: {' '.join(subprocess_args)}")
 
 	if working_directory is not None:
 		logging.debug(f"Working directory: {working_directory}")
@@ -58,7 +58,15 @@ def capture_subprocess_output(
 	if additional_path is not None:
 		env["PATH"] = str(additional_path) + ":" + env["PATH"]
 
+	if working_directory is not None:
+		# Convert to absolute path to be safe
+		abs_working_dir = os.path.abspath(working_directory)
+		shell_cmd = f'cd "{abs_working_dir}" && {" ".join(subprocess_args)}'
+		subprocess_args = ["bash", "-c", shell_cmd]
+		working_directory = None  # Let shell handle it
+
 	logging.debug(f"PATH: {env['PATH']}")
+	logging.debug(f"Running the command: {' '.join(subprocess_args)}")
 
 	# Run the process and wait for completion
 	try:

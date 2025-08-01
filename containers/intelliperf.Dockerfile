@@ -19,19 +19,10 @@ RUN apt-get update && apt-get install -y \
     gdb \
     && locale-gen en_US.UTF-8
 
-# Add GitHub trusted host
-RUN mkdir -p ~/.ssh && \
-    touch ~/.ssh/known_hosts && \
-    ssh-keyscan github.com >> ~/.ssh/known_hosts && \
-    chmod 700 ~/.ssh && \
-    chmod 644 ~/.ssh/known_hosts
-
 # Set the working directory
 WORKDIR $INTELLIPERF_HOME
+COPY ../ $INTELLIPERF_HOME
 
-# Clone IntelliPerf only in non-dev mode
-RUN --mount=type=ssh bash -c 'if [ "$DEV_MODE" = "false" ]; then \
-    git clone git@github.com:AMDResearch/intelliperf.git . ; \
-    pip install -e .; \
-    python3 scripts/install_tool.py --all; \
-    fi'
+# Install tool
+RUN pip install -e . && \
+    python3 scripts/install_tool.py --all

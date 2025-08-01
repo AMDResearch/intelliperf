@@ -52,16 +52,20 @@ This is not a product. Use it at your own risk and discretion.
 
 We provide both Apptainer and Docker images for easy setup:
 
-#### Using Apptainer
-```bash
-./apptainer/build.sh
-./apptainer/run.sh
+```console
+$ ./containers/run.sh 
+Must specify either --docker or --apptainer.
+Usage: ./containers/run.sh [--docker|-d] [--apptainer|-a]
+  --docker      Run using Docker container
+  --apptainer   Run using Apptainer container
 ```
-#### Using Docker
-```bash
-./docker/build.sh
-./docker/run.sh
-```
+
+That's it! The run script will:
+
+- ✅ Automatically build the container if it doesn't exist
+- ✅ Mount your project directory to the container
+- ✅ Start an interactive session where you can run IntelliPerf
+- ✅ Persist all output files to your host machine
 
 Or use our prebuilt Docker image:
 ```bash
