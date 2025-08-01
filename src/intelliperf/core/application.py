@@ -48,12 +48,14 @@ class Application:
 		instrument_command: list,
 		project_directory: str,
 		app_cmd: list,
+		unittest_command: list,
 	):
 		self.name = name
 		self.build_command = None
 		self.instrument_command = None
 		self.app_cmd = app_cmd
 		self.project_directory = project_directory
+		self.unittest_command = unittest_command
 
 		if build_command is not None:
 			self.build_command = build_command if isinstance(build_command, list) else build_command.split()
@@ -173,6 +175,11 @@ class Application:
 		"""Runs the application."""
 		return process.capture_subprocess_output(self.app_cmd)
 
+	def run_unit_test(self):
+		"""Runs the unit test command."""
+		cmd = self.unittest_command.split()
+		return process.capture_subprocess_output(cmd, working_directory=self.get_project_directory())
+
 	def get_name(self):
 		return self.name
 
@@ -213,6 +220,7 @@ class Application:
 			self.instrument_command,
 			temp_dir,
 			self.app_cmd,
+			self.unittest_command,
 		)
 
 	def collect_source_code(self):
