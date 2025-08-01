@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 import argparse
 import random
+import sys
 from gemm import streamk_gemm
 
 class matmul(torch.autograd.Function):
@@ -42,17 +43,6 @@ class matmul(torch.autograd.Function):
             total_full_tiles_streamk = 0
             total_partial_tiles_streamk = 0
             total_iters_streamk = 0
-
-        if matmul._debug:
-            print(f"M,N,K={M},{N},{K} ; BLK_M,N,K={BLK_M},{BLK_N},{BLK_K}")
-            print(f"{total_blocks_M=} x {total_blocks_N=} = {total_tiles=}")
-            print(f"{total_tiles_streamk=} + {total_blocking_tiles=} = {total_tiles=}")
-            print(f"{total_programs_streamk=}")
-            print(f"{total_blocking_tiles=}")
-            print(f"{total_full_tiles_streamk=}")
-            print(f"{iters_per_tile=}")
-            print(f"{total_iters_streamk=}")
-            print("total_remainder_iters_streamk=", total_partial_tiles_streamk)
         
         use_bias = False
         grids = total_programs_streamk
@@ -86,8 +76,6 @@ class matmul(torch.autograd.Function):
             BIAS=use_bias,
             EVEN_K=even_k,
         )
-        if matmul._debug:
-            print(f"{kk.n_regs} registers used, {kk.n_spills} spills")
 
         return c
 
@@ -100,7 +88,7 @@ class matmul(torch.autograd.Function):
                     waves_per_eu=waves_per_eu, mfmaInstrSize=mfmaInstrSize, kpack=kpack)
         return c
 
-def main(M=8192, N=8192, K=8192):
+def main(M=8192, N=8192, K=8192, validate=False):
     torch.manual_seed(123)
     random.seed(123)
 
@@ -127,10 +115,10 @@ def main(M=8192, N=8192, K=8192):
     P = torch.zeros((total_sm, BLK_M * BLK_N), device="cuda", dtype=torch.float32)
     
     # repetitions for performance measurement
-    rep = 100
+    rep = 1
     
     # Warm-up
-    for _ in range(10):
+    for _ in range(1):
         c_triton = matmul.apply(a, b, c, bias, P, locks, total_sm, BLK_M, BLK_N, BLK_K, gsize_m, two_tiles, num_stages, num_warps, waves_per_eu, mfmaInstrSize, kpack)
 
     torch.cuda.synchronize()
@@ -150,16 +138,21 @@ def main(M=8192, N=8192, K=8192):
     # print(f"Torch output: {torch_output}")
     print(f"Triton matmul time: {triton_time:.4f} ms")
 
-    # For verification
-    # expected = a @ b
-    # assert torch.allclose(c_triton, expected, atol=1), f"max: {(c_triton - expected).abs().max().item()}\n{c_triton}\n{expected}"
-    # print("pass validation test")
+    if validate:
+        expected = torch.matmul(a, b)
+        if torch.allclose(c_triton, expected, atol=1, rtol=0):
+            print("Validation Successful!")
+        else:
+            print("Validation Failed: Triton output does not match PyTorch output.")
+            print(f"max diff: {(c_triton - expected).abs().max().item()}")
+            sys.exit(1)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Triton GEMM Benchmark")
     parser.add_argument("--M", type=int, default=8192, help="Number of rows in A and C")
     parser.add_argument("--N", type=int, default=8192, help="Number of columns in B and C")
     parser.add_argument("--K", type=int, default=8192, help="Number of columns in A and rows in B")
+    parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
     args = parser.parse_args()
     
-    main(args.M, args.N, args.K) 
+    main(args.M, args.N, args.K, validate=args.validate) 

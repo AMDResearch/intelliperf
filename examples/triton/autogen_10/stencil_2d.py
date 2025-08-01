@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 
-import torch
 import triton
 import triton.language as tl
-import argparse
+
 
 @triton.jit
 def stencil_2d_kernel(
@@ -39,60 +38,4 @@ def stencil_2d_kernel(
     output = 0.5 * center + 0.125 * (up + down + left + right)
     
     output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
-    tl.store(output_ptrs, output, mask=mask)
-
-def stencil_2d(x):
-    M, N = x.shape
-    y = torch.empty_like(x)
-    
-    grid = lambda META: (
-        triton.cdiv(M, META['BLOCK_SIZE_M']),
-        triton.cdiv(N, META['BLOCK_SIZE_N'])
-    )
-    
-    stencil_2d_kernel[grid](
-        x, y,
-        M, N,
-        x.stride(0), x.stride(1),
-        BLOCK_SIZE_M=32, BLOCK_SIZE_N=32
-    )
-    return y
-
-def main(M=8192, N=8192):
-    x = torch.randn((M, N), device='cuda', dtype=torch.float16)
-
-    rep = 100
-    
-    for _ in range(10):
-        y_triton = stencil_2d(x)
-
-    torch.cuda.synchronize()
-    start_time = torch.cuda.Event(enable_timing=True)
-    end_time = torch.cuda.Event(enable_timing=True)
-
-    start_time.record()
-    for _ in range(rep):
-        y_triton = stencil_2d(x)
-    end_time.record()
-    torch.cuda.synchronize()
-
-    triton_time = start_time.elapsed_time(end_time) / rep
-    print(f"Triton 2D stencil time: {triton_time:.4f} ms")
-
-    # For verification
-    # def torch_stencil(x):
-    #     y = torch.nn.functional.pad(x, (1, 1, 1, 1), 'replicate')
-    #     y = torch.nn.functional.avg_pool2d(y, kernel_size=3, stride=1)
-    #     return y
-    #
-    # y_torch = torch_stencil(x)
-    # assert torch.allclose(y_triton[1:-1, 1:-1], y_torch, atol=1e-2, rtol=0)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Triton 2D Stencil Benchmark")
-    parser.add_argument("--M", type=int, default=8192, help="Number of rows")
-    parser.add_argument("--N", type=int, default=8192, help="Number of columns")
-    args = parser.parse_args()
-    
-    main(args.M, args.N) 
+    tl.store(output_ptrs, output, mask=mask) 
