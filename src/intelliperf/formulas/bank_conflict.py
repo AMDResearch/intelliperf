@@ -282,7 +282,8 @@ class bank_conflict(Formula_Base):
 				file_path = access["source_location"]["file"]
 				line_number = access["source_location"]["line"]
 				if file_path not in files:
-					files[file_path].append(line_number)
+					files[file_path] = []
+				files[file_path].append(line_number)
 
 			kernel_file = None
 			for file in files.keys():
