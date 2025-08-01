@@ -3,137 +3,146 @@
 import torch
 import triton
 import triton.language as tl
-import argparse
+from typing import Tuple
 
+
+@triton.autotune(
+    configs=[
+        triton.Config({}, num_warps=16),
+        triton.Config({}, num_warps=8),
+        triton.Config({}, num_warps=4)
+    ],
+    key=['kernel_height', 'kernel_width'],
+)
 @triton.jit
 def conv2d_kernel(
-    x_ptr, w_ptr, y_ptr,
-    N, C, H, W,
-    F, R, S,
-    stride_xn, stride_xc, stride_xh, stride_xw,
-    stride_wn, stride_wc, stride_wh, stride_ww,
-    stride_yn, stride_yc, stride_yh, stride_yw,
-    P_H, P_W,
-    BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_F: tl.constexpr,
-    BLOCK_SIZE_H: tl.constexpr, BLOCK_SIZE_W: tl.constexpr,
-    BLOCK_SIZE_C: tl.constexpr
+    input_ptr,
+    input_batch_stride,
+    input_channel_stride,
+    input_row_stride,
+    input_col_stride,
+    height,
+    width,
+    channels,
+    kernel_ptr,
+    kernel_height,
+    kernel_width,
+    kernel_dim_stride,
+    kernel_channel_stride,
+    kernel_row_stride,
+    kernel_col_stride,
+    bias_ptr,
+    output_ptr,
+    output_width,
+    output_batch_stride,
+    output_channel_stride,
+    output_row_stride,
+    output_col_stride,
+    BLOCK_SIZE_ROW: tl.constexpr,
+    BLOCK_SIZE_COL: tl.constexpr
 ):
-    pid = tl.program_id(axis=0)
-    num_pid_w = tl.cdiv(P_W, BLOCK_SIZE_W)
-    num_pid_h = tl.cdiv(P_H, BLOCK_SIZE_H)
-    num_pid_f = tl.cdiv(F, BLOCK_SIZE_F)
-    
-    pid_w = pid % num_pid_w
-    pid_h = (pid // num_pid_w) % num_pid_h
-    pid_f = (pid // (num_pid_w * num_pid_h)) % num_pid_f
-    pid_n = pid // (num_pid_w * num_pid_h * num_pid_f)
+    batch_idx = tl.program_id(0)
+    kernel_idx = tl.program_id(1)
+    row_idx = tl.program_id(2)
 
-    offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-    offs_f = pid_f * BLOCK_SIZE_F + tl.arange(0, BLOCK_SIZE_F)
-    offs_h = pid_h * BLOCK_SIZE_H + tl.arange(0, BLOCK_SIZE_H)
-    offs_w = pid_w * BLOCK_SIZE_W + tl.arange(0, BLOCK_SIZE_W)
+    # Bias offset and data
+    bias_offset = kernel_idx
+    bias = tl.load(bias_ptr + bias_offset)
 
-    offs_y_n = offs_n[:, None, None, None]
-    offs_y_f = offs_f[None, :, None, None]
-    offs_y_h = offs_h[None, None, :, None]
-    offs_y_w = offs_w[None, None, None, :]
+    # Input data offsets
+    batch_offset = batch_idx*input_batch_stride
 
-    y_ptrs = y_ptr + offs_y_n * stride_yn + offs_y_f * stride_yc + \
-             offs_y_h * stride_yh + offs_y_w * stride_yw
+    # Output data offsets
+    output_batch_offset = batch_idx*output_batch_stride
+    output_channel_offset = kernel_idx*output_channel_stride
+    output_row_offset = row_idx*output_row_stride
 
-    accumulator = tl.zeros((BLOCK_SIZE_N, BLOCK_SIZE_F, BLOCK_SIZE_H, BLOCK_SIZE_W), dtype=tl.float32)
+    # Kernel data offsets - nth kernel
+    kernel_row_offset = tl.arange(0, BLOCK_SIZE_ROW)
+    kernel_row_mask = kernel_row_offset[:, None] < kernel_height
+    kernel_row_offset = kernel_row_offset[:, None]*kernel_row_stride
+    kernel_col_offset = tl.arange(0, BLOCK_SIZE_COL)
+    kernel_col_mask = kernel_col_offset[None, :] < kernel_width
+    kernel_col_offset = kernel_col_offset[None, :]*kernel_col_stride
+    kernel_mask = kernel_row_mask & kernel_col_mask
 
-    offs_c = tl.arange(0, BLOCK_SIZE_C)
-    
-    for r in range(R):
-        for s in range(S):
-            offs_x_n = offs_n[:, None, None, None]
-            offs_x_c = offs_c[None, :, None, None]
-            offs_x_h = offs_h[None, None, :, None] + r
-            offs_x_w = offs_w[None, None, None, :] + s
-            
-            x_ptrs = x_ptr + offs_x_n * stride_xn + offs_x_c * stride_xc + offs_x_h * stride_xh + offs_x_w * stride_xw
-            mask_x = (offs_x_n < N) & (offs_x_c < C) & (offs_x_h < H) & (offs_x_w < W)
-            x = tl.load(x_ptrs, mask=mask_x, other=0.0)
+    # Iterate over each column of the output
+    for col_idx in range(output_width):
+        elem = 0.0
 
-            offs_w_f = offs_f[None, :, None, None]
-            offs_w_c = offs_c[None, :, None, None]
-            
-            w_ptrs = w_ptr + offs_w_f * stride_wn + offs_w_c * stride_wc + r * stride_wh + s * stride_ww
-            mask_w = (offs_w_f < F) & (offs_w_c < C) 
-            w = tl.load(w_ptrs, mask=mask_w, other=0.0)
-            
-            accumulator += tl.sum(x * w, axis=1)
+        # Input data base
+        input_row_offset = row_idx * kernel_height + tl.arange(0, BLOCK_SIZE_ROW)
+        input_row_mask = input_row_offset[:, None] < height
+        input_row_offset = input_row_offset[:, None]*input_row_stride
 
-    y = accumulator.to(tl.float16)
-    mask_y = (offs_y_n < N) & (offs_y_f < F) & (offs_y_h < P_H) & (offs_y_w < P_W)
-    tl.store(y_ptrs, y, mask=mask_y)
+        input_col_offset = col_idx * kernel_width + tl.arange(0, BLOCK_SIZE_COL)
+        input_col_mask = input_col_offset[None, :] < width
+        input_col_offset = input_col_offset[None, :]*input_col_stride
+        input_mask = input_row_mask & input_col_mask
+
+        # Iterate over the channels
+        for c in range(channels):
+            input_offset = input_ptr + batch_offset + c*input_channel_stride + input_row_offset + input_col_offset
+            input_data = tl.load(input_offset, input_mask, other=0.0)
+
+            # Load kernel weights for the current channel
+            kernel_offset = kernel_ptr + kernel_idx*kernel_dim_stride + c*kernel_channel_stride + kernel_row_offset + kernel_col_offset
+            kernel_data = tl.load(kernel_offset, kernel_mask, other=0.0)
+            dot_prdct = input_data * kernel_data
+            elem += tl.sum(dot_prdct)
+
+        # Store to output for the current channel
+        output_offset = output_ptr + output_batch_offset + output_channel_offset + output_row_offset + col_idx
+        tl.store(output_offset, elem + bias)
 
 
-def conv2d(x, w):
-    N, C, H, W = x.shape
-    F, _, R, S = w.shape
-    P_H, P_W = H - R + 1, W - S + 1 
-    y = torch.empty((N, F, P_H, P_W), device=x.device, dtype=x.dtype)
+def conv2d(
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    bias: torch.Tensor
+) -> torch.Tensor:
+    assert input.is_cuda and kernel.is_cuda, 'Input or kernel is not on GPU'
+    assert len(input.shape) == 4, f'Input needs to be 4 dimensional, provided: {input.shape}'
+    assert len(kernel.shape) == 4, f'Kernel size needs to be 4 dimensional, provided: {kernel.shape}'
+    assert bias.shape[0] == kernel.shape[0], f'Bias dimension should be same as the kernel 1st dimension'
 
-    grid = lambda META: (
-        triton.cdiv(N, META['BLOCK_SIZE_N']) * 
-        triton.cdiv(F, META['BLOCK_SIZE_F']) *
-        triton.cdiv(P_H, META['BLOCK_SIZE_H']) *
-        triton.cdiv(P_W, META['BLOCK_SIZE_W']),
-    )
+    batch_size, channels, height, width = input.shape
+    num_kernels, kernel_depth, kernel_height, kernel_width = kernel.shape
+
+    assert height % kernel_height == 0 and width % kernel_width == 0, f"Input height and width should be divisible by the kernel height and width"
+    assert channels == kernel_depth, f"Kernel channel depth ({kernel_depth}) and input channel depth ({channels}) should be same"
+
+    output = torch.empty((batch_size, num_kernels, height//kernel_height, width//kernel_width), device=input.device, dtype=input.dtype)
+
+    BLOCK_SIZE_ROW = triton.next_power_of_2(kernel_height)
+    BLOCK_SIZE_COL = triton.next_power_of_2(kernel_width)
+    grid = (batch_size, num_kernels, height//kernel_height)
 
     conv2d_kernel[grid](
-        x, w, y,
-        N, C, H, W,
-        F, R, S,
-        x.stride(0), x.stride(1), x.stride(2), x.stride(3),
-        w.stride(0), w.stride(1), w.stride(2), w.stride(3),
-        y.stride(0), y.stride(1), y.stride(2), y.stride(3),
-        P_H, P_W,
-        BLOCK_SIZE_N=16, BLOCK_SIZE_F=16,
-        BLOCK_SIZE_H=16, BLOCK_SIZE_W=16,
-        BLOCK_SIZE_C=16
+        input_ptr=input,
+        input_batch_stride=input.stride(0),
+        input_channel_stride=input.stride(1),
+        input_row_stride=input.stride(2),
+        input_col_stride=input.stride(3),
+        height=height,
+        width=width,
+        channels=channels,
+        kernel_ptr=kernel,
+        kernel_height=kernel_height,
+        kernel_width=kernel_width,
+        kernel_dim_stride=kernel.stride(0),
+        kernel_channel_stride=kernel.stride(1),
+        kernel_row_stride=kernel.stride(2),
+        kernel_col_stride=kernel.stride(3),
+        bias_ptr=bias,
+        output_ptr=output,
+        output_width=width//kernel_width,
+        output_batch_stride=output.stride(0),
+        output_channel_stride=output.stride(1),
+        output_row_stride=output.stride(2),
+        output_col_stride=output.stride(3),
+        BLOCK_SIZE_ROW=BLOCK_SIZE_ROW,
+        BLOCK_SIZE_COL=BLOCK_SIZE_COL,
     )
-    return y
 
-def main(N=32, C=32, H=32, W=32, F=64, R=3, S=3):
-    x = torch.randn((N, C, H, W), device='cuda', dtype=torch.float16)
-    w = torch.randn((F, C, R, S), device='cuda', dtype=torch.float16)
-    
-    rep = 100
-    
-    for _ in range(10):
-        y_triton = conv2d(x, w)
-
-    torch.cuda.synchronize()
-    start_time = torch.cuda.Event(enable_timing=True)
-    end_time = torch.cuda.Event(enable_timing=True)
-
-    start_time.record()
-    for _ in range(rep):
-        y_triton = conv2d(x, w)
-    end_time.record()
-    torch.cuda.synchronize()
-
-    triton_time = start_time.elapsed_time(end_time) / rep
-    print(f"Triton conv2d time: {triton_time:.4f} ms")
-
-    # y_torch = torch.nn.functional.conv2d(x, w)
-    # print(f"Triton output: {y_triton}")
-    # print(f"Torch output: {y_torch}")
-    # assert torch.allclose(y_triton, y_torch, atol=1e-1, rtol=0), "Triton and PyTorch results differ"
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Triton Conv2D Benchmark")
-    parser.add_argument("--N", type=int, default=32, help="Batch size")
-    parser.add_argument("--C", type=int, default=32, help="Input channels")
-    parser.add_argument("--H", type=int, default=32, help="Input height")
-    parser.add_argument("--W", type=int, default=32, help="Input width")
-    parser.add_argument("--F", type=int, default=64, help="Output channels")
-    parser.add_argument("--R", type=int, default=3, help="Filter height")
-    parser.add_argument("--S", type=int, default=3, help="Filter width")
-    args = parser.parse_args()
-    
-    main(args.N, args.C, args.H, args.W, args.F, args.R, args.S) 
+    return output 

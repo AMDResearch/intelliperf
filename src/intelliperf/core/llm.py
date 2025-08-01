@@ -25,7 +25,6 @@
 
 import dspy
 import requests
-import logging
 
 
 class LLM:
@@ -47,10 +46,10 @@ class LLM:
 			self.header = {"Ocp-Apim-Subscription-Key": api_key}
 		else:
 			self.use_amd = False
-			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key, max_tokens=16000)
+			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key)
 			dspy.configure(lm=self.lm)
 
-	def ask(self, user_prompt: str, answer_type: str = "optimized_code") -> str:
+	def ask(self, user_prompt: str) -> str:
 		if self.use_amd:
 			# AMD/Azure REST call
 			body = {
@@ -58,8 +57,8 @@ class LLM:
 					{"role": "system", "content": self.system_prompt},
 					{"role": "user", "content": user_prompt},
 				],
-				"max_Tokens": 100000,
-				"max_Completion_Tokens": 100000,
+				"max_Tokens": 4096,
+				"max_Completion_Tokens": 4096,
 			}
 			url = f"{self.provider}/engines/{self.model}/chat/completions"
 			resp = requests.post(url, json=body, headers=self.header)
@@ -68,31 +67,9 @@ class LLM:
 
 		# DSPy path: use ChainOfThought with clear signature
 		# Define signature mapping input prompt to optimized code
-
-		# output struct
-		#{iteration 1: why didnt it work
-		# iteration 2: why didnt it work
-		# ...
-		# optimization rationale
-		# final optimized code}
-
 		dspy.context(description=self.system_prompt)
-		signature = f"prompt: str -> {answer_type}"
+		signature = "prompt: str -> optimized_code: str"
 		chain = dspy.ChainOfThought(signature)
 		ct_response = chain(prompt=user_prompt)
 
-		logging.debug(f"CT: {ct_response}")
-
-		answer_fields = [a.strip() for a in answer_type.split(',')]
-		answers = {}
-		for ans_type in answer_fields:
-			field_name = ans_type.split(':')[0].strip()
-			answers[field_name] = getattr(ct_response, field_name, str(ct_response))
-
-		reasoning = getattr(ct_response, "reasoning", None)
-		logging.debug(f"Answer: {answers}")
-		logging.debug(f"Reasoning: {reasoning}")
-
-		if len(answers) == 1:
-			return list(answers.values())[0], reasoning
-		return answers, reasoning
+		return getattr(ct_response, "optimized_code", str(ct_response))
