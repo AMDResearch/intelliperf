@@ -1,0 +1,627 @@
+--- ITERATION 1 ---
+--- OPTIMIZATION PROMPT ---
+The kernel stencil_2d_kernel in the source code below has a low L2 cache hit rate. Please apply block swizzling to improve L2 cache locality. Do not change the semantics of the program. I need you to rewrite the entire code so I can copy it into a python file and run it.EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work.
+
+EXTREMELY IMPORTANT - Make sure to not change the kernel function signature. Do not add any new parameters to the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function.
+
+EXTREMELY IMPORTANT - You are NOT allowed to change ANYTHING other than remapping pid directly below this line: 'pid = tl.program_id(0)' which is always at the top of the kernel. You can ONLY remap pid to pid. Do not make any changes anywhere else in the code or you will bve rejected.
+
+#!/usr/bin/env python
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def stencil_2d_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    input_ptrs = input_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    center = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    # Boundary checks for neighbors
+    up_mask = ((offsets_m - 1)[:, None] >= 0) & mask
+    down_mask = ((offsets_m + 1)[:, None] < M) & mask
+    left_mask = ((offsets_n - 1)[None, :] >= 0) & mask
+    right_mask = ((offsets_n + 1)[None, :] < N) & mask
+    
+    up = tl.load(input_ptrs - stride_m, mask=up_mask, other=0.0)
+    down = tl.load(input_ptrs + stride_m, mask=down_mask, other=0.0)
+    left = tl.load(input_ptrs - stride_n, mask=left_mask, other=0.0)
+    right = tl.load(input_ptrs + stride_n, mask=right_mask, other=0.0)
+
+    # Simple 5-point stencil operation
+    output = 0.5 * center + 0.125 * (up + down + left + right)
+    
+    output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    tl.store(output_ptrs, output, mask=mask) 
+
+--- OPTIMIZATION RESPONSE (OPTIMIZED KERNEL) ---
+#!/usr/bin/env python
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def stencil_2d_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # Apply block swizzling to improve cache locality
+    swizzled_pid_m = (pid_m // 2) + (pid_n % 2) * (M // BLOCK_SIZE_M // 2)
+    swizzled_pid_n = (pid_n // 2) + (pid_m % 2) * (N // BLOCK_SIZE_N // 2)
+    pid_m, pid_n = swizzled_pid_m, swizzled_pid_n
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    input_ptrs = input_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    center = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    # Boundary checks for neighbors
+    up_mask = ((offsets_m - 1)[:, None] >= 0) & mask
+    down_mask = ((offsets_m + 1)[:, None] < M) & mask
+    left_mask = ((offsets_n - 1)[None, :] >= 0) & mask
+    right_mask = ((offsets_n + 1)[None, :] < N) & mask
+    
+    up = tl.load(input_ptrs - stride_m, mask=up_mask, other=0.0)
+    down = tl.load(input_ptrs + stride_m, mask=down_mask, other=0.0)
+    left = tl.load(input_ptrs - stride_n, mask=left_mask, other=0.0)
+    right = tl.load(input_ptrs + stride_n, mask=right_mask, other=0.0)
+
+    # Simple 5-point stencil operation
+    output = 0.5 * center + 0.125 * (up + down + left + right)
+    
+    output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    tl.store(output_ptrs, output, mask=mask)
+
+--- PROFILING REPORT (ITERATION 1) ---
+L2 Cache Locality Degradation: L2 cache hit rate decreased by 4.68 percentage points. Hit rate decreased from 29.6% to 24.9% (lower percentages indicate worse cache locality). Performance Loss: Experienced 1.06x slowdown with execution time increased from 0.19ms to 0.20ms (6.3% slower).
+
+--- ITERATION 2 ---
+--- OPTIMIZATION PROMPT ---
+The kernel stencil_2d_kernel in the source code below has a low L2 cache hit rate. Please apply block swizzling to improve L2 cache locality. Do not change the semantics of the program. I need you to rewrite the entire code so I can copy it into a python file and run it.EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work.
+
+EXTREMELY IMPORTANT - Make sure to not change the kernel function signature. Do not add any new parameters to the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function.
+
+EXTREMELY IMPORTANT - You are NOT allowed to change ANYTHING other than remapping pid directly below this line: 'pid = tl.program_id(0)' which is always at the top of the kernel. You can ONLY remap pid to pid. Do not make any changes anywhere else in the code or you will bve rejected.
+
+#!/usr/bin/env python
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def stencil_2d_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # Apply block swizzling to improve cache locality
+    swizzled_pid_m = (pid_m // 2) + (pid_n % 2) * (M // BLOCK_SIZE_M // 2)
+    swizzled_pid_n = (pid_n // 2) + (pid_m % 2) * (N // BLOCK_SIZE_N // 2)
+    pid_m, pid_n = swizzled_pid_m, swizzled_pid_n
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    input_ptrs = input_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    center = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    # Boundary checks for neighbors
+    up_mask = ((offsets_m - 1)[:, None] >= 0) & mask
+    down_mask = ((offsets_m + 1)[:, None] < M) & mask
+    left_mask = ((offsets_n - 1)[None, :] >= 0) & mask
+    right_mask = ((offsets_n + 1)[None, :] < N) & mask
+    
+    up = tl.load(input_ptrs - stride_m, mask=up_mask, other=0.0)
+    down = tl.load(input_ptrs + stride_m, mask=down_mask, other=0.0)
+    left = tl.load(input_ptrs - stride_n, mask=left_mask, other=0.0)
+    right = tl.load(input_ptrs + stride_n, mask=right_mask, other=0.0)
+
+    # Simple 5-point stencil operation
+    output = 0.5 * center + 0.125 * (up + down + left + right)
+    
+    output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    tl.store(output_ptrs, output, mask=mask)
+
+--- OPTIMIZATION RESPONSE (OPTIMIZED KERNEL) ---
+#!/usr/bin/env python
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def stencil_2d_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # Adjust block swizzling to improve cache locality
+    swizzled_pid_m = (pid_m // 2) + (pid_n % 2) * (M // BLOCK_SIZE_M // 2)
+    swizzled_pid_n = (pid_n // 2) + (pid_m % 2) * (N // BLOCK_SIZE_N // 2)
+    pid_m, pid_n = swizzled_pid_m, swizzled_pid_n
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    input_ptrs = input_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    center = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    # Boundary checks for neighbors
+    up_mask = ((offsets_m - 1)[:, None] >= 0) & mask
+    down_mask = ((offsets_m + 1)[:, None] < M) & mask
+    left_mask = ((offsets_n - 1)[None, :] >= 0) & mask
+    right_mask = ((offsets_n + 1)[None, :] < N) & mask
+    
+    up = tl.load(input_ptrs - stride_m, mask=up_mask, other=0.0)
+    down = tl.load(input_ptrs + stride_m, mask=down_mask, other=0.0)
+    left = tl.load(input_ptrs - stride_n, mask=left_mask, other=0.0)
+    right = tl.load(input_ptrs + stride_n, mask=right_mask, other=0.0)
+
+    # Simple 5-point stencil operation
+    output = 0.5 * center + 0.125 * (up + down + left + right)
+    
+    output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    tl.store(output_ptrs, output, mask=mask)
+
+--- PROFILING REPORT (ITERATION 2) ---
+L2 Cache Locality Degradation: L2 cache hit rate decreased by 11.23 percentage points. Hit rate decreased from 29.6% to 18.4% (lower percentages indicate worse cache locality). Performance Loss: Experienced 1.28x slowdown with execution time increased from 0.19ms to 0.24ms (28.3% slower).
+
+--- ITERATION 3 ---
+--- OPTIMIZATION PROMPT ---
+The kernel stencil_2d_kernel in the source code below has a low L2 cache hit rate. Please apply block swizzling to improve L2 cache locality. Do not change the semantics of the program. I need you to rewrite the entire code so I can copy it into a python file and run it.EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work.
+
+EXTREMELY IMPORTANT - Make sure to not change the kernel function signature. Do not add any new parameters to the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function.
+
+EXTREMELY IMPORTANT - You are NOT allowed to change ANYTHING other than remapping pid directly below this line: 'pid = tl.program_id(0)' which is always at the top of the kernel. You can ONLY remap pid to pid. Do not make any changes anywhere else in the code or you will bve rejected.
+
+#!/usr/bin/env python
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def stencil_2d_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # Adjust block swizzling to improve cache locality
+    swizzled_pid_m = (pid_m // 2) + (pid_n % 2) * (M // BLOCK_SIZE_M // 2)
+    swizzled_pid_n = (pid_n // 2) + (pid_m % 2) * (N // BLOCK_SIZE_N // 2)
+    pid_m, pid_n = swizzled_pid_m, swizzled_pid_n
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    input_ptrs = input_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    center = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    # Boundary checks for neighbors
+    up_mask = ((offsets_m - 1)[:, None] >= 0) & mask
+    down_mask = ((offsets_m + 1)[:, None] < M) & mask
+    left_mask = ((offsets_n - 1)[None, :] >= 0) & mask
+    right_mask = ((offsets_n + 1)[None, :] < N) & mask
+    
+    up = tl.load(input_ptrs - stride_m, mask=up_mask, other=0.0)
+    down = tl.load(input_ptrs + stride_m, mask=down_mask, other=0.0)
+    left = tl.load(input_ptrs - stride_n, mask=left_mask, other=0.0)
+    right = tl.load(input_ptrs + stride_n, mask=right_mask, other=0.0)
+
+    # Simple 5-point stencil operation
+    output = 0.5 * center + 0.125 * (up + down + left + right)
+    
+    output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    tl.store(output_ptrs, output, mask=mask)
+
+--- OPTIMIZATION RESPONSE (OPTIMIZED KERNEL) ---
+#!/usr/bin/env python
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def stencil_2d_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # Adjust block swizzling to improve cache locality
+    swizzled_pid_m = (pid_m // 2) + (pid_n % 2) * (M // BLOCK_SIZE_M // 2)
+    swizzled_pid_n = (pid_n // 2) + (pid_m % 2) * (N // BLOCK_SIZE_N // 2)
+    pid_m, pid_n = swizzled_pid_m, swizzled_pid_n
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    input_ptrs = input_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    center = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    # Boundary checks for neighbors
+    up_mask = ((offsets_m - 1)[:, None] >= 0) & mask
+    down_mask = ((offsets_m + 1)[:, None] < M) & mask
+    left_mask = ((offsets_n - 1)[None, :] >= 0) & mask
+    right_mask = ((offsets_n + 1)[None, :] < N) & mask
+    
+    up = tl.load(input_ptrs - stride_m, mask=up_mask, other=0.0)
+    down = tl.load(input_ptrs + stride_m, mask=down_mask, other=0.0)
+    left = tl.load(input_ptrs - stride_n, mask=left_mask, other=0.0)
+    right = tl.load(input_ptrs + stride_n, mask=right_mask, other=0.0)
+
+    # Simple 5-point stencil operation
+    output = 0.5 * center + 0.125 * (up + down + left + right)
+    
+    output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    tl.store(output_ptrs, output, mask=mask)
+
+--- PROFILING REPORT (ITERATION 3) ---
+L2 Cache Locality Degradation: L2 cache hit rate decreased by 4.76 percentage points. Hit rate decreased from 29.6% to 24.8% (lower percentages indicate worse cache locality). Performance Loss: Experienced 1.07x slowdown with execution time increased from 0.19ms to 0.20ms (7.0% slower).
+
+--- ITERATION 4 ---
+--- OPTIMIZATION PROMPT ---
+The kernel stencil_2d_kernel in the source code below has a low L2 cache hit rate. Please apply block swizzling to improve L2 cache locality. Do not change the semantics of the program. I need you to rewrite the entire code so I can copy it into a python file and run it.EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work.
+
+EXTREMELY IMPORTANT - Make sure to not change the kernel function signature. Do not add any new parameters to the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function.
+
+EXTREMELY IMPORTANT - You are NOT allowed to change ANYTHING other than remapping pid directly below this line: 'pid = tl.program_id(0)' which is always at the top of the kernel. You can ONLY remap pid to pid. Do not make any changes anywhere else in the code or you will bve rejected.
+
+#!/usr/bin/env python
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def stencil_2d_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # Adjust block swizzling to improve cache locality
+    swizzled_pid_m = (pid_m // 2) + (pid_n % 2) * (M // BLOCK_SIZE_M // 2)
+    swizzled_pid_n = (pid_n // 2) + (pid_m % 2) * (N // BLOCK_SIZE_N // 2)
+    pid_m, pid_n = swizzled_pid_m, swizzled_pid_n
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    input_ptrs = input_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    center = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    # Boundary checks for neighbors
+    up_mask = ((offsets_m - 1)[:, None] >= 0) & mask
+    down_mask = ((offsets_m + 1)[:, None] < M) & mask
+    left_mask = ((offsets_n - 1)[None, :] >= 0) & mask
+    right_mask = ((offsets_n + 1)[None, :] < N) & mask
+    
+    up = tl.load(input_ptrs - stride_m, mask=up_mask, other=0.0)
+    down = tl.load(input_ptrs + stride_m, mask=down_mask, other=0.0)
+    left = tl.load(input_ptrs - stride_n, mask=left_mask, other=0.0)
+    right = tl.load(input_ptrs + stride_n, mask=right_mask, other=0.0)
+
+    # Simple 5-point stencil operation
+    output = 0.5 * center + 0.125 * (up + down + left + right)
+    
+    output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    tl.store(output_ptrs, output, mask=mask)
+
+--- OPTIMIZATION RESPONSE (OPTIMIZED KERNEL) ---
+#!/usr/bin/env python
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def stencil_2d_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # Adjust block swizzling to improve cache locality
+    swizzled_pid_m = (pid_m // 2) + (pid_n % 2) * (M // BLOCK_SIZE_M // 2)
+    swizzled_pid_n = (pid_n // 2) + (pid_m % 2) * (N // BLOCK_SIZE_N // 2)
+    pid_m, pid_n = swizzled_pid_m, swizzled_pid_n
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    input_ptrs = input_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    center = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    # Boundary checks for neighbors
+    up_mask = ((offsets_m - 1)[:, None] >= 0) & mask
+    down_mask = ((offsets_m + 1)[:, None] < M) & mask
+    left_mask = ((offsets_n - 1)[None, :] >= 0) & mask
+    right_mask = ((offsets_n + 1)[None, :] < N) & mask
+    
+    up = tl.load(input_ptrs - stride_m, mask=up_mask, other=0.0)
+    down = tl.load(input_ptrs + stride_m, mask=down_mask, other=0.0)
+    left = tl.load(input_ptrs - stride_n, mask=left_mask, other=0.0)
+    right = tl.load(input_ptrs + stride_n, mask=right_mask, other=0.0)
+
+    # Simple 5-point stencil operation
+    output = 0.5 * center + 0.125 * (up + down + left + right)
+    
+    output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    tl.store(output_ptrs, output, mask=mask)
+
+--- PROFILING REPORT (ITERATION 4) ---
+L2 Cache Locality Degradation: L2 cache hit rate decreased by 4.70 percentage points. Hit rate decreased from 29.6% to 24.9% (lower percentages indicate worse cache locality). Performance Loss: Experienced 1.24x slowdown with execution time increased from 0.19ms to 0.23ms (23.7% slower).
+
+--- ITERATION 5 ---
+--- OPTIMIZATION PROMPT ---
+The kernel stencil_2d_kernel in the source code below has a low L2 cache hit rate. Please apply block swizzling to improve L2 cache locality. Do not change the semantics of the program. I need you to rewrite the entire code so I can copy it into a python file and run it.EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work.
+
+EXTREMELY IMPORTANT - Make sure to not change the kernel function signature. Do not add any new parameters to the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function.
+
+EXTREMELY IMPORTANT - You are NOT allowed to change ANYTHING other than remapping pid directly below this line: 'pid = tl.program_id(0)' which is always at the top of the kernel. You can ONLY remap pid to pid. Do not make any changes anywhere else in the code or you will bve rejected.
+
+#!/usr/bin/env python
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def stencil_2d_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # Adjust block swizzling to improve cache locality
+    swizzled_pid_m = (pid_m // 2) + (pid_n % 2) * (M // BLOCK_SIZE_M // 2)
+    swizzled_pid_n = (pid_n // 2) + (pid_m % 2) * (N // BLOCK_SIZE_N // 2)
+    pid_m, pid_n = swizzled_pid_m, swizzled_pid_n
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    input_ptrs = input_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    center = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    # Boundary checks for neighbors
+    up_mask = ((offsets_m - 1)[:, None] >= 0) & mask
+    down_mask = ((offsets_m + 1)[:, None] < M) & mask
+    left_mask = ((offsets_n - 1)[None, :] >= 0) & mask
+    right_mask = ((offsets_n + 1)[None, :] < N) & mask
+    
+    up = tl.load(input_ptrs - stride_m, mask=up_mask, other=0.0)
+    down = tl.load(input_ptrs + stride_m, mask=down_mask, other=0.0)
+    left = tl.load(input_ptrs - stride_n, mask=left_mask, other=0.0)
+    right = tl.load(input_ptrs + stride_n, mask=right_mask, other=0.0)
+
+    # Simple 5-point stencil operation
+    output = 0.5 * center + 0.125 * (up + down + left + right)
+    
+    output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    tl.store(output_ptrs, output, mask=mask)
+
+--- OPTIMIZATION RESPONSE (OPTIMIZED KERNEL) ---
+#!/usr/bin/env python
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def stencil_2d_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # Adjust block swizzling to improve cache locality
+    swizzled_pid_m = (pid_m // 2) + (pid_n % 2) * (M // BLOCK_SIZE_M // 2)
+    swizzled_pid_n = (pid_n // 2) + (pid_m % 2) * (N // BLOCK_SIZE_N // 2)
+    pid_m, pid_n = swizzled_pid_m, swizzled_pid_n
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    input_ptrs = input_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    center = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    # Boundary checks for neighbors
+    up_mask = ((offsets_m - 1)[:, None] >= 0) & mask
+    down_mask = ((offsets_m + 1)[:, None] < M) & mask
+    left_mask = ((offsets_n - 1)[None, :] >= 0) & mask
+    right_mask = ((offsets_n + 1)[None, :] < N) & mask
+    
+    up = tl.load(input_ptrs - stride_m, mask=up_mask, other=0.0)
+    down = tl.load(input_ptrs + stride_m, mask=down_mask, other=0.0)
+    left = tl.load(input_ptrs - stride_n, mask=left_mask, other=0.0)
+    right = tl.load(input_ptrs + stride_n, mask=right_mask, other=0.0)
+
+    # Simple 5-point stencil operation
+    output = 0.5 * center + 0.125 * (up + down + left + right)
+    
+    output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    tl.store(output_ptrs, output, mask=mask)
+
+--- PROFILING REPORT (ITERATION 5) ---
+L2 Cache Locality Degradation: L2 cache hit rate decreased by 7.44 percentage points. Hit rate decreased from 29.6% to 22.2% (lower percentages indicate worse cache locality). Performance Loss: Experienced 1.25x slowdown with execution time increased from 0.19ms to 0.23ms (25.3% slower).
+
+--- ITERATION 6 ---
+--- OPTIMIZATION PROMPT ---
+The kernel stencil_2d_kernel in the source code below has a low L2 cache hit rate. Please apply block swizzling to improve L2 cache locality. Do not change the semantics of the program. I need you to rewrite the entire code so I can copy it into a python file and run it.EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work.
+
+EXTREMELY IMPORTANT - Make sure to not change the kernel function signature. Do not add any new parameters to the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function.
+
+EXTREMELY IMPORTANT - You are NOT allowed to change ANYTHING other than remapping pid directly below this line: 'pid = tl.program_id(0)' which is always at the top of the kernel. You can ONLY remap pid to pid. Do not make any changes anywhere else in the code or you will bve rejected.
+
+#!/usr/bin/env python
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def stencil_2d_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # Adjust block swizzling to improve cache locality
+    swizzled_pid_m = (pid_m // 2) + (pid_n % 2) * (M // BLOCK_SIZE_M // 2)
+    swizzled_pid_n = (pid_n // 2) + (pid_m % 2) * (N // BLOCK_SIZE_N // 2)
+    pid_m, pid_n = swizzled_pid_m, swizzled_pid_n
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    input_ptrs = input_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    center = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    # Boundary checks for neighbors
+    up_mask = ((offsets_m - 1)[:, None] >= 0) & mask
+    down_mask = ((offsets_m + 1)[:, None] < M) & mask
+    left_mask = ((offsets_n - 1)[None, :] >= 0) & mask
+    right_mask = ((offsets_n + 1)[None, :] < N) & mask
+    
+    up = tl.load(input_ptrs - stride_m, mask=up_mask, other=0.0)
+    down = tl.load(input_ptrs + stride_m, mask=down_mask, other=0.0)
+    left = tl.load(input_ptrs - stride_n, mask=left_mask, other=0.0)
+    right = tl.load(input_ptrs + stride_n, mask=right_mask, other=0.0)
+
+    # Simple 5-point stencil operation
+    output = 0.5 * center + 0.125 * (up + down + left + right)
+    
+    output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    tl.store(output_ptrs, output, mask=mask)
+
+--- OPTIMIZATION RESPONSE (OPTIMIZED KERNEL) ---
+#!/usr/bin/env python
+
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def stencil_2d_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_m, stride_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    # Remap pid to improve cache locality
+    pid_m = (pid_m // 2) + (pid_n % 2) * (M // BLOCK_SIZE_M // 2)
+    pid_n = (pid_n // 2) + (pid_m % 2) * (N // BLOCK_SIZE_N // 2)
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+    
+    input_ptrs = input_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    center = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    # Boundary checks for neighbors
+    up_mask = ((offsets_m - 1)[:, None] >= 0) & mask
+    down_mask = ((offsets_m + 1)[:, None] < M) & mask
+    left_mask = ((offsets_n - 1)[None, :] >= 0) & mask
+    right_mask = ((offsets_n + 1)[None, :] < N) & mask
+    
+    up = tl.load(input_ptrs - stride_m, mask=up_mask, other=0.0)
+    down = tl.load(input_ptrs + stride_m, mask=down_mask, other=0.0)
+    left = tl.load(input_ptrs - stride_n, mask=left_mask, other=0.0)
+    right = tl.load(input_ptrs + stride_n, mask=right_mask, other=0.0)
+
+    # Simple 5-point stencil operation
+    output = 0.5 * center + 0.125 * (up + down + left + right)
+    
+    output_ptrs = output_ptr + offsets_m[:, None] * stride_m + offsets_n[None, :] * stride_n
+    tl.store(output_ptrs, output, mask=mask)
+

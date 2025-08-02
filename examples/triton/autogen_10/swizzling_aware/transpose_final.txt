@@ -1,0 +1,68 @@
+L2 Hit Rate Improvement %: 20.793914983780557
+Speedup: 1.124319763282068
+
+Swizzling Pattern:
+[[[pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    num_xcds = 8
+    num_blocks_m = (M + BLOCK_SIZE_M - 1) // BLOCK_SIZE_M
+    num_blocks_n = (N + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
+    total_blocks = num_blocks_m * num_blocks_n
+
+    original_block_index = pid_m * num_blocks_n + pid_n
+
+    xcd_stride = total_blocks // num_xcds
+    xcd_id = original_block_index % num_xcds
+    round_id = original_block_index // num_xcds
+    new_block_index = (round_id + xcd_id * xcd_stride) % total_blocks
+
+    pid_m = new_block_index // num_blocks_n
+    pid_n = new_block_index % num_blocks_n]]]
+Full Kernel Code:
+[[[import triton
+import triton.language as tl
+
+@triton.jit
+def transpose_kernel(
+    input_ptr, output_ptr,
+    M, N,
+    stride_in_m, stride_in_n,
+    stride_out_m, stride_out_n,
+    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    num_xcds = 8
+    num_blocks_m = (M + BLOCK_SIZE_M - 1) // BLOCK_SIZE_M
+    num_blocks_n = (N + BLOCK_SIZE_N - 1) // BLOCK_SIZE_N
+    total_blocks = num_blocks_m * num_blocks_n
+
+    original_block_index = pid_m * num_blocks_n + pid_n
+
+    # New swizzling pattern: Assign blocks to XCDs based on a calculated offset
+    xcd_stride = total_blocks // num_xcds
+    xcd_id = original_block_index % num_xcds
+    round_id = original_block_index // num_xcds
+    new_block_index = (round_id + xcd_id * xcd_stride) % total_blocks
+
+    pid_m = new_block_index // num_blocks_n
+    pid_n = new_block_index % num_blocks_n
+
+    offsets_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
+    offsets_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
+
+    input_ptrs = input_ptr + (offsets_m[:, None] * stride_in_m + offsets_n[None, :] * stride_in_n)
+    
+    mask = (offsets_m[:, None] < M) & (offsets_n[None, :] < N)
+    
+    tile = tl.load(input_ptrs, mask=mask, other=0.0)
+    
+    transposed_tile = tl.trans(tile)
+    
+    output_ptrs_transposed = output_ptr + (offsets_n[:, None] * stride_out_m + offsets_m[None, :] * stride_out_n)
+    
+    mask_transposed = (offsets_n[:, None] < N) & (offsets_m[None, :] < M)
+    
+    tl.store(output_ptrs_transposed, transposed_tile, mask=mask_transposed)]]]

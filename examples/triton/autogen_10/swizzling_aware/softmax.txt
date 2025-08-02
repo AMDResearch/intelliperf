@@ -1,0 +1,361 @@
+--- MEMORY ANALYSIS ---
+The Triton kernel for the softmax operation exhibits the following memory access patterns and locality characteristics:
+
+1. **Contiguous Memory Access**: Each block processes a single row of the input matrix, accessing elements contiguously. This access pattern is beneficial for spatial locality, as it aligns well with cache line fetching, reducing memory latency.
+
+2. **Spatial Locality**: Within each row, the kernel accesses memory contiguously, which enhances spatial locality. This means that once a cache line is loaded, subsequent accesses to the same row are likely to hit the cache.
+
+3. **Temporal Locality**: The kernel has limited temporal locality since each row is processed independently and not reused. However, within a row, operations like `tl.max` and `tl.sum` benefit from temporal locality as they repeatedly access the same data.
+
+4. **Inter-Block Locality**: There is no direct data sharing between blocks, as each block processes a different row. However, if rows are stored contiguously, scheduling blocks that process consecutive rows on the same or nearby SMs can leverage spatial locality at the block level.
+
+5. **Optimization Opportunities**: 
+   - Swizzling block IDs to align the processing of consecutive rows on the same or nearby SMs can improve cache locality.
+   - Ensuring memory alignment of `input_ptr` and `output_ptr` to cache line boundaries can further enhance cache efficiency.
+
+These insights can guide optimizations to improve cache utilization and reduce memory access latency in the kernel.
+
+--- MEMORY ANALYSIS REASONING ---
+The provided Triton kernel implements a softmax operation over rows of a matrix. Understanding the memory access patterns and locality is crucial for optimizing performance, especially in GPU architectures where memory bandwidth and cache utilization are critical.
+
+1. **Memory Access Patterns**:
+   - The kernel processes one row of the input matrix per block, as indicated by `row_idx = tl.program_id(0)`.
+   - For each row, it calculates the softmax by first loading the row elements into a local buffer. This is done using `tl.load` with a mask to handle cases where the number of columns (`n_cols`) is less than the block size (`BLOCK_SIZE`).
+   - The memory access for loading the row is contiguous, which is beneficial for cache utilization. The use of `tl.arange(0, BLOCK_SIZE)` ensures that the elements are accessed in a sequential manner, which aligns well with how hardware caches work.
+
+2. **Memory Locality**:
+   - **Spatial Locality**: The kernel exhibits good spatial locality within each row due to the contiguous access pattern. This means that once a cache line is loaded, subsequent accesses are likely to hit the cache, reducing memory latency.
+   - **Temporal Locality**: There is limited temporal locality in this kernel because each row is processed independently, and once a row is processed, its data is not reused. However, the reduction operations (`tl.max`, `tl.sum`) benefit from temporal locality as they operate on the same data multiple times within the row processing.
+
+3. **Inter-Block Locality**:
+   - Each block processes a different row, and there is no data sharing between blocks. This means that inter-block locality is not inherently present. However, if rows are stored contiguously in memory, the sequential processing of rows by consecutive blocks can still benefit from spatial locality at the block level, as adjacent rows may reside in the same or nearby cache lines.
+
+4. **Potential for Optimization**:
+   - Swizzling block IDs to ensure that blocks processing consecutive rows are scheduled on the same or nearby SMs (Streaming Multiprocessors) could enhance cache locality. This is because consecutive rows are likely to be stored in contiguous memory locations, and processing them on the same SM can reduce cache misses.
+   - Ensuring that `input_ptr` and `output_ptr` are aligned to cache line boundaries can further improve cache efficiency.
+
+Iteration 1:
+Code optimization reasoning:
+The current kernel processes each row of the input matrix independently, which means that each block of threads is assigned to a different row. This approach does not take full advantage of the L2 cache locality on the MI300X architecture, where each XCD has its own L2 cache. By default, the blocks are assigned to XCDs in a round-robin fashion, which can lead to suboptimal cache usage because blocks that access the same data might be assigned to different XCDs.
+
+Reason why old was slow:
+{
+    "iteration 1": "The original kernel assigns each block to a row without considering the XCD's L2 cache locality. This means that blocks accessing consecutive rows might be assigned to different XCDs, leading to poor cache utilization and increased memory latency."
+}
+
+Summary of optimization:
+The new optimization involves implementing a swizzling pattern that reassigns block indices to ensure that blocks accessing consecutive rows are mapped to the same XCD until that XCD's share is filled. This approach aims to improve L2 cache locality by keeping related data within the same XCD, thus reducing memory access latency and improving performance.
+
+Reason why new should be better:
+The new swizzling pattern should be better because it aligns the block assignments with the L2 cache structure of the MI300X architecture. By ensuring that blocks accessing consecutive rows are mapped to the same XCD, the new pattern enhances cache locality, leading to more cache hits and reduced memory latency. This should result in improved performance compared to the original round-robin assignment.
+
+Swizzling formula:
+pid = tl.program_id(0)
+xcd_id = pid % num_xcds
+block_in_xcd = pid // num_xcds
+new_pid = block_in_xcd * num_xcds + xcd_id
+pid = new_pid
+
+--- PROFILING ITERATION 1 ---
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.4% to 33.4% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.01x speedup with execution time reduced from 1.46ms to 1.45ms (1.1% faster).
+
+Iteration 2:
+Code optimization reasoning:
+The current kernel processes each row independently, which limits the potential for cache reuse across different blocks. The previous swizzling pattern attempted to improve cache locality by reassigning block indices to better align with the GPU's architecture, but it did not achieve significant improvements in L2 cache hit rate. This suggests that the swizzling pattern did not effectively group blocks that access similar data onto the same XCD, which is crucial for maximizing cache utilization.
+
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern used a simple modulo and division approach to reassign block indices, but it did not effectively group blocks that access similar data onto the same XCD. This resulted in minimal improvement in L2 cache hit rate because the pattern did not align well with the memory access patterns of the softmax operation."
+}
+
+Summary of optimization:
+The new optimization will implement a swizzling pattern that better aligns with the memory access patterns of the softmax operation. By considering the stride of block indices and the round-robin scheduling of blocks across XCDs, the new pattern will aim to group blocks that access contiguous rows onto the same XCD. This should improve L2 cache locality by ensuring that blocks with similar data access patterns are scheduled to the same XCD, thereby increasing the likelihood of cache hits.
+
+Reason why new should be better:
+The new swizzling pattern is designed to more effectively group blocks that access contiguous rows onto the same XCD. By taking into account the stride of block indices and the round-robin scheduling, the new pattern should improve L2 cache locality by ensuring that blocks with similar data access patterns are scheduled to the same XCD. This should increase the likelihood of cache hits and improve overall performance compared to the previous pattern, which did not achieve significant improvements in cache locality.
+
+Swizzling formula:
+pid = tl.program_id(0)
+stride = num_blocks // num_xcds
+xcd_id = (pid // stride) % num_xcds
+block_in_xcd = pid % stride
+new_pid = xcd_id * stride + block_in_xcd
+pid = new_pid
+
+--- PROFILING ITERATION 2 ---
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.4% to 33.4% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.01x slowdown with execution time increased from 1.46ms to 1.48ms (1.3% slower).
+
+Iteration 3:
+Code optimization reasoning:
+The current kernel code processes each row of the input matrix independently, which limits the potential for cache reuse across different blocks. The previous swizzling attempts aimed to improve L2 cache locality by reassigning block indices to better align with the GPU's architecture, specifically the MI300X's multiple XCDs. However, these attempts did not yield significant improvements in cache hit rates or performance, indicating that the swizzling patterns used were not optimal for the given architecture and workload.
+
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern simply rearranged blocks within a fixed number of XCDs without considering the stride and distribution of blocks across XCDs, leading to no improvement in cache locality.",
+    "iteration 2": "The swizzling pattern attempted to distribute blocks across XCDs based on a calculated stride, but it did not effectively group blocks that access the same data, resulting in a performance slowdown."
+}
+
+Summary of optimization:
+The new optimization will implement a swizzling pattern that groups blocks accessing the same data onto the same XCD more effectively. This will be achieved by calculating the original XCD assignment and adjusting the block index to ensure that blocks with similar data access patterns are scheduled to the same XCD, thereby improving L2 cache locality.
+
+Reason why new should be better:
+The new swizzling pattern will better align with the MI300X architecture by ensuring that blocks accessing the same data are more likely to be scheduled on the same XCD. This should improve L2 cache hit rates by increasing the likelihood that data needed by multiple blocks is already present in the cache, reducing memory access latency and potentially improving overall performance.
+
+Swizzling formula:
+num_xcds = 8
+    num_blocks = tl.num_programs(0)
+    
+    pid = tl.program_id(0)
+    
+    blocks_per_xcd = (num_blocks + num_xcds - 1) // num_xcds
+    xcd_id = pid // blocks_per_xcd
+    block_in_xcd = pid % blocks_per_xcd
+    new_pid = block_in_xcd * num_xcds + xcd_id
+    pid = new_pid
+
+--- PROFILING ITERATION 3 ---
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.4% to 33.4% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.01x slowdown with execution time increased from 1.46ms to 1.48ms (1.4% slower).
+
+Iteration 4:
+Code optimization reasoning:
+The current kernel code processes each row of the input matrix independently, which limits the potential for cache reuse across different blocks. The previous swizzling patterns attempted to improve cache locality by reassigning block indices to better align with the GPU's architecture, but they did not achieve significant improvements in L2 cache hit rates or execution speed. The goal is to find a swizzling pattern that maximizes cache utilization by ensuring that blocks accessing the same data are scheduled to the same XCD, thereby improving L2 cache locality.
+
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern did not effectively group blocks accessing the same data onto the same XCD, resulting in no improvement in L2 cache hit rate.",
+    "iteration 2": "The new swizzling pattern introduced a stride-based reassignment, but it failed to improve cache locality and resulted in a slight performance slowdown.",
+    "iteration 3": "The pattern attempted to balance blocks across XCDs but did not effectively leverage the shared L2 cache, leading to no improvement in cache hit rate and a performance slowdown."
+}
+
+Summary of optimization:
+The new optimization will implement a swizzling pattern that assigns blocks to XCDs based on a more balanced distribution, ensuring that blocks accessing the same data are grouped together. This pattern will consider the round-robin scheduling of blocks and adjust the block indices to maximize cache locality by keeping related data within the same XCD.
+
+Reason why new should be better:
+The new swizzling pattern should be better because it takes into account the round-robin scheduling of blocks and aims to group blocks that access the same data onto the same XCD. This approach should improve L2 cache locality by ensuring that data is reused within the same XCD, reducing memory access latency and potentially improving execution speed.
+
+Swizzling formula:
+num_xcds = 8
+    num_blocks = tl.num_programs(0)
+    
+    pid = tl.program_id(0)
+    
+    # New swizzling pattern
+    blocks_per_xcd = (num_blocks + num_xcds - 1) // num_xcds
+    xcd_id = (pid // num_xcds) % num_xcds
+    block_in_xcd = pid % num_xcds
+    new_pid = xcd_id * blocks_per_xcd + block_in_xcd
+    pid = new_pid
+
+--- PROFILING ITERATION 4 ---
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 66.52 percentage points. Hit rate increased from 33.4% to 99.9% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.54x speedup with execution time reduced from 1.46ms to 0.95ms (54.1% faster).
+
+Iteration 5:
+Code optimization reasoning:
+The goal is to optimize the GPU kernel code by applying a swizzling pattern that improves L2 cache locality. The MI300x GPU architecture has multiple XCDs, each with its own L2 cache. By ensuring that blocks accessing the same data are scheduled to the same XCD, we can improve cache hit rates and overall performance. The previous iterations attempted different swizzling patterns, but there is still room for improvement.
+
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern did not effectively group blocks accessing the same data onto the same XCD, resulting in minimal improvement in cache locality.",
+    "iteration 2": "The pattern attempted to distribute blocks across XCDs but did not account for the specific data access patterns of the softmax operation, leading to a performance slowdown.",
+    "iteration 3": "The pattern was closer to achieving better locality but still did not fully align with the data sharing requirements of the operation, causing a slight performance loss.",
+    "iteration 4": "This iteration achieved significant improvement by better aligning blocks with shared data onto the same XCD, but further optimization is possible."
+}
+
+Summary of optimization:
+The new optimization involves a swizzling pattern that considers both the number of XCDs and the total number of blocks. It aims to group blocks that access the same data onto the same XCD while maintaining an even distribution of work across all XCDs. This approach should enhance L2 cache locality and improve performance.
+
+Reason why new should be better:
+The new swizzling pattern is designed to more effectively group blocks that share data onto the same XCD, leveraging the shared L2 cache. By doing so, it should increase the cache hit rate and reduce memory access latency. Additionally, the pattern ensures an even distribution of blocks across XCDs, maximizing resource utilization and potentially leading to better performance than previous iterations.
+
+Swizzling formula:
+num_xcds = 8
+    num_blocks = tl.num_programs(0)
+    
+    pid = tl.program_id(0)
+    
+    # New swizzling pattern
+    blocks_per_xcd = (num_blocks + num_xcds - 1) // num_xcds
+    xcd_id = (pid // blocks_per_xcd) % num_xcds
+    block_in_xcd = pid % blocks_per_xcd
+    new_pid = xcd_id * blocks_per_xcd + block_in_xcd
+    pid = new_pid
+
+--- PROFILING ITERATION 5 ---
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.4% to 33.4% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.01x slowdown with execution time increased from 1.46ms to 1.48ms (1.4% slower).
+
+Iteration 6:
+Code optimization reasoning:
+The goal is to optimize the GPU kernel code by applying a swizzling pattern that improves L2 cache locality. The MI300x GPU architecture has multiple XCDs, each with its own L2 cache. By ensuring that blocks accessing the same data are scheduled to the same XCD, we can improve cache hit rates and overall performance. The previous attempts at swizzling did not achieve significant improvements, indicating the need for a new approach.
+
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern did not effectively group blocks accessing the same data onto the same XCD, resulting in no improvement in L2 cache hit rate.",
+    "iteration 2": "The pattern attempted to distribute blocks across XCDs but failed to improve cache locality, leading to a slight performance slowdown.",
+    "iteration 3": "The swizzling pattern did not align well with the memory access patterns, causing a performance slowdown without improving cache locality.",
+    "iteration 4": "Although this iteration achieved a significant improvement in cache hit rate, it was not consistently reproducible in subsequent iterations.",
+    "iteration 5": "The pattern reverted to a previous approach that did not improve cache locality, resulting in a performance slowdown."
+}
+
+Summary of optimization:
+The new optimization involves a swizzling pattern that assigns blocks to XCDs based on a calculated offset that considers the number of blocks and XCDs. This pattern aims to group blocks accessing the same data onto the same XCD, thereby improving L2 cache locality and performance.
+
+Reason why new should be better:
+The new swizzling pattern is designed to more effectively group blocks that access the same data onto the same XCD, leveraging the shared L2 cache. By considering the stride and offset of block assignments, this approach aims to improve cache hit rates and balance the workload across XCDs, leading to better performance compared to previous iterations.
+
+Swizzling formula:
+pid = tl.program_id(0)
+    
+    # New swizzling pattern
+    blocks_per_xcd = (num_blocks + num_xcds - 1) // num_xcds
+    xcd_id = (pid // blocks_per_xcd) % num_xcds
+    block_in_xcd = pid % blocks_per_xcd
+    new_pid = (block_in_xcd * num_xcds + xcd_id) % num_blocks
+    pid = new_pid
+
+--- PROFILING ITERATION 6 ---
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.4% to 33.4% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.02x slowdown with execution time increased from 1.46ms to 1.48ms (1.6% slower).
+
+Iteration 7:
+Code optimization reasoning:
+The previous swizzling patterns attempted to improve L2 cache locality by reassigning block indices to better align with the architecture's XCDs. However, they did not achieve significant improvements in cache hit rates or performance, indicating that the patterns did not effectively group blocks that access the same data onto the same XCD.
+
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern did not effectively group blocks accessing the same data onto the same XCD, resulting in no improvement in L2 cache locality.",
+    "iteration 2": "The pattern attempted to use a stride-based approach but failed to align blocks with shared data onto the same XCD, leading to a performance slowdown.",
+    "iteration 3": "The pattern used a blocks_per_xcd calculation but did not effectively map blocks to XCDs based on data sharing, resulting in no cache locality improvement.",
+    "iteration 4": "The pattern improved cache locality significantly by aligning blocks with shared data onto the same XCD, but subsequent iterations failed to maintain this improvement.",
+    "iteration 5": "The pattern reverted to a less effective mapping, resulting in no improvement in cache locality and a performance slowdown.",
+    "iteration 6": "The pattern attempted a modulo operation to map blocks but did not effectively group data-sharing blocks onto the same XCD, leading to a performance slowdown."
+}
+
+Summary of optimization:
+The new optimization will implement a swizzling pattern that aims to group blocks accessing the same data onto the same XCD by leveraging a more sophisticated mapping strategy. This strategy will consider the round-robin scheduling of blocks and adjust the block indices to ensure that blocks with shared data are assigned to the same XCD, maximizing L2 cache utilization.
+
+Reason why new should be better:
+The new swizzling pattern should be better because it explicitly considers the round-robin scheduling and the need to group blocks with shared data onto the same XCD. By doing so, it aims to improve L2 cache locality more effectively than previous attempts, which either did not consider data sharing adequately or failed to maintain the improvements across iterations.
+
+Swizzling formula:
+pid = tl.program_id(0)
+    
+    # New swizzling pattern
+    blocks_per_xcd = (num_blocks + num_xcds - 1) // num_xcds
+    xcd_id = (pid // num_xcds) % num_xcds
+    block_in_xcd = pid % num_xcds
+    new_pid = (xcd_id * blocks_per_xcd + block_in_xcd) % num_blocks
+    pid = new_pid
+
+--- PROFILING ITERATION 7 ---
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 66.52 percentage points. Hit rate increased from 33.4% to 99.9% (higher percentages indicate better cache locality through improved block swizzling). Performance Gain: Achieved 1.53x speedup with execution time reduced from 1.46ms to 0.96ms (52.9% faster).
+
+Iteration 8:
+Code optimization reasoning:
+The goal is to optimize the GPU kernel code by applying a swizzling pattern that improves L2 cache locality. The MI300X GPU architecture has multiple XCDs, each with its own L2 cache. By ensuring that blocks accessing the same data are scheduled to the same XCD, we can improve cache hit rates and overall performance. The previous iterations have attempted various swizzling patterns, but there is still room for improvement.
+
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern did not effectively group blocks accessing the same data onto the same XCD, resulting in minimal improvement in cache locality.",
+    "iteration 2": "The pattern attempted to distribute blocks across XCDs but did not account for the specific memory access patterns of the softmax operation, leading to a performance slowdown.",
+    "iteration 3": "The swizzling pattern did not effectively leverage the round-robin scheduling of blocks, resulting in poor cache locality and a performance slowdown.",
+    "iteration 4": "This iteration achieved significant improvement by aligning blocks with shared data onto the same XCD, but further optimization is possible.",
+    "iteration 5": "The pattern reverted to a less effective distribution, leading to no improvement in cache locality and a performance slowdown.",
+    "iteration 6": "The swizzling pattern did not effectively utilize the XCDs, resulting in no improvement in cache locality and a performance slowdown.",
+    "iteration 7": "This iteration achieved significant improvement by aligning blocks with shared data onto the same XCD, but further optimization is possible."
+}
+
+Summary of optimization:
+The new optimization will implement a swizzling pattern that better aligns with the round-robin scheduling of blocks across XCDs. By calculating the original XCD assignment and redistributing blocks to maximize cache locality, we aim to improve performance further. The new pattern will ensure that blocks accessing the same data are grouped onto the same XCD, leveraging the shared L2 cache effectively.
+
+Reason why new should be better:
+The new swizzling pattern is designed to better align with the round-robin scheduling of blocks across XCDs. By calculating the original XCD assignment and redistributing blocks to maximize cache locality, the new pattern ensures that blocks accessing the same data are grouped onto the same XCD. This should lead to improved cache hit rates and overall performance compared to previous iterations.
+
+Swizzling formula:
+num_xcds = 8
+    num_blocks = tl.num_programs(0)
+    
+    pid = tl.program_id(0)
+    
+    # New swizzling pattern
+    blocks_per_xcd = (num_blocks + num_xcds - 1) // num_xcds
+    xcd_id = pid % num_xcds
+    block_in_xcd = pid // num_xcds
+    new_pid = (block_in_xcd * num_xcds + xcd_id) % num_blocks
+    pid = new_pid
+
+--- PROFILING ITERATION 8 ---
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.4% to 33.4% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.01x slowdown with execution time increased from 1.46ms to 1.48ms (1.2% slower).
+
+Iteration 9:
+Code optimization reasoning:
+The goal is to optimize the GPU kernel code by applying a swizzling pattern that improves L2 cache locality. The MI300x GPU architecture has multiple XCDs, each with its own L2 cache. By ensuring that blocks accessing the same data are scheduled to the same XCD, we can improve cache hit rates and overall performance. The challenge is to devise a new swizzling pattern that has not been previously implemented, as past attempts have shown varying degrees of success.
+
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern did not effectively group blocks accessing the same data onto the same XCD, resulting in no improvement in L2 cache hit rate.",
+    "iteration 2": "The pattern introduced a stride that did not align well with the natural data access patterns, leading to a slight performance slowdown.",
+    "iteration 3": "The pattern attempted to balance blocks across XCDs but failed to improve cache locality, resulting in a performance loss.",
+    "iteration 4": "This iteration achieved a significant improvement in cache locality by effectively grouping blocks, but the pattern was not consistently successful in other iterations.",
+    "iteration 5": "The pattern reverted to a less effective configuration, leading to no improvement in cache locality and a performance slowdown.",
+    "iteration 6": "The pattern attempted a modulo operation that did not align well with the data access patterns, resulting in a performance loss.",
+    "iteration 7": "This iteration successfully improved cache locality by effectively grouping blocks, but the pattern was not consistently successful in other iterations.",
+    "iteration 8": "The pattern reverted to a less effective configuration, leading to no improvement in cache locality and a performance slowdown."
+}
+
+Summary of optimization:
+The new optimization involves a swizzling pattern that aims to group blocks accessing the same data onto the same XCD by considering both the block index and the number of XCDs. This pattern will attempt to balance the load across XCDs while ensuring that blocks with shared data are scheduled to the same XCD, thereby improving L2 cache locality.
+
+Reason why new should be better:
+The new swizzling pattern should be better because it takes into account both the block index and the number of XCDs to ensure that blocks accessing the same data are grouped together on the same XCD. This approach should improve L2 cache hit rates by maximizing data reuse within the same XCD, leading to better performance compared to previous patterns that did not consistently achieve this grouping.
+
+Swizzling formula:
+num_xcds = 8
+    num_blocks = tl.num_programs(0)
+    
+    pid = tl.program_id(0)
+    
+    # New swizzling pattern
+    blocks_per_xcd = (num_blocks + num_xcds - 1) // num_xcds
+    xcd_id = (pid // blocks_per_xcd) % num_xcds
+    block_in_xcd = pid % blocks_per_xcd
+    new_pid = (xcd_id * blocks_per_xcd + block_in_xcd) % num_blocks
+    pid = new_pid
+
+--- PROFILING ITERATION 9 ---
+L2 Cache Locality Improvement: Successfully improved L2 cache hit rate by 0.00 percentage points. Hit rate increased from 33.4% to 33.4% (higher percentages indicate better cache locality through improved block swizzling). Performance Loss: Experienced 1.03x slowdown with execution time increased from 1.46ms to 1.51ms (3.4% slower).
+
+Iteration 10:
+Code optimization reasoning:
+The current kernel code processes each row of the input matrix independently, which limits the potential for cache reuse across different blocks. The swizzling pattern used in previous iterations did not effectively map blocks that access the same data to the same XCD, which is crucial for maximizing L2 cache hit rates on the MI300X architecture. By reassigning block indices more strategically, we can improve cache locality and performance.
+
+Reason why old was slow:
+{
+    "iteration 1": "The swizzling pattern did not effectively group blocks accessing the same data onto the same XCD, resulting in no improvement in L2 cache hit rate.",
+    "iteration 2": "The new swizzling pattern introduced a stride that did not align well with the natural data access patterns, leading to a performance slowdown.",
+    "iteration 3": "The pattern attempted to distribute blocks evenly but failed to group data-sharing blocks effectively, causing a performance loss.",
+    "iteration 4": "This iteration improved cache locality significantly by better grouping blocks, but the pattern was not consistently effective across all scenarios.",
+    "iteration 5": "The swizzling pattern reverted to a less effective distribution, leading to no improvement in cache locality.",
+    "iteration 6": "The pattern introduced a modulo operation that disrupted the intended block grouping, resulting in a performance slowdown.",
+    "iteration 7": "This iteration achieved a significant performance gain by effectively grouping blocks, but the pattern was not optimal for all data sizes.",
+    "iteration 8": "The pattern failed to maintain effective block grouping, leading to no improvement in cache locality.",
+    "iteration 9": "The pattern did not effectively map blocks to XCDs, resulting in a performance slowdown."
+}
+
+Summary of optimization:
+The new optimization involves a swizzling pattern that aims to map blocks that access the same data to the same XCD more effectively. By considering the number of blocks and XCDs, the pattern will ensure that blocks are distributed evenly across XCDs while maximizing data locality.
+
+Reason why new should be better:
+The new swizzling pattern is designed to better align with the MI300X architecture's round-robin scheduling and cache structure. By ensuring that blocks accessing the same data are grouped onto the same XCD, the pattern should improve L2 cache hit rates and overall performance compared to previous iterations.
+
+Swizzling formula:
+num_xcds = 8
+    num_blocks = tl.num_programs(0)
+    
+    pid = tl.program_id(0)
+    
+    # New swizzling pattern
+    blocks_per_xcd = (num_blocks + num_xcds - 1) // num_xcds
+    xcd_id = pid % num_xcds
+    block_in_xcd = pid // num_xcds
+    new_pid = (block_in_xcd * num_xcds + xcd_id) % num_blocks
+    pid = new_pid
+
