@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import torch
 import triton
 import argparse
@@ -37,7 +39,7 @@ def smith_waterman(seq1, seq2, gap_penalty, match_score, mismatch_penalty, valid
     return scores
 
 
-def main(M=4096, N=4096, validate=False):
+def main(M=8192, N=8192, validate=False):
     seq1 = "A" * M
     seq2 = "C" * N
 
@@ -45,7 +47,7 @@ def main(M=4096, N=4096, validate=False):
     match_score = 3
     mismatch_penalty = -3
 
-    rep = 100
+    rep = 10
 
     for _ in range(10):
         smith_waterman(seq1, seq2, gap_penalty, match_score, mismatch_penalty)
@@ -69,8 +71,8 @@ def main(M=4096, N=4096, validate=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Triton Smith-Waterman Benchmark")
-    parser.add_argument("--M", type=int, default=4096, help="Length of sequence 1")
-    parser.add_argument("--N", type=int, default=4096, help="Length of sequence 2")
+    parser.add_argument("--M", type=int, default=8192, help="Length of sequence 1")
+    parser.add_argument("--N", type=int, default=8192, help="Length of sequence 2")
     parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
     args = parser.parse_args()
 

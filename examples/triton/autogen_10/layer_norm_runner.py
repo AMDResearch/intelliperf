@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import torch
 import triton
 import argparse
@@ -31,13 +33,13 @@ def layer_norm(x, w, b, eps, validate=False):
     return y
 
 
-def main(M=8192, N=8192, validate=False):
+def main(M=20480, N=20480, validate=False):
     x = torch.randn((M, N), device='cuda', dtype=torch.float16)
     w = torch.randn((N,), device='cuda', dtype=torch.float16)
     b = torch.randn((N,), device='cuda', dtype=torch.float16)
     eps = 1e-5
 
-    rep = 100
+    rep = 10
 
     for _ in range(10):
         layer_norm(x, w, b, eps)
@@ -61,8 +63,8 @@ def main(M=8192, N=8192, validate=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Triton LayerNorm Benchmark")
-    parser.add_argument("--M", type=int, default=8192, help="Number of rows")
-    parser.add_argument("--N", type=int, default=8192, help="Number of columns")
+    parser.add_argument("--M", type=int, default=20480, help="Number of rows")
+    parser.add_argument("--N", type=int, default=20480, help="Number of columns")
     parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
     args = parser.parse_args()
 
