@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import torch
 import triton
 import numpy as np
@@ -32,7 +34,7 @@ def spmv(x, data, indices, indptr, sparse_matrix, validate=False):
     return y
 
 
-def main(M=8192, N=8192, density=0.01, validate=False):
+def main(M=4096, N=4096, density=0.08, validate=False):
     sparse_matrix = csr_matrix(np.random.randn(M, N) * (np.random.rand(M, N) < density))
 
     data = torch.from_numpy(sparse_matrix.data).to('cuda').to(torch.float16)
@@ -41,7 +43,7 @@ def main(M=8192, N=8192, density=0.01, validate=False):
 
     x = torch.randn(N, device='cuda', dtype=torch.float16)
 
-    rep = 100
+    rep = 10
 
     for _ in range(10):
         spmv(x, data, indices, indptr, sparse_matrix)
@@ -65,10 +67,10 @@ def main(M=8192, N=8192, density=0.01, validate=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Triton SpMV Benchmark")
-    parser.add_argument("--M", type=int, default=8192, help="Number of rows in the sparse matrix")
-    parser.add_argument("--N", type=int, default=8192, help="Number of columns in the sparse matrix")
-    parser.add_argument("--density", type=float, default=0.01, help="Density of the sparse matrix")
+    parser.add_argument("--M", type=int, default=4096, help="Number of rows in the sparse matrix")
+    parser.add_argument("--N", type=int, default=4096, help="Number of columns in the sparse matrix")
+    parser.add_argument("--density", type=float, default=0.08, help="Density of the sparse matrix")
     parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
-    args = parser.parse_args()
+    args = parser.parse_args()  
 
     main(args.M, args.N, args.density, validate=args.validate) 

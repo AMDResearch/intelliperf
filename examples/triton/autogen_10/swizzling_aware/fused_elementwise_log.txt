@@ -1,1 +1,0 @@
-timeout 20m intelliperf -vvv --top_n 1 --project_directory=./examples --formula=swizzling_test --output_kernel_file=examples/triton/autogen_10/swizzling_aware/fused_elementwise.txt --unittest_command="./triton/autogen_10/fused_elementwise_runner.py --validate" -- ./triton/autogen_10/fused_elementwise_runner.py

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import torch
 import triton
 import argparse
@@ -28,12 +30,12 @@ def fused_elementwise(x, y, z, validate=False):
     return output
 
 
-def main(size=2**16, validate=False):
+def main(size=2**24, validate=False):
     x = torch.randn(size, device='cuda', dtype=torch.float16)
     y = torch.randn(size, device='cuda', dtype=torch.float16)
     z = torch.randn(size, device='cuda', dtype=torch.float16)
 
-    rep = 100
+    rep = 10
 
     for _ in range(10):
         fused_elementwise(x, y, z)
@@ -57,7 +59,7 @@ def main(size=2**16, validate=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Triton Fused Element-wise Benchmark")
-    parser.add_argument("--size", type=int, default=2**16, help="Size of the input tensors")
+    parser.add_argument("--size", type=int, default=2**24, help="Size of the input tensors")
     parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
     args = parser.parse_args()
 
