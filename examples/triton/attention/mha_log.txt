@@ -1,0 +1,123 @@
+[92m06:57:00 - LiteLLM:DEBUG[0m: http_handler.py:579 - Using AiohttpTransport...
+[INTELLIPERF] DEBUG: Using AiohttpTransport...
+[92m06:57:00 - LiteLLM:DEBUG[0m: http_handler.py:636 - Creating AiohttpTransport...
+[INTELLIPERF] DEBUG: Creating AiohttpTransport...
+[INTELLIPERF] DEBUG: connect_tcp.started host='raw.githubusercontent.com' port=443 local_address=None timeout=5 socket_options=None
+[INTELLIPERF] DEBUG: connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x75d73a367260>
+[INTELLIPERF] DEBUG: start_tls.started ssl_context=<ssl.SSLContext object at 0x75d73a3b6850> server_hostname='raw.githubusercontent.com' timeout=5
+[INTELLIPERF] DEBUG: start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x75d73a3486b0>
+[INTELLIPERF] DEBUG: send_request_headers.started request=<Request [b'GET']>
+[INTELLIPERF] DEBUG: send_request_headers.complete
+[INTELLIPERF] DEBUG: send_request_body.started request=<Request [b'GET']>
+[INTELLIPERF] DEBUG: send_request_body.complete
+[INTELLIPERF] DEBUG: receive_response_headers.started request=<Request [b'GET']>
+[INTELLIPERF] DEBUG: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Connection', b'keep-alive'), (b'Content-Length', b'29293'), (b'Cache-Control', b'max-age=300'), (b'Content-Security-Policy', b"default-src 'none'; style-src 'unsafe-inline'; sandbox"), (b'Content-Type', b'text/plain; charset=utf-8'), (b'ETag', b'W/"59b66904cc295fb402b8875574e06e82bfcd6d066bdc06324982cc432fb2bfe7"'), (b'Strict-Transport-Security', b'max-age=31536000'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'deny'), (b'X-XSS-Protection', b'1; mode=block'), (b'X-GitHub-Request-Id', b'33A3:2A5ADB:443FE6:4CB20C:68893C92'), (b'Content-Encoding', b'gzip'), (b'Accept-Ranges', b'bytes'), (b'Date', b'Sat, 02 Aug 2025 06:57:00 GMT'), (b'Via', b'1.1 varnish'), (b'X-Served-By', b'cache-lga21956-LGA'), (b'X-Cache', b'HIT'), (b'X-Cache-Hits', b'6'), (b'X-Timer', b'S1754117820.107571,VS0,VE0'), (b'Vary', b'Authorization,Accept-Encoding'), (b'Access-Control-Allow-Origin', b'*'), (b'Cross-Origin-Resource-Policy', b'cross-origin'), (b'X-Fastly-Request-ID', b'3e4d83e58be6bb649ce2fc9f8539fc273a920bed'), (b'Expires', b'Sat, 02 Aug 2025 07:02:00 GMT'), (b'Source-Age', b'156')])
+[INTELLIPERF] INFO: HTTP Request: GET https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json "HTTP/1.1 200 OK"
+[INTELLIPERF] DEBUG: receive_response_body.started request=<Request [b'GET']>
+[INTELLIPERF] DEBUG: receive_response_body.complete
+[INTELLIPERF] DEBUG: response_closed.started
+[INTELLIPERF] DEBUG: response_closed.complete
+[INTELLIPERF] DEBUG: close.started
+[INTELLIPERF] DEBUG: close.complete
+[92m06:57:00 - LiteLLM:DEBUG[0m: litellm_logging.py:182 - [Non-Blocking] Unable to import GenericAPILogger - LiteLLM Enterprise Feature - No module named 'litellm_enterprise'
+[INTELLIPERF] DEBUG: [Non-Blocking] Unable to import GenericAPILogger - LiteLLM Enterprise Feature - No module named 'litellm_enterprise'
+[92m06:57:00 - LiteLLM:DEBUG[0m: transformation.py:17 - [Non-Blocking] Unable to import _ENTERPRISE_ResponsesSessionHandler - LiteLLM Enterprise Feature - No module named 'litellm_enterprise'
+[INTELLIPERF] DEBUG: [Non-Blocking] Unable to import _ENTERPRISE_ResponsesSessionHandler - LiteLLM Enterprise Feature - No module named 'litellm_enterprise'
+[92m06:57:00 - LiteLLM:DEBUG[0m: http_handler.py:579 - Using AiohttpTransport...
+[INTELLIPERF] DEBUG: Using AiohttpTransport...
+[92m06:57:00 - LiteLLM:DEBUG[0m: http_handler.py:636 - Creating AiohttpTransport...
+[INTELLIPERF] DEBUG: Creating AiohttpTransport...
+[92m06:57:00 - LiteLLM:DEBUG[0m: http_handler.py:579 - Using AiohttpTransport...
+[INTELLIPERF] DEBUG: Using AiohttpTransport...
+[92m06:57:00 - LiteLLM:DEBUG[0m: http_handler.py:636 - Creating AiohttpTransport...
+[INTELLIPERF] DEBUG: Creating AiohttpTransport...
+[92m06:57:00 - LiteLLM:DEBUG[0m: http_handler.py:579 - Using AiohttpTransport...
+[INTELLIPERF] DEBUG: Using AiohttpTransport...
+[92m06:57:00 - LiteLLM:DEBUG[0m: http_handler.py:636 - Creating AiohttpTransport...
+[INTELLIPERF] DEBUG: Creating AiohttpTransport...
+[INTELLIPERF] DEBUG: name: 2025_08_02-06_56_59
+[INTELLIPERF] DEBUG: build_command: None
+[INTELLIPERF] DEBUG: instrument_command: None
+[INTELLIPERF] DEBUG: project_directory: ./examples
+[INTELLIPERF] DEBUG: app_cmd: ['./triton/attention/runner_mha.py']
+[INTELLIPERF] INFO: Creating temporary project directory: /tmp/tmpc48rj6wx
+[INTELLIPERF] DEBUG: Copied project from ./examples to /tmp/tmpc48rj6wx
+[INTELLIPERF] DEBUG: --------------------------------
+[INTELLIPERF] DEBUG: Showing application details of 2025_08_02-06_56_59
+[INTELLIPERF] DEBUG: Project directory: ./examples
+[INTELLIPERF] DEBUG: Build command: None
+[INTELLIPERF] DEBUG: Instrument command: None
+[INTELLIPERF] DEBUG: App command: ['./triton/attention/runner_mha.py']
+[INTELLIPERF] DEBUG: App args: 
+[INTELLIPERF] DEBUG: App cmd without args: ./triton/attention/runner_mha.py
+[INTELLIPERF] DEBUG: --------------------------------
+[INTELLIPERF] DEBUG: Showing application details of 2025_08_02-06_56_59_clone
+[INTELLIPERF] DEBUG: Project directory: /tmp/tmpc48rj6wx
+[INTELLIPERF] DEBUG: Build command: None
+[INTELLIPERF] DEBUG: Instrument command: None
+[INTELLIPERF] DEBUG: App command: ['./triton/attention/runner_mha.py']
+[INTELLIPERF] DEBUG: App args: 
+[INTELLIPERF] DEBUG: App cmd without args: ./triton/attention/runner_mha.py
+[INTELLIPERF] DEBUG: --------------------------------
+[INTELLIPERF] DEBUG: --------------------------------
+[INTELLIPERF] DEBUG: Running the command: ./triton/attention/runner_mha.py
+[INTELLIPERF] DEBUG: Working directory: /tmp/tmpc48rj6wx
+[INTELLIPERF] DEBUG: PATH: /root/intelliperf_env/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+[INTELLIPERF] DEBUG: Running the command: ./triton/attention/runner_mha.py
+[INTELLIPERF] DEBUG: Working directory: /tmp/tmpc48rj6wx
+[INTELLIPERF] DEBUG: PATH: /root/intelliperf_env/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+[INTELLIPERF] DEBUG: Profiling app with name 2025_08_02-06_56_59_clone
+[INTELLIPERF] DEBUG: Profiling app with command ['./triton/attention/runner_mha.py']
+[INTELLIPERF] DEBUG: Running the command: rm -rf /root/intelliperf/external/guided-tuning/workloads/
+[INTELLIPERF] DEBUG: Working directory: /tmp/tmpc48rj6wx
+[INTELLIPERF] DEBUG: PATH: /root/intelliperf/external/rocprofiler-compute/src:/root/intelliperf_env/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+[INTELLIPERF] DEBUG: Running the command: rm -rf /root/intelliperf/external/guided-tuning/data/guided.db
+[INTELLIPERF] DEBUG: Working directory: /tmp/tmpc48rj6wx
+[INTELLIPERF] DEBUG: PATH: /root/intelliperf/external/rocprofiler-compute/src:/root/intelliperf_env/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+[INTELLIPERF] DEBUG: Running the command: /root/intelliperf/external/guided-tuning/bin/gt profile -n 2025_08_02-06_56_59_clone --top-n 10 -- ./triton/attention/runner_mha.py
+[INTELLIPERF] DEBUG: Working directory: /tmp/tmpc48rj6wx
+[INTELLIPERF] DEBUG: PATH: /root/intelliperf/external/rocprofiler-compute/src:/root/intelliperf_env/bin:/opt/rocm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+[INTELLIPERF] ERROR: Critical Error: Failed to profile the binary
+[32mINFO[0m Target: MI300
+  [31mERROR[0m Failed to collect system information.
+[ERROR] The 'matplotlib' package was not found in the current execution environment.
+
+Please verify all of the python dependencies called out in the requirements file
+are installed locally prior to running rocprofiler-compute.
+
+See: /root/intelliperf/external/rocprofiler-compute/src/../requirements.txt
+--- MHA Benchmark Configuration ---
+  Batch Size: 1
+  Q Heads: 16, K Heads: 16
+  Q SeqLen: 65536, K SeqLen: 65536
+  Head Dimension: 128
+  Data Type: float32
+  Causal: False
+------------------------------------
+
+Custom MHA Implementation Time: 342.3486 ms
+
+--- MHA Benchmark Configuration ---
+  Batch Size: 1
+  Q Heads: 16, K Heads: 16
+  Q SeqLen: 65536, K SeqLen: 65536
+  Head Dimension: 128
+  Data Type: float32
+  Causal: False
+------------------------------------
+
+Custom MHA Implementation Time: 343.2964 ms
+
+
+
+   [32mINFO[0m Target: MI300
+  [31mERROR[0m Failed to collect system information.
+[ERROR] The 'matplotlib' package was not found in the current execution environment.
+
+Please verify all of the python dependencies called out in the requirements file
+are installed locally prior to running rocprofiler-compute.
+
+See: /root/intelliperf/external/rocprofiler-compute/src/../requirements.txt
+
+
+[INTELLIPERF] DEBUG: Using selector: EpollSelector

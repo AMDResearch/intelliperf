@@ -1,0 +1,457 @@
+L2 Hit Rate Improvement %: 0.11256408893443387
+Speedup: 1.0383804047925014
+
+Swizzling Pattern:
+[[[pid = tl.program_id(0)
+num_xcds = 8
+num_blocks = tl.num_programs(0)
+blocks_per_xcd = (num_blocks + num_xcds - 1) // num_xcds
+xcd_id = pid % num_xcds
+local_block_id = pid // num_xcds
+pid = local_block_id + xcd_id * blocks_per_xcd]]]
+Full Kernel Code:
+[[[#!/usr/bin/env python
+
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2024-2025, Advanced Micro Devices, Inc. All rights reserved.
+
+import torch
+import triton
+import triton.language as tl
+
+def persistent_lean_attention(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    Mp: torch.Tensor,
+    Lp: torch.Tensor,
+    Op: torch.Tensor,
+    locks: torch.Tensor,
+    batch_num_block_n: torch.Tensor,
+    total_programs: int,
+    BLOCK_M: int,
+    BLOCK_N: int,
+    causal: bool,
+    batch_size: int,
+    sm_scale: torch.float16,
+    num_warps: int,
+    waves_per_eu: int,
+):
+    HEAD_DIM_Q, HEAD_DIM_K, HEAD_DIM_V = q.shape[-1], k.shape[-1], v.shape[-1]
+    assert (
+        HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
+    ), "Incompatible Q/K/V Hidden Dimensions"
+    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
+
+    N_CTX_Q = q.shape[0] // batch_size
+    N_CTX_K = k.shape[0]
+    H = q.shape[1]
+
+    qk_scale = sm_scale * 1.44269504
+
+    (
+        num_m_blocks,
+        num_n_blocks,
+        high_load_wgs,
+        max_tiles_per_wg,
+        tiles_per_head,
+        total_programs,
+        num_splits,
+        even_split,
+    ) = get_num_splits_and_buffer_sizes(
+        causal,
+        batch_size,
+        N_CTX_Q,
+        N_CTX_K,
+        H,
+        H,
+        HEAD_DIM_Q,
+        BLOCK_M,
+        BLOCK_N,
+        total_programs,
+    )
+
+    grid = (total_programs, 1, 1)
+
+    o = torch.empty_like(q, dtype=v.dtype)
+
+    la_kernel = la_persistent[grid](
+        q,
+        k,
+        v,
+        qk_scale,
+        Mp,
+        Lp,
+        Op,
+        o,
+        batch_num_block_n,
+        locks,
+        q.stride(0),
+        q.stride(1),
+        q.stride(2),
+        k.stride(0),
+        k.stride(1),
+        k.stride(2),
+        v.stride(0),
+        v.stride(1),
+        v.stride(2),
+        o.stride(0),
+        o.stride(1),
+        o.stride(2),
+        Op.stride(0),
+        Op.stride(1),
+        Op.stride(2),
+        HEAD_DIM=HEAD_DIM_K,
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        batch_size=batch_size,
+        causal=causal,
+        num_m_blocks=num_m_blocks,
+        num_n_blocks=num_n_blocks,
+        high_load_wgs=high_load_wgs,
+        max_tiles_per_wg=max_tiles_per_wg,
+        tiles_per_head=tiles_per_head,
+        num_splits=num_splits,
+        waves_per_eu=waves_per_eu,
+        num_warps=waves_per_eu,
+    )
+
+    return o
+
+def get_num_splits_and_buffer_sizes(
+    causal,
+    batch_size,
+    max_seqlen_q,
+    max_seqlen_k,
+    num_heads,
+    num_heads_k,
+    head_size,
+    BLOCK_M,
+    BLOCK_N,
+    num_SMs,
+):
+    num_m_blocks = (max_seqlen_q + BLOCK_M - 1) // BLOCK_M
+    num_n_blocks = (max_seqlen_k + BLOCK_N - 1) // BLOCK_N
+
+    max_seqlen_q = max_seqlen_q * num_heads // num_heads_k
+
+    if max_seqlen_q == 1:
+        causal = False
+
+    tiles_per_head = 0
+    if causal:
+        for i in range(0, num_m_blocks):
+            tiles_per_head += (((i + 1) * BLOCK_M) + BLOCK_N - 1) // BLOCK_N
+        tiles_per_head = tiles_per_head * batch_size
+    else:
+        tiles_per_head = num_m_blocks * num_n_blocks
+
+    total_tiles = tiles_per_head * num_heads_k
+
+    lean_griddimz = num_SMs
+
+    max_tiles_per_tb = (total_tiles + lean_griddimz - 1) // lean_griddimz
+
+    num_splits = 0
+    even_split = False
+    if total_tiles % lean_griddimz == 0:
+        even_split = True
+        num_splits = 1 + ((num_n_blocks + max_tiles_per_tb - 2) // (max_tiles_per_tb))
+    else:
+        even_split = False
+        num_splits = 1 + (
+            (num_n_blocks + max_tiles_per_tb - 3) // (max_tiles_per_tb - 1)
+        )
+
+    high_load_tbs = total_tiles - ((max_tiles_per_tb - 1) * lean_griddimz)
+
+    num_n_blocks = num_n_blocks // batch_size
+
+    return (
+        num_m_blocks,
+        num_n_blocks,
+        high_load_tbs,
+        max_tiles_per_tb,
+        tiles_per_head,
+        lean_griddimz,
+        num_splits,
+        even_split,
+    )
+
+@triton.jit
+def find_group(x):
+    group_id = 0
+    total_blocks = 0
+    while total_blocks + (group_id + 1) <= x:
+        total_blocks += group_id + 1
+        group_id += 1
+    group_size = group_id + 1
+    return group_id, group_size, total_blocks
+
+@triton.jit
+def la_persistent(
+    Q,
+    K,
+    V,
+    qk_scale,
+    Mp,
+    Lp,
+    Op,
+    Out,
+    batch_num_block_n,
+    locks,
+    stride_qm,
+    stride_qh,
+    stride_qk,
+    stride_kn,
+    stride_kh,
+    stride_kk,
+    stride_vn,
+    stride_vh,
+    stride_vk,
+    stride_om,
+    stride_oh,
+    stride_on,
+    stride_oph,
+    stride_opm,
+    stride_opn,
+    HEAD_DIM: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    batch_size: tl.constexpr,
+    causal: tl.constexpr,
+    num_m_blocks: tl.constexpr,
+    num_n_blocks: tl.constexpr,
+    high_load_wgs: tl.constexpr,
+    max_tiles_per_wg: tl.constexpr,
+    tiles_per_head: tl.constexpr,
+    num_splits: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_xcds = 8
+    num_blocks = tl.num_programs(0)
+    blocks_per_xcd = (num_blocks + num_xcds - 1) // num_xcds
+    xcd_id = pid % num_xcds
+    local_block_id = pid // num_xcds
+    pid = local_block_id + xcd_id * blocks_per_xcd
+
+    if pid < high_load_wgs:
+        iter = max_tiles_per_wg * pid
+        cta_end_tile_gid = iter + max_tiles_per_wg
+    else:
+        iter = (max_tiles_per_wg - 1) * (
+            pid - high_load_wgs
+        ) + high_load_wgs * max_tiles_per_wg
+        cta_end_tile_gid = iter + (max_tiles_per_wg - 1)
+
+    while iter < cta_end_tile_gid:
+        tile_head_idx = iter // tiles_per_head
+
+        if causal:
+            tile_batch_idx = (iter % tiles_per_head) // (tiles_per_head // batch_size)
+            per_head_tile_idx, per_head_tile_size, total_blocks = find_group(
+                iter
+                - (tile_head_idx * tiles_per_head)
+                - (tile_batch_idx * (tiles_per_head // batch_size))
+            )
+            tile_iter = (
+                tile_head_idx * tiles_per_head
+                + (tile_batch_idx * (tiles_per_head // batch_size))
+                + total_blocks
+            )
+            tile_iter_end = tile_iter + (per_head_tile_size)
+            tile_idx = (
+                tile_head_idx * batch_size + tile_batch_idx
+            ) * num_n_blocks + per_head_tile_idx
+        else:
+            tile_idx = (
+                tile_head_idx * batch_size
+            )
+            tile_iter = tile_head_idx * tiles_per_head
+            if batch_size == 1:
+                req_size = tiles_per_head
+            else:
+                req_size = tl.load(batch_num_block_n)
+            tile_iter_end = tile_iter + req_size
+            for b in range(1, batch_size):
+                next_req_size = tl.load(batch_num_block_n + b)
+                local_head_iter = iter % tiles_per_head
+                if (local_head_iter < next_req_size) and (local_head_iter >= req_size):
+                    tile_iter = tile_iter + req_size
+                    tile_idx = tile_idx + b
+                    tile_iter_end = tile_iter + (next_req_size - req_size)
+                req_size = next_req_size
+
+        local_iter = iter - tile_iter
+        local_iter_end = tl.minimum(tile_iter_end, cta_end_tile_gid) - tile_iter
+
+        if iter == tile_iter:
+            host_block = True
+        else:
+            host_block = False
+
+        if cta_end_tile_gid >= tile_iter_end:
+            finishing_block = True
+        else:
+            finishing_block = False
+
+        offs_m = tl.arange(0, BLOCK_M)
+        offs_n = tl.arange(0, BLOCK_N)
+        offs_k = tl.arange(0, HEAD_DIM)
+
+        if causal:
+            b_seq_size = tile_batch_idx * num_n_blocks
+        else:
+            tile_batch_idx = tile_idx % batch_size
+            b_seq_size = 0
+            if tile_batch_idx > 0:
+                b_seq_size = tl.load(
+                    batch_num_block_n + tile_batch_idx - 1
+                )
+
+        k_offs = (
+            (b_seq_size + local_iter) * BLOCK_N * stride_kn
+            + tile_head_idx * stride_kh
+            + offs_n[None, :] * stride_kn
+            + offs_k[:, None] * stride_kk
+        )
+        v_offs = (
+            (b_seq_size + local_iter) * BLOCK_N * stride_vn
+            + tile_head_idx * stride_vh
+            + offs_n[:, None] * stride_vn
+            + offs_k[None, :] * stride_vk
+        )
+
+        k_ptrs = K + k_offs
+        v_ptrs = V + v_offs
+
+        if causal:
+            q_idx = per_head_tile_idx + tile_batch_idx * num_m_blocks
+        else:
+            q_idx = tile_batch_idx
+        q_offs = (
+            q_idx * BLOCK_M * stride_qm
+            + tile_head_idx * stride_qh
+            + offs_m[:, None] * stride_qm
+            + offs_k[None, :] * stride_qk
+        )
+        q_ptrs = Q + q_offs
+
+        m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+        l_i = tl.zeros([BLOCK_M], dtype=tl.float32) + 1.0
+        acc = tl.zeros([BLOCK_M, HEAD_DIM], dtype=tl.float32)
+
+        q = tl.load(q_ptrs)
+
+        for l_iter in range(local_iter, local_iter_end):
+            k = tl.load(k_ptrs, cache_modifier=".cg")
+            qk = tl.dot(q, k)
+            qk = qk * qk_scale
+
+            if ((iter + (l_iter - local_iter)) == (tile_iter_end - 1)) and causal:
+                mask = offs_m[:, None] >= offs_n[None, :]
+                qk = tl.where(mask, qk, float("-inf"))
+            m_ij = tl.maximum(m_i, tl.max(qk, 1))
+            qk = qk - m_ij[:, None]
+            p = tl.math.exp2(qk)
+            alpha = tl.math.exp2(m_i - m_ij)
+            acc = (
+                acc * alpha[:, None]
+            )
+            v = tl.load(v_ptrs, cache_modifier=".cg")
+            acc += tl.dot(p.to(v.dtype), v)
+            l_ij = tl.sum(p, 1)
+            l_i = l_i * alpha + l_ij
+            m_i = m_ij.to(m_i.dtype)
+            v_ptrs += BLOCK_N * stride_vn
+            k_ptrs += BLOCK_N * stride_kn
+
+        m_cta = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
+        l_cta = tl.zeros([BLOCK_M], dtype=tl.float32) + 1.0
+        acc_cta = tl.zeros([BLOCK_M, HEAD_DIM], dtype=tl.float32)
+
+        if not host_block:
+            mp_ptrs = Mp + pid * BLOCK_M + offs_m
+            lp_ptrs = Lp + pid * BLOCK_M + offs_m
+            op_ptrs = (
+                Op
+                + pid * stride_oph
+                + offs_m[:, None] * stride_opm
+                + offs_k[None, :] * stride_opn
+            )
+
+            tl.store(mp_ptrs, m_i, cache_modifier=".wt")
+            tl.store(lp_ptrs, l_i, cache_modifier=".wt")
+            tl.store(op_ptrs, acc, cache_modifier=".wt")
+            tl.debug_barrier()
+            tl.atomic_xchg(locks + pid, 1)
+
+        if host_block:
+            o_h_offs = (
+                q_idx * BLOCK_M * stride_om
+                + tile_head_idx * stride_oh
+                + offs_m[:, None] * stride_om
+                + offs_k[None, :] * stride_on
+            )
+            o_ptrs = Out + o_h_offs
+
+            if not finishing_block:
+                if causal:
+                    q_idx = per_head_tile_idx + tile_batch_idx * num_m_blocks
+                else:
+                    q_idx = tile_batch_idx
+
+                o_h_offs = (
+                    q_idx * BLOCK_M * stride_om
+                    + tile_head_idx * stride_oh
+                    + offs_m[:, None] * stride_om
+                    + offs_k[None, :] * stride_on
+                )
+                o_ptrs = Out + o_h_offs
+
+                last_cta = pid + 1
+                temp_end_gid = cta_end_tile_gid
+                split = 1
+                while (split < num_splits) and (temp_end_gid < tile_iter_end):
+                    if last_cta < high_load_wgs:
+                        if (tile_iter_end - temp_end_gid) < max_tiles_per_wg:
+                            temp_end_gid += tile_iter_end - temp_end_gid
+                        else:
+                            temp_end_gid += max_tiles_per_wg
+                    else:
+                        if (tile_iter_end - temp_end_gid) < (max_tiles_per_wg - 1):
+                            temp_end_gid += tile_iter_end - temp_end_gid
+                        else:
+                            temp_end_gid += max_tiles_per_wg - 1
+
+                    last_cta += 1
+                    split += 1
+                for cta in range((pid + 1), last_cta):
+                    while tl.atomic_cas(locks + cta, 1, 1) != 1:
+                        pass
+
+                    offs_mplp = cta * BLOCK_M + tl.arange(0, BLOCK_M)
+                    mp_ptrs = Mp + offs_mplp
+                    lp_ptrs = Lp + offs_mplp
+                    op_h_offs = (
+                        cta * stride_oph
+                        + offs_m[:, None] * stride_opm
+                        + offs_k[None, :] * stride_opn
+                    )
+                    op_ptrs = Op + op_h_offs
+
+                    m_cta = tl.load(mp_ptrs)
+                    l_cta = tl.load(lp_ptrs)
+                    acc_cta = tl.load(op_ptrs)
+
+                    m_new = tl.maximum(m_cta, m_i)
+                    alpha = tl.math.exp2(m_cta - m_new)
+                    alpha1 = tl.math.exp2(m_i - m_new)
+                    l_new = alpha * l_cta + alpha1 * l_i
+                    acc = acc_cta * alpha[:, None] + acc * alpha1[:, None]
+                    m_i = m_new
+                    l_i = l_new
+            acc = acc / l_i[:, None]
+            tl.store(o_ptrs, acc.to(Out.type.element_ty))
+
+        iter = iter + (local_iter_end - local_iter)]]]
