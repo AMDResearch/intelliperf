@@ -1,5 +1,5 @@
-L2 Hit Rate Improvement %: 8.274008997231899
-Speedup: 0.9084157423684557
+L2 Hit Rate Improvement %: 8.227356156424303
+Speedup: 1.011421356715211
 
 Swizzling Pattern:
 [[[pid = tl.program_id(0)
