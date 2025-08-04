@@ -85,11 +85,20 @@ def intelliperf_parser():
 	optional_args.add_argument(
 		"-f",
 		"--formula",
-		choices=["bankConflict", "memoryAccess", "atomicContention", "diagnoseOnly", "swizzling", "swizzling_test", "swizzling_baseline"],
+		choices=[
+			"bankConflict",
+			"memoryAccess",
+			"atomicContention",
+			"diagnoseOnly",
+			"swizzling",
+			"swizzling_test",
+			"swizzling_baseline",
+			"swizzling_overload",
+		],
 		default="diagnoseOnly",
 		metavar="",
 		type=str,
-		help="Specify the formula to use for optimization.\nAvailable options: bankConflict, memoryAccess, atomicContention, diagnoseOnly, swizzling, swizzling_test, swizzling_baseline (default: diagnoseOnly)",
+		help="Specify the formula to use for optimization.\nAvailable options: bankConflict, memoryAccess, atomicContention, diagnoseOnly, swizzling, swizzling_test, swizzling_baseline, swizzling_overload (default: diagnoseOnly)",
 	)
 	optional_args.add_argument(
 		"--top_n",
@@ -212,6 +221,10 @@ def main():
 		from intelliperf.formulas.swizzling_baseline import swizzling_baseline
 
 		formula = swizzling_baseline
+	elif args.formula == "swizzling_overload":
+		from intelliperf.formulas.swizzling_overload import swizzling_overload
+
+		formula = swizzling_overload
 	else:
 		logging.error(f"Invalid formula specified. {args.formula} is not supported.")
 		import sys
@@ -229,7 +242,12 @@ def main():
 		"provider": args.provider,
 		"in_place": args.in_place,
 	}
-	if args.formula == "swizzling" or args.formula == "swizzling_test" or args.formula == "swizzling_baseline":
+	if (
+		args.formula == "swizzling"
+		or args.formula == "swizzling_test"
+		or args.formula == "swizzling_baseline"
+		or args.formula == "swizzling_overload"
+	):
 		optimizer_args["output_kernel_file"] = args.output_kernel_file
 
 	optimizer = formula(**optimizer_args)
