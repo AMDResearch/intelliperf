@@ -27,6 +27,9 @@
 def intelliperf_parser():
 	import argparse
 
+	# Default model constant
+	DEFAULT_MODEL = "gpt-4o"
+
 	parser = argparse.ArgumentParser(
 		description="Optimize and analyze the given application based on available IntelliPerf formulas.",
 		prog="intelliperf",
@@ -123,9 +126,9 @@ def intelliperf_parser():
 		"-m",
 		"--model",
 		type=str,
-		default="gpt-4o",
+		default=DEFAULT_MODEL,
 		metavar="",
-		help="Specify the model to use for optimization (default: gpt-4o-mini)",
+		help=f"Specify the model to use for optimization (default: {DEFAULT_MODEL})",
 	)
 	optional_args.add_argument(
 		"-r",
@@ -156,7 +159,7 @@ def intelliperf_parser():
 	if args.internal:
 		args.provider = "https://llm-api.amd.com/azure"
 		# Only override model if user didn't explicitly set it (still using default)
-		if args.model == "gpt-4o":
+		if args.model == DEFAULT_MODEL:
 			args.model = "dvue-aoai-001-o4-mini"
 
 	# Validate that project_directory is provided when formula is not diagnoseOnly
