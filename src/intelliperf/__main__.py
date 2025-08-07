@@ -155,7 +155,9 @@ def intelliperf_parser():
 	# Handle internal LLM option
 	if args.internal:
 		args.provider = "https://llm-api.amd.com/azure"
-		args.model = "dvue-aoai-001-o4-mini"
+		# Only override model if user didn't explicitly set it (still using default)
+		if args.model == "gpt-4o":
+			args.model = "dvue-aoai-001-o4-mini"
 
 	# Validate that project_directory is provided when formula is not diagnoseOnly
 	if args.formula != "diagnoseOnly" and not args.project_directory:
