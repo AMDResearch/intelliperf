@@ -143,6 +143,9 @@ intelliperf -b ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas
 
 # Diagnose a Triton application
 intelliperf -- python3 gemm.py
+
+# Use AMD's internal LLM service
+intelliperf --internal -f bankConflict -- ~/rocBLAS/build/bin/rocblas_gemm
 ```
 
 ### Command Line Options
@@ -161,6 +164,7 @@ intelliperf -- python3 gemm.py
 | `-t, --accordo_absolute_tolerance` | Validation tolerance |
 | `-m, --model` | Specify the model to use for optimization (default: gpt-4o) |
 | `-r, --provider` | Specify the provider to use for optimization (default: openai) |
+| `--internal` | Use AMD's internal LLM service (sets provider and model automatically) |
 | `-l, --in_place` | Modify source files in place during optimization (default: creates backups) |
 | `--unittest_command` | Command to run unit tests for additional validation |
 

@@ -136,6 +136,11 @@ def intelliperf_parser():
 		help="Specify the provider to use for optimization (default: openai)",
 	)
 	optional_args.add_argument(
+		"--internal",
+		action="store_true",
+		help="Use AMD's internal LLM service (sets provider to llm.amd.com and appropriate model)",
+	)
+	optional_args.add_argument(
 		"-l",
 		"--in_place",
 		action="store_true",
@@ -146,6 +151,11 @@ def intelliperf_parser():
 	optional_args.add_argument("-o", "--output_file", type=str, metavar="", help="Path to the output file")
 
 	args = parser.parse_args()
+
+	# Handle internal LLM option
+	if args.internal:
+		args.provider = "https://llm-api.amd.com/azure"
+		args.model = "dvue-aoai-001-o4-mini"
 
 	# Validate that project_directory is provided when formula is not diagnoseOnly
 	if args.formula != "diagnoseOnly" and not args.project_directory:
