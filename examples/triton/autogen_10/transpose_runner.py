@@ -35,7 +35,7 @@ def transpose(x, validate=False):
     return y
 
 
-def main(M=4096*8, N=4096*8, validate=False):
+def main(M=10000, N=10000, validate=False):
     x = torch.randn((M, N), device='cuda', dtype=torch.float16)
 
     rep = 10

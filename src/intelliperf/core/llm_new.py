@@ -47,7 +47,7 @@ class LLM:
 			self.header = {"Ocp-Apim-Subscription-Key": api_key}
 		else:
 			self.use_amd = False
-			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key, max_tokens=16000)
+			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key, max_tokens=20000, temperature=1.0)
 			dspy.configure(lm=self.lm)
 
 	def ask(self, user_prompt: str, signature=None, answer_type: str = "optimized_code"):
