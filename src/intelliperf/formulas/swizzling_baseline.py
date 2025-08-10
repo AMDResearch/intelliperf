@@ -310,7 +310,7 @@ class swizzling_baseline(Formula_Base):
 			return Result(
 				success=False,
 				error_report=f"Could not find kernel {self.current_kernel_signature} in initial results.",
-			)
+		)
 
 		unoptimized_time = unoptimized_results[0]["durations"]["ns"]
 		unoptimized_l2_hit_rate = unoptimized_results[0]["l2"]["hr"]
@@ -339,7 +339,7 @@ class swizzling_baseline(Formula_Base):
 			return Result(
 				success=False,
 				error_report=f"Could not find kernel {kernel} in profiling results after optimization.",
-			)
+		)
 
 		optimized_time = optimized_results[0]["durations"]["ns"]
 		optimized_l2_hit_rate = optimized_results[0]["l2"]["hr"]
