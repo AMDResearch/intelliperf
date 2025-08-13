@@ -358,18 +358,18 @@ class Formula_Base:
 		"""
 		pass
 
-	      def postprocess_llm_code(self, optimized_file_content: str) -> str:
-        """
-        Post-process the LLM generated code before writing to file.
+	def postprocess_llm_code(self, optimized_file_content: str) -> str:
+		"""
+		Post-process the LLM generated code before writing to file.
 
-        Removes markdown code blocks (```c++, ```python, etc.) from the LLM response.
-        
-        Args:
-            optimized_file_content (str): The LLM generated code
-            
-        Returns:
-            str: The post-processed code
-        """
+		Removes markdown code blocks (```c++, ```python, etc.) from the LLM response.
+		
+		Args:
+			optimized_file_content (str): The LLM generated code
+			
+		Returns:
+			str: The post-processed code
+		"""
 		# Remove markdown code blocks if present
 		content = optimized_file_content.strip()
 		if content.startswith('```') and content.endswith('```'):
