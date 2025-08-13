@@ -99,6 +99,12 @@ def intelliperf_parser():
 		help="Control the top-n kernels collected in diagnoseOnly mode (default: 10)",
 	)
 	optional_args.add_argument(
+		"--trace_path",
+		type=str,
+		metavar="PATH",
+		help="Enable comprehensive tracing and save trace logs to specified path (e.g., --trace_path logs/run_1.json)",
+	)
+	optional_args.add_argument(
 		"--num_attempts",
 		type=int,
 		default=10,
@@ -232,6 +238,9 @@ def main():
 	# Instrument the application based on the results.
 	optimizer.instrument_pass()
 
+	# Initialize performance_result for diagnoseOnly case
+	performance_result = None
+
 	for attempt in range(num_attempts):
 		logging.info(f"Executing pass {attempt + 1} of {num_attempts}.")
 
@@ -272,10 +281,22 @@ def main():
 
 	try:
 		if args.formula == "diagnoseOnly" or performance_result:
+			# Flush logger if tracing is enabled
+			if hasattr(optimizer, 'get_logger') and args.trace_path:
+				logger = optimizer.get_logger()
+				logger.flush(args.trace_path)
+			
 			optimizer.write_results(args.output_file)
 			sys.exit(0)
 	except Exception as e:
 		logging.error(f"Error writing results: {e}")
+		# Try to flush logger even if results writing fails
+		try:
+			if hasattr(optimizer, 'get_logger') and args.trace_path:
+				logger = optimizer.get_logger()
+				logger.flush(args.trace_path)
+		except Exception as log_error:
+			logging.error(f"Error flushing logger: {log_error}")
 		sys.exit(1)
 
 
