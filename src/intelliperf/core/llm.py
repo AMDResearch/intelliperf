@@ -23,9 +23,10 @@
 ################################################################################
 
 
+from typing import Optional
+
 import dspy
 import requests
-from typing import Optional
 
 from intelliperf.core.logger import Logger
 
@@ -57,16 +58,19 @@ class LLM:
 	def ask(self, user_prompt: str) -> str:
 		# Log the LLM interaction start
 		if self.logger:
-			self.logger.record("llm_call_start", {
-				"system_prompt": self.system_prompt,
-				"user_prompt": user_prompt,
-				"model": self.model,
-				"provider": self.provider
-			})
-		
+			self.logger.record(
+				"llm_call_start",
+				{
+					"system_prompt": self.system_prompt,
+					"user_prompt": user_prompt,
+					"model": self.model,
+					"provider": self.provider,
+				},
+			)
+
 		# Initialize reasoning variable
 		reasoning = None
-		
+
 		try:
 			if self.use_amd:
 				# AMD/Azure REST call
@@ -89,33 +93,27 @@ class LLM:
 				signature = "prompt: str -> optimized_code: str"
 				chain = dspy.ChainOfThought(signature)
 				ct_response = chain(prompt=user_prompt)
-				
+
 				# Extract both the reasoning and the final answer
 				response_content = getattr(ct_response, "optimized_code", str(ct_response))
-				
+
 				# Try to capture the reasoning/chain-of-thought steps
 				reasoning = getattr(ct_response, "reasoning", None)
-			
+
 			# Log successful response with reasoning if available
 			if self.logger:
-				success_data = {
-					"response": response_content,
-					"response_length": len(response_content)
-				}
+				success_data = {"response": response_content, "response_length": len(response_content)}
 				if reasoning:
 					success_data["reasoning"] = reasoning
 					success_data["reasoning_type"] = "chain_of_thought"
-				
+
 				self.logger.record("llm_call_success", success_data)
-			
+
 			return response_content
-			
+
 		except Exception as e:
 			# Log error
 			if self.logger:
-				self.logger.record("llm_call_error", {
-					"error": str(e),
-					"error_type": type(e).__name__
-				})
+				self.logger.record("llm_call_error", {"error": str(e), "error_type": type(e).__name__})
 			# Re-raise the exception to maintain existing behavior
 			raise
