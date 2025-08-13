@@ -144,7 +144,6 @@ intelliperf -b ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas
 # Diagnose a Triton application
 intelliperf -- python3 gemm.py
 
-# Use AMD's internal LLM service
 intelliperf --internal -- python3 gemm.py
 ```
 
