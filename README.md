@@ -145,36 +145,7 @@ intelliperf -b ~/rocBLAS/build.sh -f bankConflict -- ~/rocBLAS/build/bin/rocblas
 intelliperf -- python3 gemm.py
 
 # Use AMD's internal LLM service
-intelliperf --internal -f bankConflict -- ~/rocBLAS/build/bin/rocblas_gemm
-```
-
-### AMD Internal LLM Service
-
-The `--internal` flag provides a convenient shortcut for AMD internal users to access AMD's internal LLM service. This flag implements smart configuration handling:
-
-**Provider Override**: Always sets the provider to `https://llm-api.amd.com/azure`, regardless of any explicit `--provider` setting.
-
-**Smart Model Handling**: 
-- If using the default model (`gpt-4o`): automatically switches to AMD's internal model `dvue-aoai-001-o4-mini`
-- If you explicitly specified a model with `--model`: preserves your custom model choice
-
-#### Examples
-
-```bash
-# Use AMD's internal service with default internal model
 intelliperf --internal -- python3 gemm.py
-# Uses: provider=https://llm-api.amd.com/azure, model=dvue-aoai-001-o4-mini
-
-# Use AMD's internal service with custom model
-intelliperf --internal -m gpt-3.5-turbo -- python3 gemm.py  
-# Uses: provider=https://llm-api.amd.com/azure, model=gpt-3.5-turbo
-
-# Provider is always overridden, custom model preserved
-intelliperf --internal -r openai -m custom-model -- python3 gemm.py
-# Uses: provider=https://llm-api.amd.com/azure, model=custom-model
-
-# Works with other optimization options
-intelliperf --internal -f bankConflict -v -- ~/rocBLAS/build/bin/rocblas_gemm
 ```
 
 ### Command Line Options
@@ -193,7 +164,7 @@ intelliperf --internal -f bankConflict -v -- ~/rocBLAS/build/bin/rocblas_gemm
 | `-t, --accordo_absolute_tolerance` | Validation tolerance |
 | `-m, --model` | Specify the model to use for optimization (default: gpt-4o) |
 | `-r, --provider` | Specify the provider to use for optimization (default: openai) |
-| `--internal` | Use AMD's internal LLM service (always sets provider to llm-api.amd.com; overrides model to dvue-aoai-001-o4-mini only if using default gpt-4o) |
+| `--internal` | Use AMD's internal LLM service |
 | `-l, --in_place` | Modify source files in place during optimization (default: creates backups) |
 | `--unittest_command` | Command to run unit tests for additional validation |
 
