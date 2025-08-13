@@ -71,4 +71,5 @@ class LLM:
 		signature = "prompt: str -> optimized_code: str"
 		chain = dspy.ChainOfThought(signature)
 		ct_response = chain(prompt=user_prompt)
+
 		return getattr(ct_response, "optimized_code", str(ct_response))

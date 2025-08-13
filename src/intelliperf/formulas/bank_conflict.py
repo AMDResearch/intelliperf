@@ -52,6 +52,7 @@ class bank_conflict(Formula_Base):
 		model: str = "gpt-4o",
 		provider: str = "openai",
 		in_place: bool = False,
+		**kwargs,
 	):
 		super().__init__(
 			name,
@@ -63,13 +64,13 @@ class bank_conflict(Formula_Base):
 			model,
 			provider,
 			in_place,
+			**kwargs,
 		)
 
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
 		self._instrumentation_results = None
 		self.current_kernel = None
 		self.current_args = None
-		self.current_kernel_signature = None
 		self.kernel_to_optimize = None
 		self.optimization_report = None
 		self.bottleneck_report = None
@@ -247,11 +248,17 @@ class bank_conflict(Formula_Base):
 			logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
 
 			kernel = filtered_report_card[0]["kernel"]
+			self._parse_kernel_signature(kernel)
 			files = filtered_report_card[0]["source"]["files"]
 			kernel_name = get_kernel_name(kernel)
 			kernel_file = None
+
+			unoptimized_file_content = None
 			for file in files:
-				if os.path.exists(file):
+				project_dir = os.path.abspath(self._application.get_project_directory())
+				file_path = os.path.abspath(file)
+				isfile_in_project = os.path.commonpath([project_dir, file_path]) == project_dir
+				if os.path.exists(file) and isfile_in_project:
 					with open(file, "r") as f:
 						unoptimized_file_content = f.read()
 						if kernel_name in unoptimized_file_content:
@@ -273,12 +280,18 @@ class bank_conflict(Formula_Base):
 
 			self.previous_source_code = unoptimized_file_content
 
-			args = kernel.split("(")[1].split(")")[0]
-			self.bottleneck_report = (
-				f"Bank Conflict Detection: IntelliPerf identified shared memory bank conflicts in kernel "
-				f"`{kernel_name}` with arguments `{args}`. Bank conflicts occur when multiple threads "
-				f"access the same memory bank simultaneously, causing serialization and performance degradation."
-			)
+			if self.current_args:
+				self.bottleneck_report = (
+					f"Bank Conflict Detection: IntelliPerf identified shared memory bank conflicts in kernel "
+					f"`{self.current_kernel}` with arguments `{self.current_args}`. Bank conflicts occur when multiple threads "
+					f"access the same memory bank simultaneously, causing serialization and performance degradation."
+				)
+			else:
+				self.bottleneck_report = (
+					f"Bank Conflict Detection: IntelliPerf identified shared memory bank conflicts in kernel "
+					f"`{self.current_kernel}`. Bank conflicts occur when multiple threads "
+					f"access the same memory bank simultaneously, causing serialization and performance degradation."
+				)
 		else:
 			pass
 
@@ -292,9 +305,6 @@ class bank_conflict(Formula_Base):
 		logging.debug(f"System prompt: {system_prompt}")
 		logging.debug(f"LLM prompt: {user_prompt}")
 
-		self.current_kernel = kernel.split("(")[0]
-		self.current_args = kernel.split("(")[1].split(")")[0].split(",")
-		self.current_kernel_signature = kernel
 		try:
 			optimized_file_content = llm.ask(user_prompt).strip()
 			optimized_file_content = self.postprocess_llm_code(optimized_file_content)

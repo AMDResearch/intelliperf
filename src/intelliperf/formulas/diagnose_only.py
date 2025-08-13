@@ -37,6 +37,7 @@ class diagnose_only(Formula_Base):
 		model,
 		provider,
 		in_place,
+		**kwargs,
 	):
 		super().__init__(
 			name,
@@ -48,6 +49,7 @@ class diagnose_only(Formula_Base):
 			model,
 			provider,
 			in_place,
+			**kwargs,
 		)
 
 	def profile_pass(self):
