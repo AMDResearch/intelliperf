@@ -34,7 +34,6 @@ from pprint import pformat
 import ml_dtypes
 import numpy as np
 import pandas as pd
-
 from accordo.python.code_gen import generate_header
 from accordo.python.communicate import get_kern_arg_data, send_response
 from accordo.python.utils import run_subprocess
@@ -95,17 +94,20 @@ class Formula_Base:
 
 		# Initialize logger
 		self._logger = Logger(run_name=name)
-		self._logger.record("formula_init", {
-			"name": name,
-			"build_command": build_command,
-			"instrument_command": instrument_command,
-			"project_directory": project_directory,
-			"app_cmd": app_cmd,
-			"top_n": top_n,
-			"model": model,
-			"provider": provider,
-			"in_place": in_place
-		})
+		self._logger.record(
+			"formula_init",
+			{
+				"name": name,
+				"build_command": build_command,
+				"instrument_command": instrument_command,
+				"project_directory": project_directory,
+				"app_cmd": app_cmd,
+				"top_n": top_n,
+				"model": model,
+				"provider": provider,
+				"in_place": in_place,
+			},
+		)
 
 		# Create a reference copy for comparison
 		self._reference_app = Application(
@@ -146,7 +148,7 @@ class Formula_Base:
 	def get_logger(self) -> Logger:
 		"""
 		Get the logger instance for this formula run.
-		
+
 		Returns:
 			Logger: The logger instance
 		"""
