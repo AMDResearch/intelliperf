@@ -224,6 +224,13 @@ def main():
 		unittest_command=args.unittest_command,
 	)
 
+	# Helper function to flush logs if tracing is enabled
+	def flush_logs_if_enabled():
+		print(f"args.trace_path: {args.trace_path}")
+		if hasattr(optimizer, "get_logger") and args.trace_path:
+			print(f"Flushing logs to {args.trace_path}")
+			optimizer.get_logger().flush(args.trace_path)
+
 	num_attempts = 0 if args.formula == "diagnoseOnly" else args.num_attempts
 
 	# Build the application
@@ -231,12 +238,15 @@ def main():
 
 	# Profile the application and collect the results.
 	optimizer.profile_pass()
+	flush_logs_if_enabled()  # Flush after profiling
 
 	# Get source code mappings
 	optimizer.source_code_pass()
+	flush_logs_if_enabled()  # Flush after source code collection
 
 	# Instrument the application based on the results.
 	optimizer.instrument_pass()
+	flush_logs_if_enabled()  # Flush after instrumentation
 
 	# Initialize performance_result for diagnoseOnly case
 	performance_result = None
@@ -249,6 +259,7 @@ def main():
 		if not optimize_result:
 			optimize_result.report_out()
 			logging.warning(f"Optimization pass {attempt + 1} failed. Retrying...")
+			flush_logs_if_enabled()  # Flush after failed optimization
 			continue
 
 		# Compile the new application
@@ -256,6 +267,7 @@ def main():
 		if not build_result:
 			build_result.report_out()
 			logging.warning(f"Build pass {attempt + 1} failed. Retrying...")
+			flush_logs_if_enabled()  # Flush after failed build
 			continue
 
 		# Validate the new application
@@ -265,16 +277,19 @@ def main():
 		if not correctness_result:
 			correctness_result.report_out()
 			logging.warning(f"Correctness validation pass {attempt + 1} failed. Retrying...")
+			flush_logs_if_enabled()  # Flush after failed correctness validation
 			continue
 
 		performance_result = optimizer.performance_validation_pass()
 		if not performance_result:
 			performance_result.report_out()
 			logging.warning(f"Performance validation pass {attempt + 1} failed. Retrying...")
+			flush_logs_if_enabled()  # Flush after failed performance validation
 			continue
 
 		# If the optimization is successful, exit the loop
 		if performance_result:
+			flush_logs_if_enabled()  # Flush after successful optimization
 			break
 
 	import sys
@@ -282,17 +297,17 @@ def main():
 	try:
 		if args.formula == "diagnoseOnly" or performance_result:
 			# Flush logger if tracing is enabled
-			if hasattr(optimizer, 'get_logger') and args.trace_path:
+			if hasattr(optimizer, "get_logger") and args.trace_path:
 				logger = optimizer.get_logger()
 				logger.flush(args.trace_path)
-			
+
 			optimizer.write_results(args.output_file)
 			sys.exit(0)
 	except Exception as e:
 		logging.error(f"Error writing results: {e}")
 		# Try to flush logger even if results writing fails
 		try:
-			if hasattr(optimizer, 'get_logger') and args.trace_path:
+			if hasattr(optimizer, "get_logger") and args.trace_path:
 				logger = optimizer.get_logger()
 				logger.flush(args.trace_path)
 		except Exception as log_error:
