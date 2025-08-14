@@ -50,7 +50,7 @@ class Logger:
 	def __del__(self):
 		"""Destructor to ensure logs are flushed when Logger object is destroyed"""
 		try:
-			if hasattr(self, 'buffer') and self.buffer:
+			if hasattr(self, "buffer") and self.buffer:
 				self.flush()
 		except Exception:
 			# Ignore any errors during cleanup
