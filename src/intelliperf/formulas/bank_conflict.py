@@ -307,6 +307,7 @@ class bank_conflict(Formula_Base):
 
 		try:
 			optimized_file_content = llm.ask(user_prompt).strip()
+			optimized_file_content = self.postprocess_llm_code(optimized_file_content)
 			with open(kernel_file, "w") as f:
 				f.write(optimized_file_content)
 			logging.debug(f"Optimized file content: {optimized_file_content}")
