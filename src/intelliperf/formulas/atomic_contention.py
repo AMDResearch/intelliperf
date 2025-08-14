@@ -73,6 +73,8 @@ class atomic_contention(Formula_Base):
 		self.current_summary = None
 		self.previous_source_code = None
 		self.success = False
+		self.optimization_attempts = []  # Track optimization strategies attempted
+		self.iteration_count = 0  # Track current iteration
 
 	def profile_pass(self) -> Result:
 		"""
@@ -82,6 +84,9 @@ class atomic_contention(Formula_Base):
 		    Result: DataFrame containing the performance report card
 		"""
 		super().profile_pass()
+
+		# Reset optimization state for new optimization cycle
+		self.reset_optimization_state()
 
 		# Log profiling results
 		if hasattr(self, "_initial_profiler_results") and self._initial_profiler_results:
@@ -199,18 +204,32 @@ class atomic_contention(Formula_Base):
 				return Result(success=False, error_report="Kernel file not found.")
 
 			user_prompt = (
-				f"There is atomic contention in the kernel {kernel} in the source code {unoptimized_file_content}."
-				f" Please fix the contention but do not change the semantics of the program."
-				" Do not remove any comments or licenses."
-				" Do not include any markdown code blocks or text other than the code."
+				f"OPTIMIZATION ITERATION: You are optimizing kernel '{kernel}' to reduce atomic contention.\n\n"
+				f"SOURCE CODE:\n{unoptimized_file_content}\n\n"
 			)
+
+			# Add iteration context if this is not the first attempt
 			if self.current_summary is not None:
-				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
+				user_prompt += (
+					f"PREVIOUS OPTIMIZATION RESULTS:\n{self.current_summary}\n\n"
+					"The previous optimization approach did not improve atomic contention. "
+					"Try a different strategy.\n\n"
+				)
 
-				# Split the strings into lines for proper diff computation
+				# Add optimization history context
+				history_context = self.get_optimization_history_context()
+				user_prompt += f"{history_context}\n\n"
+
+				# Add diff information to show what was changed
 				cur_diff = self.compute_diff([kernel_file])
+				if cur_diff:
+					user_prompt += f"CHANGES FROM ORIGINAL CODE:\n{cur_diff}\n\n"
 
-				user_prompt += f"\nThe diff between the current and initial code is: {cur_diff}"
+			user_prompt += (
+				"OBJECTIVE: Reduce atomic contention while maintaining or improving runtime performance.\n"
+				"CONSTRAINTS: Preserve kernel signature and program semantics.\n"
+				"Return only the optimized code without any markdown or explanatory text."
+			)
 
 			self.previous_source_code = unoptimized_file_content
 
@@ -241,13 +260,29 @@ class atomic_contention(Formula_Base):
 		logging.debug(f"System prompt: {system_prompt}")
 
 		try:
-			optimized_file_content = llm.ask(user_prompt).strip()
+			record_meta = f"Iteration {self.iteration_count + 1}"
+			optimized_file_content = llm.ask(user_prompt, record_meta=record_meta).strip()
 			optimized_file_content = self.postprocess_llm_code(optimized_file_content)
+
+			# Track this optimization attempt
+			self.iteration_count += 1
+			
+			# Store attempt info (will be updated with results after validation)
+			self.optimization_attempts.append({
+				'iteration': self.iteration_count,
+				'code': optimized_file_content,
+				'success': None,  # Will be updated after performance validation
+				'improvement': 0.0  # Will be updated after performance validation
+			})
 
 			# Log successful optimization
 			self.get_logger().record(
 				"optimization_success",
-				{"optimized_code_length": len(optimized_file_content), "kernel_file": kernel_file},
+				{
+					"optimized_code_length": len(optimized_file_content), 
+					"kernel_file": kernel_file,
+					"iteration": self.iteration_count
+				},
 			)
 
 			with open(kernel_file, "w") as f:
@@ -363,9 +398,29 @@ class atomic_contention(Formula_Base):
 
 		if not success or speedup < 1:
 			self.current_summary = self.optimization_report
+			
+			# Update the latest optimization attempt with results
+			if self.optimization_attempts:
+				latest_attempt = self.optimization_attempts[-1]
+				latest_attempt['success'] = False
+				latest_attempt['improvement'] = -cycle_latency_improvement  # Negative for worsening
+				logging.info(f"Optimization iteration {latest_attempt['iteration']} FAILED: "
+						   f"Atomic contention increased by {abs(cycle_latency_improvement):.1f}%")
+			
 			return Result(success=False, error_report=self.optimization_report)
 
+		# Update the latest optimization attempt with results
+		if self.optimization_attempts:
+			latest_attempt = self.optimization_attempts[-1]
+			latest_attempt['success'] = True
+			latest_attempt['improvement'] = cycle_latency_improvement
+			logging.info(f"Optimization iteration {latest_attempt['iteration']} SUCCEEDED: "
+					   f"Atomic contention reduced by {cycle_latency_improvement:.1f}%")
+
 		# Log performance validation results
+		optimized_code_string = None
+		if self.optimization_attempts:
+			optimized_code_string = self.optimization_attempts[-1].get('code')
 		self.get_logger().record(
 			"performance_validation_complete",
 			{
@@ -378,6 +433,7 @@ class atomic_contention(Formula_Base):
 				"metric_improvement": metric_improvement,
 				"cycle_latency_improvement": cycle_latency_improvement,
 				"optimization_report": self.optimization_report,
+				"optimized_code_string": optimized_code_string,
 			},
 		)
 
@@ -400,3 +456,34 @@ class atomic_contention(Formula_Base):
 		Summarizes the results of the previous passes for future prompts.
 		"""
 		pass
+
+	def get_optimization_history_context(self) -> str:
+		"""
+		Generate context about previous optimization attempts for the LLM.
+		
+		Returns:
+		    str: Formatted context about previous optimization attempts
+		"""
+		if not self.optimization_attempts:
+			return "This is the first optimization attempt."
+		
+		context = "PREVIOUS OPTIMIZATION ATTEMPTS:\n"
+		for i, attempt in enumerate(self.optimization_attempts, 1):
+			context += f"Iteration {i}: "
+			if attempt['success']:
+				context += f"SUCCESS - Atomic contention reduced by {attempt['improvement']:.1f}%\n"
+			else:
+				context += f"FAILED - Atomic contention increased by {abs(attempt['improvement']):.1f}%\n"
+		
+		return context
+
+	def reset_optimization_state(self):
+		"""
+		Reset the optimization state for a new optimization cycle.
+		"""
+		self.optimization_attempts = []
+		self.iteration_count = 0
+		self.current_summary = None
+		self.previous_source_code = None
+		self.success = False
+		logging.info("Optimization state reset for new cycle")

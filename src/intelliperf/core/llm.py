@@ -55,7 +55,7 @@ class LLM:
 			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key)
 			dspy.configure(lm=self.lm)
 
-	def ask(self, user_prompt: str) -> str:
+	def ask(self, user_prompt: str, record_meta: str = None) -> str:
 		# Log the LLM interaction start
 		if self.logger:
 			self.logger.record(
@@ -65,6 +65,7 @@ class LLM:
 					"user_prompt": user_prompt,
 					"model": self.model,
 					"provider": self.provider,
+					"record_meta": record_meta,
 				},
 			)
 
@@ -102,7 +103,7 @@ class LLM:
 
 			# Log successful response with reasoning if available
 			if self.logger:
-				success_data = {"response": response_content, "response_length": len(response_content)}
+				success_data = {"response": response_content, "response_length": len(response_content), "record_meta": record_meta}
 				if reasoning:
 					success_data["reasoning"] = reasoning
 					success_data["reasoning_type"] = "chain_of_thought"
@@ -114,6 +115,6 @@ class LLM:
 		except Exception as e:
 			# Log error
 			if self.logger:
-				self.logger.record("llm_call_error", {"error": str(e), "error_type": type(e).__name__})
+				self.logger.record("llm_call_error", {"error": str(e), "error_type": type(e).__name__, "record_meta": record_meta})
 			# Re-raise the exception to maintain existing behavior
 			raise

@@ -101,6 +101,7 @@ def intelliperf_parser():
 	optional_args.add_argument(
 		"--trace_path",
 		type=str,
+		default="trace",
 		metavar="PATH",
 		help="Enable comprehensive tracing and save trace logs to specified path (e.g., --trace_path logs/run_1.json)",
 	)
