@@ -27,6 +27,7 @@ from typing import Optional
 
 import dspy
 import requests
+import sys
 
 from intelliperf.core.logger import Logger
 
@@ -54,6 +55,8 @@ class LLM:
 			self.use_amd = False
 			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key)
 			dspy.configure(lm=self.lm)
+
+
 
 	def ask(self, user_prompt: str, record_meta: str = None) -> str:
 		# Log the LLM interaction start
@@ -117,10 +120,18 @@ class LLM:
 			return response_content
 
 		except Exception as e:
-			# Log error
+			error_message = str(e)
+			error_type = type(e).__name__
+			
 			if self.logger:
 				self.logger.record(
-					"llm_call_error", {"error": str(e), "error_type": type(e).__name__, "record_meta": record_meta}
+					"llm_call_error", 
+					{
+						"error": error_message, 
+						"error_type": error_type, 
+						"record_meta": record_meta
+					}
 				)
-			# Re-raise the exception to maintain existing behavior
-			raise
+			
+			print(f"ERROR: {error_message}")
+			sys.exit(1)
