@@ -242,9 +242,7 @@ def main():
 
 	# Helper function to flush logs if tracing is enabled
 	def flush_logs_if_enabled():
-		print(f"args.trace_path: {args.trace_path}")
 		if hasattr(optimizer, "get_logger") and args.trace_path:
-			print(f"Flushing logs to {args.trace_path}")
 			optimizer.get_logger().flush(args.trace_path)
 
 	num_attempts = 0 if args.formula == "diagnoseOnly" else args.num_attempts
