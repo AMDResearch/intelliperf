@@ -233,6 +233,7 @@ class memory_access(Formula_Base):
 		self.current_kernel_files = [kernel_file]
 		try:
 			optimized_file_content = llm.ask(user_prompt).strip()
+			optimized_file_content = self.postprocess_llm_code(optimized_file_content)
 
 			with open(kernel_file, "w") as f:
 				f.write(optimized_file_content)
