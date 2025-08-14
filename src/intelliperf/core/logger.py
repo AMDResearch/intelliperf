@@ -47,6 +47,15 @@ class Logger:
 		# Record run start
 		self.record("run_start", {"run_id": self.run_id, "run_name": self.run_name, "timestamp": self.start_time})
 
+	def __del__(self):
+		"""Destructor to ensure logs are flushed when Logger object is destroyed"""
+		try:
+			if hasattr(self, 'buffer') and self.buffer:
+				self.flush()
+		except Exception:
+			# Ignore any errors during cleanup
+			pass
+
 	def record(self, event_type: str, data: Dict[str, Any]) -> None:
 		"""
 		Record an event - always succeeds, just adds to buffer.
