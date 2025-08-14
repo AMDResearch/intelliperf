@@ -27,6 +27,9 @@
 def intelliperf_parser():
 	import argparse
 
+	# Default model constant
+	DEFAULT_MODEL = "gpt-4o"
+
 	parser = argparse.ArgumentParser(
 		description="Optimize and analyze the given application based on available IntelliPerf formulas.",
 		prog="intelliperf",
@@ -130,9 +133,9 @@ def intelliperf_parser():
 		"-m",
 		"--model",
 		type=str,
-		default="gpt-4o",
+		default=DEFAULT_MODEL,
 		metavar="",
-		help="Specify the model to use for optimization (default: gpt-4o-mini)",
+		help=f"Specify the model to use for optimization (default: {DEFAULT_MODEL})",
 	)
 	optional_args.add_argument(
 		"-r",
@@ -141,6 +144,11 @@ def intelliperf_parser():
 		default="openai",
 		metavar="",
 		help="Specify the provider to use for optimization (default: openai)",
+	)
+	optional_args.add_argument(
+		"--internal",
+		action="store_true",
+		help="Use AMD's internal LLM service (sets provider to llm.amd.com and appropriate model)",
 	)
 	optional_args.add_argument(
 		"-l",
@@ -153,6 +161,13 @@ def intelliperf_parser():
 	optional_args.add_argument("-o", "--output_file", type=str, metavar="", help="Path to the output file")
 
 	args = parser.parse_args()
+
+	# Handle internal LLM option
+	if args.internal:
+		args.provider = "https://llm-api.amd.com/azure"
+		# Only override model if user didn't explicitly set it (still using default)
+		if args.model == DEFAULT_MODEL:
+			args.model = "dvue-aoai-001-o4-mini"
 
 	# Validate that project_directory is provided when formula is not diagnoseOnly
 	if args.formula != "diagnoseOnly" and not args.project_directory:
