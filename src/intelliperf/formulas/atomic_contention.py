@@ -266,22 +266,24 @@ class atomic_contention(Formula_Base):
 
 			# Track this optimization attempt
 			self.iteration_count += 1
-			
+
 			# Store attempt info (will be updated with results after validation)
-			self.optimization_attempts.append({
-				'iteration': self.iteration_count,
-				'code': optimized_file_content,
-				'success': None,  # Will be updated after performance validation
-				'improvement': 0.0  # Will be updated after performance validation
-			})
+			self.optimization_attempts.append(
+				{
+					"iteration": self.iteration_count,
+					"code": optimized_file_content,
+					"success": None,  # Will be updated after performance validation
+					"improvement": 0.0,  # Will be updated after performance validation
+				}
+			)
 
 			# Log successful optimization
 			self.get_logger().record(
 				"optimization_success",
 				{
-					"optimized_code_length": len(optimized_file_content), 
+					"optimized_code_length": len(optimized_file_content),
 					"kernel_file": kernel_file,
-					"iteration": self.iteration_count
+					"iteration": self.iteration_count,
 				},
 			)
 
@@ -398,29 +400,33 @@ class atomic_contention(Formula_Base):
 
 		if not success or speedup < 1:
 			self.current_summary = self.optimization_report
-			
+
 			# Update the latest optimization attempt with results
 			if self.optimization_attempts:
 				latest_attempt = self.optimization_attempts[-1]
-				latest_attempt['success'] = False
-				latest_attempt['improvement'] = -cycle_latency_improvement  # Negative for worsening
-				logging.info(f"Optimization iteration {latest_attempt['iteration']} FAILED: "
-						   f"Atomic contention increased by {abs(cycle_latency_improvement):.1f}%")
-			
+				latest_attempt["success"] = False
+				latest_attempt["improvement"] = -cycle_latency_improvement  # Negative for worsening
+				logging.info(
+					f"Optimization iteration {latest_attempt['iteration']} FAILED: "
+					f"Atomic contention increased by {abs(cycle_latency_improvement):.1f}%"
+				)
+
 			return Result(success=False, error_report=self.optimization_report)
 
 		# Update the latest optimization attempt with results
 		if self.optimization_attempts:
 			latest_attempt = self.optimization_attempts[-1]
-			latest_attempt['success'] = True
-			latest_attempt['improvement'] = cycle_latency_improvement
-			logging.info(f"Optimization iteration {latest_attempt['iteration']} SUCCEEDED: "
-					   f"Atomic contention reduced by {cycle_latency_improvement:.1f}%")
+			latest_attempt["success"] = True
+			latest_attempt["improvement"] = cycle_latency_improvement
+			logging.info(
+				f"Optimization iteration {latest_attempt['iteration']} SUCCEEDED: "
+				f"Atomic contention reduced by {cycle_latency_improvement:.1f}%"
+			)
 
 		# Log performance validation results
 		optimized_code_string = None
 		if self.optimization_attempts:
-			optimized_code_string = self.optimization_attempts[-1].get('code')
+			optimized_code_string = self.optimization_attempts[-1].get("code")
 		self.get_logger().record(
 			"performance_validation_complete",
 			{
@@ -460,21 +466,21 @@ class atomic_contention(Formula_Base):
 	def get_optimization_history_context(self) -> str:
 		"""
 		Generate context about previous optimization attempts for the LLM.
-		
+
 		Returns:
 		    str: Formatted context about previous optimization attempts
 		"""
 		if not self.optimization_attempts:
 			return "This is the first optimization attempt."
-		
+
 		context = "PREVIOUS OPTIMIZATION ATTEMPTS:\n"
 		for i, attempt in enumerate(self.optimization_attempts, 1):
 			context += f"Iteration {i}: "
-			if attempt['success']:
+			if attempt["success"]:
 				context += f"SUCCESS - Atomic contention reduced by {attempt['improvement']:.1f}%\n"
 			else:
 				context += f"FAILED - Atomic contention increased by {abs(attempt['improvement']):.1f}%\n"
-		
+
 		return context
 
 	def reset_optimization_state(self):
