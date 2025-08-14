@@ -103,7 +103,11 @@ class LLM:
 
 			# Log successful response with reasoning if available
 			if self.logger:
-				success_data = {"response": response_content, "response_length": len(response_content), "record_meta": record_meta}
+				success_data = {
+					"response": response_content,
+					"response_length": len(response_content),
+					"record_meta": record_meta,
+				}
 				if reasoning:
 					success_data["reasoning"] = reasoning
 					success_data["reasoning_type"] = "chain_of_thought"
@@ -115,6 +119,8 @@ class LLM:
 		except Exception as e:
 			# Log error
 			if self.logger:
-				self.logger.record("llm_call_error", {"error": str(e), "error_type": type(e).__name__, "record_meta": record_meta})
+				self.logger.record(
+					"llm_call_error", {"error": str(e), "error_type": type(e).__name__, "record_meta": record_meta}
+				)
 			# Re-raise the exception to maintain existing behavior
 			raise
