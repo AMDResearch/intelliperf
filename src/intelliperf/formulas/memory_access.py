@@ -98,7 +98,13 @@ class memory_access(Formula_Base):
 		Returns:
 		    Result: DataFrame containing the performance report card
 		"""
-		return super().profile_pass()
+		super().profile_pass()
+
+		# Log profiling results
+		if hasattr(self, "_initial_profiler_results") and self._initial_profiler_results:
+			self.get_logger().record(
+				"profile_pass_complete", {"profiler_results": self._initial_profiler_results, "top_n": self.top_n}
+			)
 
 	def instrument_pass(self) -> Result:
 		"""
@@ -108,6 +114,11 @@ class memory_access(Formula_Base):
 		    Result: Instrumentation data containing the kernel name, arguments, lines, and file path as dict
 		"""
 		super().instrument_pass()
+
+		# Log instrumentation completion
+		self.get_logger().record(
+			"instrument_pass_complete", {"success": True, "note": "Instrumentation pass completed via parent class"}
+		)
 
 		return Result(
 			success=False,
@@ -145,6 +156,7 @@ class memory_access(Formula_Base):
 			system_prompt=system_prompt,
 			model=model,
 			provider=provider,
+			logger=self.get_logger(),  # Add logger here
 		)
 
 		kernel = None
@@ -235,6 +247,12 @@ class memory_access(Formula_Base):
 			optimized_file_content = llm.ask(user_prompt).strip()
 			optimized_file_content = self.postprocess_llm_code(optimized_file_content)
 
+			# Log successful optimization
+			self.get_logger().record(
+				"optimization_success",
+				{"optimized_code_length": len(optimized_file_content), "kernel_file": kernel_file},
+			)
+
 			with open(kernel_file, "w") as f:
 				f.write(optimized_file_content)
 			logging.debug(f"Optimized file content: {optimized_file_content}")
@@ -246,8 +264,10 @@ class memory_access(Formula_Base):
 				},
 			)
 		except Exception as e:
-			logging.error(f"An unexpected error occurred - {str(e)}")
-			return Result(success=False, error_report=f"An unexpected error occurred - {str(e)}")
+			error_msg = f"An unexpected error occurred - {str(e)}"
+			self.get_logger().record("optimization_error", {"error": error_msg, "error_type": type(e).__name__})
+			logging.error(error_msg)
+			return Result(success=False, error_report=error_msg)
 
 	def compiler_pass(self) -> Result:
 		"""
@@ -334,6 +354,22 @@ class memory_access(Formula_Base):
 		if not success or speedup < 1:
 			self.current_summary = self.optimization_report
 			return Result(success=False, error_report=self.optimization_report)
+
+		# Log performance validation results
+		self.get_logger().record(
+			"performance_validation_complete",
+			{
+				"success": success,
+				"unoptimized_time_ns": unoptimized_time,
+				"optimized_time_ns": optimized_time,
+				"unoptimized_coal": unoptimized_coal,
+				"optimized_coal": optimized_coal,
+				"speedup": speedup,
+				"coal_improvement": coal_improvement,
+				"optimization_report": self.optimization_report,
+			},
+		)
+
 		logging.info(self.optimization_report)
 
 		self.success = True
