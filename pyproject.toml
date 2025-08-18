@@ -39,7 +39,7 @@ python3 -m pip install -r requirements.txt
 
 
 [tool.nexus]
-git = "git@github.com:AMDResearch/nexus.git"
+git = "https://github.com/AMDResearch/nexus"
 branch = "main"
 build_command = """
 export CC=${ROCM_PATH}/bin/hipcc
@@ -59,6 +59,9 @@ dev = [
 [tool.ruff]
 line-length = 120
 target-version = "py38"
+exclude = [
+    "external/guided-tuning/"
+]
 
 [tool.ruff.lint]
 select = [
