@@ -38,8 +38,31 @@ python3 -m pip install -r requirements.txt
 """
 
 
+
+[tool.omniprobe]
+git = "https://github.com/AMDResearch/omniprobe.git"
+branch = "4eb1b3d49b83f2d50823525e073eea356661e871"
+build_command = """
+export CC=${ROCM_PATH}/bin/hipcc
+export CXX=${ROCM_PATH}/bin/hipcc
+git submodule update --init --recursive
+python3 -m pip install -r omniprobe/requirements.txt
+#TODO: search for a Triton LLVM.
+if [ -d "/root/.triton/llvm/llvm-ubuntu-x64" ]; then
+    export TRITON_LLVM_PATH="/root/.triton/llvm/llvm-ubuntu-x64"
+else
+    export TRITON_LLVM_PATH="${ROCM_PATH}/llvm/"
+fi
+cmake -DCMAKE_PREFIX_PATH=${ROCM_PATH} \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=install \
+      -DCMAKE_VERBOSE_MAKEFILE=ON -S . -B build &&
+cmake --build build --parallel 1 &&
+cmake --install build
+"""
+
 [tool.nexus]
-git = "git@github.com:AMDResearch/nexus.git"
+git = "https://github.com/AMDResearch/nexus"
 branch = "main"
 build_command = """
 export CC=${ROCM_PATH}/bin/hipcc
@@ -59,6 +82,9 @@ dev = [
 [tool.ruff]
 line-length = 120
 target-version = "py38"
+exclude = [
+    "external/guided-tuning/"
+]
 
 [tool.ruff.lint]
 select = [

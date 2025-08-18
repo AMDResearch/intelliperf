@@ -22,11 +22,9 @@
 # SOFTWARE.
 ################################################################################
 
-import glob
 import json
 import logging
 import os
-import shutil
 
 from intelliperf.core.llm import LLM
 from intelliperf.formulas.formula_base import (
@@ -35,7 +33,10 @@ from intelliperf.formulas.formula_base import (
 	filter_json_field,
 	get_kernel_name,
 )
-from intelliperf.utils.env import get_llm_api_key
+from intelliperf.utils.env import (
+	get_llm_api_key,
+	get_omniprobe_path,
+)
 from intelliperf.utils.process import capture_subprocess_output
 from intelliperf.utils.regex import generate_ecma_regex_from_list
 
@@ -131,17 +132,6 @@ class bank_conflict(Formula_Base):
 		"""
 		super().instrument_pass()
 
-		# Log instrumentation completion
-		self.get_logger().record(
-			"instrument_pass_complete", {"success": True, "note": "Instrumentation pass completed via parent class"}
-		)
-
-		return Result(
-			success=False,
-			asset=self._instrumentation_results,
-			error_report="Instrumentation pass not implemented for bank conflict.",
-		)
-
 		# Always instrument the first kernel
 		kernel_to_instrument = self.get_top_kernel()
 		if kernel_to_instrument is None:
@@ -150,11 +140,11 @@ class bank_conflict(Formula_Base):
 				error_report="No source code found. Please compile your code with -g.",
 			)
 
-		omniprobe_output_dir = os.path.join(self._application.get_project_directory(), "memory_analysis_output")
+		omniprobe_output_file = os.path.join(self._application.get_project_directory(), "memory_analysis_output.json")
 
-		# Remove directory if it exists and create a new one
-		if os.path.exists(omniprobe_output_dir):
-			shutil.rmtree(omniprobe_output_dir)
+		# Remove file if it exists before running omniprobe
+		if os.path.exists(omniprobe_output_file):
+			os.remove(omniprobe_output_file)
 
 		ecma_regex = generate_ecma_regex_from_list([kernel_to_instrument])
 		logging.debug(f"ECMA Regex for kernel names: {ecma_regex}")
@@ -162,12 +152,16 @@ class bank_conflict(Formula_Base):
 		logging.debug(f"Omniprobe profiling command is: {cmd}")
 		success, output = capture_subprocess_output(
 			[
-				"omniprobe",
+				str(get_omniprobe_path()),
 				"--instrumented",
 				"--analyzers",
 				"MemoryAnalysis",
 				"--kernels",
-				ecma_regex,
+				f'"{ecma_regex}"',
+				"--log-format",
+				"json",
+				"--log-location",
+				omniprobe_output_file,
 				"--",
 				" ".join(self._application.get_app_cmd()),
 			],
@@ -182,10 +176,9 @@ class bank_conflict(Formula_Base):
 
 		# Try loading the memory analysis output
 		# Find all files in the memory_analysis_output directory
-		output_files = glob.glob(os.path.join(omniprobe_output_dir, "memory_analysis_*.json"))
-		if len(output_files) == 0:
-			return Result(success=False, error_report="No memory analysis output files found.")
-		output_file = output_files[0]
+		output_file = omniprobe_output_file
+		if not os.path.exists(output_file):
+			return Result(success=False, error_report="Memory analysis output file not found.")
 		try:
 			with open(output_file, "r") as f:
 				self._instrumentation_results = json.load(f)
@@ -229,13 +222,6 @@ class bank_conflict(Formula_Base):
 		llm = LLM(
 			api_key=llm_key, system_prompt=system_prompt, model=model, provider=provider, logger=self.get_logger()
 		)
-
-		kernel_to_optimize = self.get_top_kernel()
-		if kernel_to_optimize is None:
-			return Result(
-				success=False,
-				error_report="No source code or bank conflicts found. Please compile your code with -g.",
-			)
 
 		kernel = None
 		kernel_file = None
@@ -301,7 +287,52 @@ class bank_conflict(Formula_Base):
 					f"access the same memory bank simultaneously, causing serialization and performance degradation."
 				)
 		else:
-			pass
+			kernel = self._instrumentation_results[0]["kernel_analysis"]["kernel_info"]["name"]
+			kernel_name = get_kernel_name(kernel)
+			files = {}  # supposed to be a dict of file_path -> list of line numbers
+			line_numbers = []
+
+			# Extract files from bank conflict accesses
+			bank_conflicts = self._instrumentation_results[0]["kernel_analysis"]["bank_conflicts"]["accesses"]
+			for access in bank_conflicts:
+				file_path = access["source_location"]["file"]
+				line_number = access["source_location"]["line"]
+				if file_path not in files:
+					files[file_path] = []
+				files[file_path].append(line_number)
+
+			kernel_file = None
+			for file in files.keys():
+				if os.path.exists(file):
+					with open(file, "r") as f:
+						unoptimized_file_content = f.read()
+						if kernel_name in unoptimized_file_content:
+							kernel_file = file
+							line_numbers.append(files[file])
+							break
+			if kernel_file is None:
+				return Result(success=False, error_report="Kernel file not found.")
+
+			# Create user prompt and required reports
+			user_prompt = (
+				f"There is a bank conflict in the kernel {kernel} at line(s) numbered {line_numbers} in the source code {unoptimized_file_content}."
+				f" Please fix the conflict but do not change the semantics of the program."
+				" Do not remove any comments or licenses."
+				" Do not include any markdown code blocks or text other than the code."
+			)
+			if self.current_summary is not None:
+				user_prompt += f"\n\nThe current summary is: {self.current_summary}"
+				cur_diff = self.compute_diff([kernel_file])
+				user_prompt += f"\nThe diff between the current and initial code is: {cur_diff}"
+
+			self.previous_source_code = unoptimized_file_content
+
+			args = kernel.split("(")[1].split(")")[0]
+			self.bottleneck_report = (
+				f"Bank Conflict Detection: IntelliPerf identified shared memory bank conflicts in kernel "
+				f"`{kernel_name}` with arguments `{args}`. Bank conflicts occur when multiple threads "
+				f"access the same memory bank simultaneously, causing serialization and performance degradation."
+			)
 
 		if kernel is None:
 			return Result(success=False, error_report="Failed to extract the kernel name.")
@@ -363,10 +394,13 @@ class bank_conflict(Formula_Base):
 		return result
 
 	def performance_validation_pass(self) -> Result:
+		# Currently, Omniprobe appends the '[clone .kd]' suffix to the kernel name
+		# this needs to me adjusted to reflect the actual kernel name
+		kernel_signature_non_cloned = self.current_kernel_signature.split(" [clone .kd]")[0]
 		unoptimized_results = filter_json_field(
 			self._initial_profiler_results,
 			field="kernel",
-			comparison_func=lambda x: x == self.current_kernel_signature,
+			comparison_func=lambda x: x == kernel_signature_non_cloned,
 		)
 
 		unoptimized_time = unoptimized_results[0]["durations"]["ns"]
@@ -378,7 +412,7 @@ class bank_conflict(Formula_Base):
 		optimized_results = filter_json_field(
 			self._optimization_results,
 			field="kernel",
-			comparison_func=lambda x: x == self.current_kernel_signature,
+			comparison_func=lambda x: x == kernel_signature_non_cloned,
 		)
 
 		optimized_time = optimized_results[0]["durations"]["ns"]

@@ -160,7 +160,7 @@ class Application:
 				"-w",
 				str(last_matching_id),
 				"-k",
-				f"{'|'.join(top_n_kernels)}",
+				f'"{"|".join(top_n_kernels)}"',
 				"--separate",
 				"--save",
 				f"{get_guided_tuning_path()}/intelliperf_report_card.json",

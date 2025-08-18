@@ -28,6 +28,12 @@ from pathlib import Path
 from intelliperf.utils.process import exit_on_fail
 
 
+def get_omniprobe_path():
+	if os.environ.get("OMNIPROBE_PATH"):
+		return Path(os.environ["OMNIPROBE_PATH"]).resolve()
+	return (Path(__file__).resolve().parent / "../../../external/omniprobe/install/bin/logDuration/omniprobe").resolve()
+
+
 def get_guided_tuning_path():
 	if os.environ.get("GT_TUNING"):
 		return Path(os.environ["GT_TUNING"]).resolve()

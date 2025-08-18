@@ -32,14 +32,16 @@ parallel=8
 build_dir=build
 verbose=false
 instrument=false
+omniprobe_path=""
 
 print_usage() {
     echo "Usage: $0 [options]"
     echo "Options:"
-    echo "  -c, --clean       Clean build directory"
-    echo "  -v, --verbose     Print verbose output"
-    echo "  -i, --instrument  Instrument the code with Omniprobe"
-    echo "  -j, --jobs <num>  Set number of parallel jobs"
+    echo "  -c, --clean             Clean build directory"
+    echo "  -v, --verbose           Print verbose output"
+    echo "  -i, --instrument        Instrument the code with Omniprobe"
+    echo "  -o, --omniprobe <path>  Specify path to omniprobe tool"
+    echo "  -j, --jobs <num>        Set number of parallel jobs"
 }
 
 # Parse arguments
@@ -56,6 +58,16 @@ while [[ $# -gt 0 ]]; do
         -i|--instrument)
             instrument=true
             shift
+            ;;
+        -o|--omniprobe)
+            if [[ -n "$2" ]]; then
+                omniprobe_path="$2"
+                shift 2
+            else
+                echo "Error: --omniprobe requires a path argument"
+                print_usage
+                exit 1
+            fi
             ;;
         -j|--jobs)
             if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
@@ -88,6 +100,9 @@ if [ "$instrument" = true ]; then
     cmake_config_args+=(-DINSTRUMENT=ON)
 fi
 
+if [ -n "$omniprobe_path" ]; then
+    cmake_config_args+=(-DOMNIPROBE_PATH="$omniprobe_path")
+fi
 
 
 config_command="cmake -B "$build_dir"\
