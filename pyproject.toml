@@ -38,6 +38,7 @@ python3 -m pip install -r requirements.txt
 """
 
 
+
 [tool.omniprobe]
 git = "https://github.com/AMDResearch/omniprobe.git"
 branch = "4eb1b3d49b83f2d50823525e073eea356661e871"
@@ -59,7 +60,6 @@ cmake -DCMAKE_PREFIX_PATH=${ROCM_PATH} \
 cmake --build build --parallel 1 &&
 cmake --install build
 """
-
 
 [tool.nexus]
 git = "https://github.com/AMDResearch/nexus"
