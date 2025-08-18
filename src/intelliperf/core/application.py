@@ -30,7 +30,6 @@ import shutil
 import tempfile
 
 import pandas as pd
-
 from intelliperf.utils import process
 from intelliperf.utils.env import (
 	get_guided_tuning_path,

@@ -34,7 +34,6 @@ from pprint import pformat
 import ml_dtypes
 import numpy as np
 import pandas as pd
-
 from accordo.python.code_gen import generate_header
 from accordo.python.communicate import get_kern_arg_data, send_response
 from accordo.python.utils import run_subprocess
