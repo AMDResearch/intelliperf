@@ -39,6 +39,7 @@ from accordo.python.code_gen import generate_header
 from accordo.python.communicate import get_kern_arg_data, send_response
 from accordo.python.utils import run_subprocess
 from intelliperf.core.application import Application
+from intelliperf.core.logger import Logger
 from intelliperf.utils.env import get_accordo_path
 from intelliperf.utils.process import capture_subprocess_output, exit_on_fail
 
@@ -92,6 +93,23 @@ class Formula_Base:
 		logging.debug(f"project_directory: {project_directory}")
 		logging.debug(f"app_cmd: {app_cmd}")
 
+		# Initialize logger
+		self._logger = Logger(run_name=name)
+		self._logger.record(
+			"formula_init",
+			{
+				"name": name,
+				"build_command": build_command,
+				"instrument_command": instrument_command,
+				"project_directory": project_directory,
+				"app_cmd": app_cmd,
+				"top_n": top_n,
+				"model": model,
+				"provider": provider,
+				"in_place": in_place,
+			},
+		)
+
 		# Create a reference copy for comparison
 		self._reference_app = Application(
 			name,
@@ -127,6 +145,15 @@ class Formula_Base:
 		self.current_kernel_signature = None
 
 		self.build()
+
+	def get_logger(self) -> Logger:
+		"""
+		Get the logger instance for this formula run.
+
+		Returns:
+			Logger: The logger instance
+		"""
+		return self._logger
 
 	def _parse_kernel_signature(self, kernel_signature: str):
 		"""
@@ -357,6 +384,33 @@ class Formula_Base:
 		Summarizes the results of the previous passes for future prompts.
 		"""
 		pass
+
+	def postprocess_llm_code(self, optimized_file_content: str) -> str:
+		"""
+		Post-process the LLM generated code before writing to file.
+
+		Removes markdown code blocks (```c++, ```python, etc.) from the LLM response.
+
+		Args:
+			optimized_file_content (str): The LLM generated code
+
+		Returns:
+			str: The post-processed code
+		"""
+		# Remove markdown code blocks if present
+		content = optimized_file_content.strip()
+		if content.startswith("```") and content.endswith("```"):
+			# Remove the opening ``` and any language identifier
+			content = content[3:]  # Remove opening ```
+			# Find the first newline or end of string
+			first_newline = content.find("\n")
+			if first_newline != -1:
+				content = content[first_newline + 1 :]  # Skip language identifier line
+			# Remove the closing ```
+			if content.endswith("```"):
+				content = content[:-3]
+
+		return content
 
 	def compute_diff(self, filepaths: list[str]) -> str:
 		diffs = []
