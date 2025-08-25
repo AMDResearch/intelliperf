@@ -38,28 +38,6 @@ python3 -m pip install -r requirements.txt
 """
 
 
-[tool.omniprobe]
-git = "git@github.com:AMDResearch/omniprobe.git"
-branch = "9083730ab0da50114c767773df49cb1d2165ba7f"
-build_command = """
-export CC=${ROCM_PATH}/bin/hipcc
-export CXX=${ROCM_PATH}/bin/hipcc
-git submodule update --init --recursive
-#TODO: search for a Triton LLVM.
-if [ -d "/root/.triton/llvm/llvm-ubuntu-x64" ]; then
-    export TRITON_LLVM_PATH="/root/.triton/llvm/llvm-ubuntu-x64"
-else
-    export TRITON_LLVM_PATH="${ROCM_PATH}/llvm/"
-fi
-cmake -DCMAKE_PREFIX_PATH=${ROCM_PATH} \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX=install \
-      -DCMAKE_VERBOSE_MAKEFILE=ON -S . -B build &&
-cmake --build build --parallel 1 &&
-cmake --install build
-"""
-
-
 [tool.nexus]
 git = "git@github.com:AMDResearch/nexus.git"
 branch = "main"
