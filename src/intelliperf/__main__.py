@@ -241,6 +241,7 @@ def main():
 		"model": args.model,
 		"provider": args.provider,
 		"in_place": args.in_place,
+		"unittest_command": args.unittest_command,
 	}
 	if (
 		args.formula == "swizzling"
