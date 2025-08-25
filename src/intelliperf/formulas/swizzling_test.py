@@ -38,6 +38,7 @@ from intelliperf.formulas.formula_base import (
 	get_kernel_name,
 )
 from intelliperf.utils.env import get_llm_api_key
+from intelliperf.utils.process import capture_subprocess_output
 
 
 class SwizzlingOptimization(dspy.Signature):
@@ -78,6 +79,7 @@ class swizzling_test(Formula_Base):
 		provider: str = "openai",
 		in_place: bool = False,
 		output_kernel_file: str = None,
+		unittest_command: str = None,
 	):
 		super().__init__(
 			name,
@@ -89,6 +91,7 @@ class swizzling_test(Formula_Base):
 			model,
 			provider,
 			in_place,
+			unittest_command,
 		)
 
 		self.output_kernel_file = output_kernel_file
@@ -375,7 +378,7 @@ class swizzling_test(Formula_Base):
 				self.initial_source_code = initial_file_content
 				analysis_prompt = (
 					f"{self.initial_source_code}\n\n"
-					"I have this triton kernel and am trying to understand the memory access patterns of the kernel, and where there is memory locality that can be taken advantage of in the hardware cache. I will use this to swizzle the block id to better align the work so we have better cache locality.\n\n"
+					"I have this kernel and am trying to understand the memory access patterns of the kernel, and where there is memory locality that can be taken advantage of in the hardware cache. I will use this to swizzle the block id to better align the work so we have better cache locality.\n\n"
 					"I DO NOT want you to rewrite any code. I only want you to give me an overview for the memory access patterns and memory locality of the kernel. This will be used as context for future prompts that will take advantage of your insights. Make sure these insights on memory access patterns and locality between blocks in the kernel are accuracy and insightful so that I can actually take advantage of them to improve locality."
 				)
 				self.memory_analysis_prompt = analysis_prompt
@@ -399,6 +402,7 @@ class swizzling_test(Formula_Base):
 					logging.debug(f"Memory analysis output: {self.memory_analysis_output}")
 					logging.debug(f"Memory analysis reasoning: {self.memory_analysis_reasoning}")
 
+					# TODO: remove this
 					if self.output_kernel_file:
 						with open(self.output_kernel_file, "w") as f:
 							f.write("Memory access pattern prompt:\n")
@@ -575,19 +579,23 @@ class swizzling_test(Formula_Base):
 
 	def correctness_validation_pass(self, accordo_absolute_tolerance: float = 1e-6) -> Result:
 		"""
-		Validate the optimized kernel by comparing the output with the reference kernel
-
-		Args:
-		        accordo_absolute_tolerance (float): The absolute tolerance for the Accordo validation
-
-		Returns:
-		    Result: Validation status
+		Validate the optimized kernel by running the provided unittest_command.
+		If no unittest_command is provided, skip validation (treat as success).
 		"""
-		return Result(success=True, asset={"log": "Correctness validation pass not implemented for swizzling."})
-		result = super().correctness_validation_pass(self.current_kernel, self.current_args, accordo_absolute_tolerance)
-		if not result:
-			self.current_summary = result.error_report
-		return result
+		if not self.unittest_command:
+			return Result(success=True, asset={"log": "No unittest_command provided; skipping correctness validation."})
+
+		cmd_str = self.unittest_command
+		# Ensure we pass --validate to trigger correctness checking in the unit test
+		if "--validate" not in cmd_str.split():
+			cmd_str = f"{cmd_str} --validate"
+
+		success, output = capture_subprocess_output(
+			cmd_str.split(), working_directory=self._application.get_project_directory()
+		)
+		if not success:
+			return Result(success=False, error_report=f"Unit test validation failed. Output:\n{output}")
+		return Result(success=True, asset={"log": output})
 
 	def performance_validation_pass(self) -> Result:
 		unoptimized_results = filter_json_field(
