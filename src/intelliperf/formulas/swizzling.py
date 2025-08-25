@@ -65,7 +65,7 @@ class SwizzlingOptimization(dspy.Signature):
 	)
 
 
-class swizzling_test(Formula_Base):
+class swizzling(Formula_Base):
 	def __init__(
 		self,
 		name: str,
