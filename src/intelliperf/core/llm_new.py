@@ -47,7 +47,7 @@ class LLM:
 			self.header = {"Ocp-Apim-Subscription-Key": api_key}
 		else:
 			self.use_amd = False
-			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key, max_tokens=20000, temperature=1.0)
+			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key, max_tokens=10000, temperature=1.0)
 			dspy.configure(lm=self.lm)
 
 	def ask(self, user_prompt: str, signature=None, answer_type: str = "optimized_code"):
@@ -58,8 +58,8 @@ class LLM:
 					{"role": "system", "content": self.system_prompt},
 					{"role": "user", "content": user_prompt},
 				],
-				"max_Tokens": 100000,
-				"max_Completion_Tokens": 100000,
+				"max_Tokens": 10000,
+				"max_Completion_Tokens": 10000,
 			}
 			url = f"{self.provider}/engines/{self.model}/chat/completions"
 			resp = requests.post(url, json=body, headers=self.header)
