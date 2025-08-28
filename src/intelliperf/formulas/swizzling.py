@@ -22,15 +22,15 @@
 # SOFTWARE.
 ################################################################################
 
+import difflib
 import json
 import logging
 import os
-import difflib
-import dspy
-import textwrap
 
-from intelliperf.core.llm import LLM
+import dspy
+
 from intelliperf.core.gpu_spec import GPUSpec
+from intelliperf.core.llm import LLM
 from intelliperf.formulas.formula_base import (
 	Formula_Base,
 	Result,
@@ -38,7 +38,6 @@ from intelliperf.formulas.formula_base import (
 	get_kernel_name,
 )
 from intelliperf.utils.env import get_llm_api_key
-from intelliperf.utils.process import capture_subprocess_output
 
 
 class SwizzlingOptimization(dspy.Signature):
@@ -75,7 +74,6 @@ class swizzling(Formula_Base):
 		model: str = "gpt-4o",
 		provider: str = "openai",
 		in_place: bool = False,
-
 		unittest_command: str = None,
 	):
 		super().__init__(
@@ -104,7 +102,7 @@ class swizzling(Formula_Base):
 		self.previous_source_code = None
 		self.memory_analysis_output = None
 		self.success = False
-		
+
 		# New fields for logging
 		self.memory_analysis_prompt = None
 		self.optimization_prompt = None
@@ -127,7 +125,6 @@ class swizzling(Formula_Base):
 
 	# Removed local compute_diff; using Formula_Base.compute_diff instead
 
-	
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
 		Build the application and store the summary.
@@ -203,7 +200,7 @@ class swizzling(Formula_Base):
 
 		provider = self.provider
 		model = self.model
-		
+
 		# Only create analysis_llm if we haven't done memory analysis yet
 		if not self.memory_analysis_done:
 			analysis_llm = LLM(
@@ -212,7 +209,7 @@ class swizzling(Formula_Base):
 				model=model,
 				provider=provider,
 			)
-		
+
 		optimization_llm = LLM(
 			api_key=llm_key,
 			system_prompt=optimization_system_prompt,
@@ -243,7 +240,7 @@ class swizzling(Formula_Base):
 			kernel = filtered_report_card[0]["kernel"]
 			files = filtered_report_card[0]["source"]["files"]
 			kernel_name = get_kernel_name(kernel)
-			
+
 			logging.debug(f"Kernel name: {kernel_name}")
 			kernel_file = None
 			for file in files:
@@ -287,7 +284,7 @@ class swizzling(Formula_Base):
 						answer_type="memory_analysis_output",
 					)
 					self.memory_analysis_output = self.memory_analysis_output.strip()
-					
+
 					logging.debug(f"Memory analysis output: {self.memory_analysis_output}")
 
 					self.memory_analysis_done = True
@@ -331,7 +328,6 @@ class swizzling(Formula_Base):
 				"EXTREMELY IMPORTANT - I always want the original pid to be written to a variable called pid and ending in a variable called pid. If we have a 2D grid of pids, they must be called pid_x and pid_y, and so on. It is very important that you name the variables by this format and write the whole code based around these variable names so that it runs successfully.\n\n"
 				"EXTREMELY IMPORTANT - Make sure your output is in the correct format. The fields are reason_why_old_was_slow, summary_of_optimization, reason_why_new_should_be_better, result_code.\n\n"
 				"**OPTIMIZATION GOAL** - You have not reached the maximum performance yet. DO NOT REIMPLEMENT A PREVIOUS SWIZZLING PATTERN. If you have previously tried an approach and it is shown in the diff, do not reimplement it.\n\n"
-
 			)
 
 			if self.current_summary is not None:
@@ -349,7 +345,7 @@ class swizzling(Formula_Base):
 		logging.debug(f"Optimization prompt: {optimization_prompt}")
 
 		self.current_kernel = kernel.split("(")[0]
-		#self.current_args = kernel.split("(")[1].split(")")[0].split(",")
+		# self.current_args = kernel.split("(")[1].split(")")[0].split(",")
 		self.current_kernel_signature = kernel
 
 		self.current_kernel_files = [kernel_file]
@@ -357,14 +353,12 @@ class swizzling(Formula_Base):
 			with open(kernel_file, "r") as f:
 				code_before_opt = f.read()
 
-			response = optimization_llm.ask(
-				optimization_prompt, signature=SwizzlingOptimization
-			)
+			response = optimization_llm.ask(optimization_prompt, signature=SwizzlingOptimization)
 			optimized_file_content = response.result_code.strip()
 
 			# Strip markdown code blocks if present using Formula_Base helper
 			optimized_file_content = self.postprocess_llm_code(optimized_file_content)
-			
+
 			diff = difflib.unified_diff(
 				code_before_opt.splitlines(True),
 				optimized_file_content.splitlines(True),
@@ -491,7 +485,7 @@ class swizzling(Formula_Base):
 			self.current_summary = self.optimization_report
 			# Always return success=False to continue iterating
 			return Result(success=False, error_report=self.best_iteration_report)
-		
+
 		return Result(success=True, asset={"log": self.best_iteration_report})
 
 	def write_results(self, output_file: str = None):

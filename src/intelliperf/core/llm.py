@@ -56,7 +56,13 @@ class LLM:
 			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key)
 			dspy.configure(lm=self.lm)
 
-	def ask(self, user_prompt: str, signature="prompt: str -> optimized_code: str", answer_type: str = "optimized_code", record_meta: str = None):
+	def ask(
+		self,
+		user_prompt: str,
+		signature="prompt: str -> optimized_code: str",
+		answer_type: str = "optimized_code",
+		record_meta: str = None,
+	):
 		# Log the LLM interaction start
 		if self.logger:
 			self.logger.record(
