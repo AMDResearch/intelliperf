@@ -303,9 +303,6 @@ class swizzling(Formula_Base):
 					history_prompt_part += f"Applied diff:\n{item['diff']}\n"
 					history_prompt_part += f"Profiling report:\n{item['report']}\n\n"
 
-			with open(kernel_file, "r") as f:
-				current_file_content = f.read()
-
 			# Stage 2: Swizzling optimization
 			optimization_prompt = (
 				f"The original code is:\n\n {self.initial_source_code}\n\n"
@@ -402,6 +399,7 @@ class swizzling(Formula_Base):
 	def correctness_validation_pass(self, accordo_absolute_tolerance: float = 1e-6) -> Result:
 		"""
 		Validate the optimized kernel by running the provided unittest_command.
+
 		If no unittest_command is provided, skip validation (treat as success).
 		"""
 		if not self.unittest_command:
