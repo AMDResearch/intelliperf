@@ -26,6 +26,7 @@ import difflib
 import json
 import logging
 import os
+import stat
 
 import dspy
 
@@ -323,7 +324,7 @@ class swizzling(Formula_Base):
 				"Task\n\n"
 				f"number of XCDs = {self.gpu_spec.get_num_xcds()} in this hardware architecture. In the case of this program, number of blocks is equal to number of SMS, so you can directly use that argument. Make sure you do not change the parameters in the kernel function, as this will break the code. The function signature must stay exactly the same or the code will fail.\n\n"
 				"Propose a swizzling pattern as one or a few lines of code inside the kernel that reassigns the block index. For HIP kernels, you must still eventually assign threadId. For the HIP kernels, also make sure that you use the new swizzled block ids for all thread id computation. For Triton kernels, you must still eventually assign pid. Rewrite the code of the entire kernel without putting in any placeholders. I want to be able to take the code, copy it into a new file, and run it on the testbench without any extra work. Again, make sure to not change the kernel function signature and only add new swizzling lines within the kernel using the available parameters.\n\n"
-				"EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work.\n\n"
+				"EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work. DO NOT REMOVE ANY CODE. DO NOT MODIFY ANY HOST SIDE CODE.\n\n"
 				"EXTREMELY IMPORTANT - Make sure to not change the kernel function signature. Do not add any new parameters to the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function.\n\n"
 				"EXTREMELY IMPORTANT - I always want the original pid to be written to a variable called pid and ending in a variable called pid. If we have a 2D grid of pids, they must be called pid_x and pid_y, and so on. It is very important that you name the variables by this format and write the whole code based around these variable names so that it runs successfully.\n\n"
 				"EXTREMELY IMPORTANT - Make sure your output is in the correct format. The fields are reason_why_old_was_slow, summary_of_optimization, reason_why_new_should_be_better, result_code.\n\n"
@@ -359,6 +360,10 @@ class swizzling(Formula_Base):
 			# Strip markdown code blocks if present using Formula_Base helper
 			optimized_file_content = self.postprocess_llm_code(optimized_file_content)
 
+			# If this is a Python kernel file, ensure it starts with a shebang
+			if kernel_file.endswith(".py") and not optimized_file_content.startswith("#!"):
+				optimized_file_content = "#!/usr/bin/env python\n" + optimized_file_content
+
 			diff = difflib.unified_diff(
 				code_before_opt.splitlines(True),
 				optimized_file_content.splitlines(True),
@@ -368,6 +373,13 @@ class swizzling(Formula_Base):
 			self.last_applied_diff = "".join(list(diff))
 			with open(kernel_file, "w") as f:
 				f.write(optimized_file_content)
+
+			# Mark the optimized file as executable (chmod +x)
+			try:
+				mode = os.stat(kernel_file).st_mode
+				os.chmod(kernel_file, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+			except Exception as e:
+				logging.debug(f"Failed to chmod +x on {kernel_file}: {e}")
 
 			logging.debug(f"Optimized file content: {optimized_file_content}")
 			return Result(
