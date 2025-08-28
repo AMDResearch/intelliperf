@@ -14,6 +14,7 @@ import triton
 sys.path.append(os.path.dirname(__file__))
 from gemm import streamk_gemm  # noqa: E402
 
+
 class matmul(torch.autograd.Function):
 	_debug = True
 

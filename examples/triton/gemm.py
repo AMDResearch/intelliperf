@@ -203,5 +203,3 @@ def streamk_gemm(
 			tl.store(C_, c, mask=mask)
 
 		start_iter = end_iter
-
-
