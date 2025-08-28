@@ -1,4 +1,29 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+################################################################################
+# MIT License
+
+# Copyright (c) 2025 Advanced Micro Devices, Inc. All Rights Reserved.
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+################################################################################
+
+
 
 import triton
 import triton.language as tl
@@ -204,6 +229,12 @@ if __name__ == "__main__":
     import torch
     import triton
     import random
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--validate", action="store_true", help="Validate the Triton implementation against PyTorch.")
+    args = parser.parse_args()
 
     torch.manual_seed(123)
     random.seed(123)
@@ -335,7 +366,13 @@ if __name__ == "__main__":
     C = matmul.apply(A, B, C, bias, P, locks, total_sm, BLK_M, BLK_N, BLK_K, gsize_m, two_tiles, num_stages, num_warps,
                  waves_per_eu, mfmaInstrSize, kpack)
     
-    expected = A @ B
-    
-    assert torch.allclose(C, expected, atol=1), f"max: {(C - expected).abs().max().item()}\n{C}\n{expected}"
-    print("pass validation test")
+    if args.validate:
+        expected = A @ B
+        if not torch.allclose(C, expected, atol=1):
+            max_diff = (C - expected).abs().max().item()
+            print(f"Validation Failed: max abs diff = {max_diff}")
+            sys.exit(1)
+        else:
+            print("Validation Successful!")
+    else:
+        print("Completed GEMM run.")

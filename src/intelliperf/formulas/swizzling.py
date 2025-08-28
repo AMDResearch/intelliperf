@@ -29,7 +29,7 @@ import difflib
 import dspy
 import textwrap
 
-from intelliperf.core.llm_new import LLM
+from intelliperf.core.llm import LLM
 from intelliperf.core.gpu_spec import GPUSpec
 from intelliperf.formulas.formula_base import (
 	Formula_Base,
@@ -60,9 +60,6 @@ class SwizzlingOptimization(dspy.Signature):
 	result_code = dspy.OutputField(
 		desc="The full kernel code with the new swizzling optimization applied. This code should be complete and runnable."
 	)
-	swizzling_pattern = dspy.OutputField(
-		desc="ONLY the swizzling pattern that maps old pid's to new pid's. This will be used for visualization. I need the full swizzling pattern, which starts from grabbing the tl.program_id and ending with remapping the pid. Note that I always want the original pid to be written to a variable called pid and ending in a variable called pid. If we have a 2D grid of pids, they must be called pid_m and pid_n. It is very important that you name the variables by this format and write the whole code based around these variable names so that it runs successfully. "
-	)
 
 
 class swizzling(Formula_Base):
@@ -78,7 +75,7 @@ class swizzling(Formula_Base):
 		model: str = "gpt-4o",
 		provider: str = "openai",
 		in_place: bool = False,
-		output_kernel_file: str = None,
+
 		unittest_command: str = None,
 	):
 		super().__init__(
@@ -94,7 +91,6 @@ class swizzling(Formula_Base):
 			unittest_command,
 		)
 
-		self.output_kernel_file = output_kernel_file
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
 		self.only_consider_top_kernel = only_consider_top_kernel
 		self._instrumentation_results = None
@@ -112,9 +108,6 @@ class swizzling(Formula_Base):
 		# New fields for logging
 		self.memory_analysis_prompt = None
 		self.optimization_prompt = None
-		self.current_swizzling_pattern = None
-		self.memory_analysis_reasoning = None
-		self.optimization_reasoning = None
 
 		# New fields for iteration history tracking
 		self.iteration_history = []  # List of dicts with {iteration, diff, report, success}
@@ -127,116 +120,14 @@ class swizzling(Formula_Base):
 		self.best_l2_improvement = -float("inf")
 		self.best_speedup = 0.0
 		self.best_diff = ""
-		self.best_kernel_name = ""
 		self.best_iteration_report = ""
 		self.best_kernel_code = ""
-		self.best_swizzling_pattern = ""
 		self.l2_improvement_history = []
 		self.gpu_spec = GPUSpec()
 
-	def compute_diff(self, file_paths: list) -> str:
-		"""
-		Compute the diff between the current and initial versions of the files.
+	# Removed local compute_diff; using Formula_Base.compute_diff instead
 
-		Args:
-			file_paths (list): A list of file paths.
-
-		Returns:
-			str: The diff string.
-		"""
-		diff_str = ""
-		for file_path in file_paths:
-			with open(file_path, "r") as f:
-				current_content = f.readlines()
-			initial_content = self.initial_source_code.splitlines(True)
-			diff = difflib.unified_diff(initial_content, current_content)
-			diff_str += f"--- a/{file_path}\n"
-			diff_str += f"+++ b/{file_path}\n"
-			diff_str += "".join(diff)
-		return diff_str
-
-	def _validate_swizzling_pattern(self, pattern_code: str, num_pids: int = 100) -> bool:
-		"""
-		Validates the swizzling pattern by running it on a range of pids.
-		It checks if the output pids are a permutation of the input pids,
-		ensuring no duplicates or missing values.
-		"""
-		logging.debug(f"Validating swizzling pattern:\n{pattern_code}")
-		
-		# The LLM sometimes includes comments before the code with different indentation.
-		# We need to find the first line of actual code and dedent from there.
-		lines = pattern_code.split('\n')
-		first_code_line_index = -1
-		for i, line in enumerate(lines):
-			if line.strip() and not line.strip().startswith('#'):
-				first_code_line_index = i
-				break
-
-		if first_code_line_index != -1:
-			code_block_lines = lines[first_code_line_index:]
-			executable_code = textwrap.dedent('\n'.join(code_block_lines))
-		else:
-			# No actual code found, just comments or empty lines
-			executable_code = ""
-
-		if not executable_code.strip():
-			logging.info("Swizzling pattern is empty or contains only comments. Skipping validation.")
-			return True
-
-		# A simple heuristic to detect 2D patterns.
-		is_2d = any(p in executable_code for p in ['pid_m', 'pid_n', 'pid_x', 'pid_y'])
-		if is_2d:
-			logging.warning("Skipping validation for 2D swizzling pattern as it's not yet supported.")
-			return True
-
-		original_pids = set(range(num_pids))
-		swizzled_pids = set()
-
-		class MockTriton:
-			def __init__(self):
-				self.pid = 0
-			def program_id(self, axis):
-				if axis == 0:
-					return self.pid
-				return 0
-
-		mock_tl = MockTriton()
-
-		# The swizzling pattern might depend on other variables from the kernel,
-		# like num_sms. For this testbench, we'll mock it.
-		exec_globals = {
-			'tl': mock_tl,
-			'num_sms': num_pids,
-			'NUM_SMS': num_pids,
-			'NUM_XCDS': 8,
-		}
-
-		for i in range(num_pids):
-			mock_tl.pid = i
-			local_scope = {'pid': i}
-			try:
-				exec(executable_code, exec_globals, local_scope)
-				if 'pid' in local_scope:
-					swizzled_pids.add(local_scope['pid'])
-				else:
-					logging.error("Swizzling pattern validation failed: 'pid' variable not found in the output.")
-					return False
-			except Exception as e:
-				logging.error(f"Error executing swizzling pattern for pid={i}: {e}")
-				return False
-
-		if original_pids != swizzled_pids:
-			logging.error(
-				f"Swizzling validation failed. "
-				f"Output pids do not match input pids.\n"
-				f"Missing: {original_pids - swizzled_pids}\n"
-				f"Extra: {swizzled_pids - original_pids}"
-			)
-			return False
-
-		logging.info("Swizzling pattern validation successful.")
-		return True
-
+	
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
 		Build the application and store the summary.
@@ -352,10 +243,7 @@ class swizzling(Formula_Base):
 			kernel = filtered_report_card[0]["kernel"]
 			files = filtered_report_card[0]["source"]["files"]
 			kernel_name = get_kernel_name(kernel)
-
-			if not self.best_kernel_name:
-				self.best_kernel_name = kernel_name
-
+			
 			logging.debug(f"Kernel name: {kernel_name}")
 			kernel_file = None
 			for file in files:
@@ -393,24 +281,14 @@ class swizzling(Formula_Base):
 				# Stage 1: Get memory access analysis
 				try:
 					logging.debug(f"Analysis prompt: {analysis_prompt}")
-					self.memory_analysis_output, self.memory_analysis_reasoning = analysis_llm.ask(
-						analysis_prompt, answer_type="memory_analysis_output"
+					self.memory_analysis_output = analysis_llm.ask(
+						analysis_prompt,
+						signature="prompt: str -> memory_analysis_output: str",
+						answer_type="memory_analysis_output",
 					)
 					self.memory_analysis_output = self.memory_analysis_output.strip()
-					self.memory_analysis_reasoning = self.memory_analysis_reasoning.strip()
 					
 					logging.debug(f"Memory analysis output: {self.memory_analysis_output}")
-					logging.debug(f"Memory analysis reasoning: {self.memory_analysis_reasoning}")
-
-					# TODO: remove this
-					if self.output_kernel_file:
-						with open(self.output_kernel_file, "w") as f:
-							f.write("Memory access pattern prompt:\n")
-							f.write(f"{self.memory_analysis_prompt}\n\n")
-							f.write("Memory access pattern reasoning:\n")
-							f.write(f"{self.memory_analysis_reasoning or 'Not provided.'}\n\n")
-							f.write("Memory access pattern response:\n")
-							f.write(f"{self.memory_analysis_output}\n\n")
 
 					self.memory_analysis_done = True
 				except Exception as e:
@@ -454,7 +332,7 @@ class swizzling(Formula_Base):
 				"EXTREMELY IMPORTANT - Do not include any markdown code blocks or text other than the code. DO NOT start the code with 'python'. I want you to straight directly output the code. I want to be able to copy and paste the code into a new file and run it on the testbench without any extra work.\n\n"
 				"EXTREMELY IMPORTANT - Make sure to not change the kernel function signature. Do not add any new parameters to the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function. Do not change the return type of the kernel function. Do not change the name of the kernel function. Do not change the arguments of the kernel function.\n\n"
 				"EXTREMELY IMPORTANT - I always want the original pid to be written to a variable called pid and ending in a variable called pid. If we have a 2D grid of pids, they must be called pid_x and pid_y, and so on. It is very important that you name the variables by this format and write the whole code based around these variable names so that it runs successfully.\n\n"
-				"EXTREMELY IMPORTANT - Make sure your output is in the correct format. The fields are reason_why_old_was_slow, summary_of_optimization, reason_why_new_should_be_better, result_code, and swizzling_pattern.\n\n"
+				"EXTREMELY IMPORTANT - Make sure your output is in the correct format. The fields are reason_why_old_was_slow, summary_of_optimization, reason_why_new_should_be_better, result_code.\n\n"
 				"**OPTIMIZATION GOAL** - You have not reached the maximum performance yet. DO NOT REIMPLEMENT A PREVIOUS SWIZZLING PATTERN. If you have previously tried an approach and it is shown in the diff, do not reimplement it.\n\n"
 
 			)
@@ -482,47 +360,13 @@ class swizzling(Formula_Base):
 			with open(kernel_file, "r") as f:
 				code_before_opt = f.read()
 
-			response, self.optimization_reasoning = optimization_llm.ask(
+			response = optimization_llm.ask(
 				optimization_prompt, signature=SwizzlingOptimization
 			)
 			optimized_file_content = response.result_code.strip()
 
-			# Strip markdown code blocks if present
-			if optimized_file_content.startswith("```python"):
-				optimized_file_content = optimized_file_content[len("```python") :].lstrip()
-			elif optimized_file_content.startswith("python"):
-				optimized_file_content = optimized_file_content[len("python") :].lstrip()
-			elif optimized_file_content.startswith("```"):
-				optimized_file_content = optimized_file_content[len("```") :].lstrip()
-
-			if optimized_file_content.endswith("```"):
-				optimized_file_content = optimized_file_content[: -len("```")].rstrip()
-				
-			self.current_swizzling_pattern = response.swizzling_pattern.strip()
-
-			# Strip markdown from swizzling pattern as well
-			if self.current_swizzling_pattern.startswith("```python"):
-				self.current_swizzling_pattern = self.current_swizzling_pattern[len("```python") :].lstrip()
-			elif self.current_swizzling_pattern.startswith("python"):
-				self.current_swizzling_pattern = self.current_swizzling_pattern[len("python") :].lstrip()
-			elif self.current_swizzling_pattern.startswith("```"):
-				self.current_swizzling_pattern = self.current_swizzling_pattern[len("```") :].lstrip()
-
-			if self.current_swizzling_pattern.endswith("```"):
-				self.current_swizzling_pattern = self.current_swizzling_pattern[: -len("```")].rstrip()
-
-			# if not self._validate_swizzling_pattern(self.current_swizzling_pattern):
-			# 	error_msg = "Generated swizzling pattern failed validation."
-			# 	logging.error(error_msg)
-			# 	# Revert file to its state before this optimization attempt
-			# 	with open(kernel_file, "w") as f:
-			# 		f.write(code_before_opt)
-			# 	return Result(success=False, error_report=error_msg)
-   
-			if self.optimization_reasoning:
-				self.optimization_reasoning = self.optimization_reasoning.strip()
-			
-			logging.debug(f"Optimization reasoning: {self.optimization_reasoning}")
+			# Strip markdown code blocks if present using Formula_Base helper
+			optimized_file_content = self.postprocess_llm_code(optimized_file_content)
 			
 			diff = difflib.unified_diff(
 				code_before_opt.splitlines(True),
@@ -531,30 +375,8 @@ class swizzling(Formula_Base):
 				tofile=f"b/{os.path.basename(kernel_file)}",
 			)
 			self.last_applied_diff = "".join(list(diff))
-
 			with open(kernel_file, "w") as f:
 				f.write(optimized_file_content)
-
-			if self.output_kernel_file and self.current_iteration == 1:
-				with open(self.output_kernel_file, "w") as f:
-					f.write(f"--- MEMORY ANALYSIS ---\n")
-					f.write(f"{self.memory_analysis_output}\n\n")
-					f.write(f"--- MEMORY ANALYSIS REASONING ---\n")
-					f.write(f"{self.memory_analysis_reasoning}\n\n")
-
-			if self.output_kernel_file:
-				with open(self.output_kernel_file, "a") as f:
-					f.write(f"Iteration {self.current_iteration}:\n")
-					f.write("Code optimization reasoning:\n")
-					f.write(f"{self.optimization_reasoning or 'Not provided.'}\n\n")
-					f.write("Reason why old was slow:\n")
-					f.write(f"{response.reason_why_old_was_slow}\n\n")
-					f.write("Summary of optimization:\n")
-					f.write(f"{response.summary_of_optimization}\n\n")
-					f.write("Reason why new should be better:\n")
-					f.write(f"{response.reason_why_new_should_be_better}\n\n")
-					f.write("Swizzling formula:\n")
-					f.write(f"{self.current_swizzling_pattern}\n\n")
 
 			logging.debug(f"Optimized file content: {optimized_file_content}")
 			return Result(
@@ -585,14 +407,7 @@ class swizzling(Formula_Base):
 		if not self.unittest_command:
 			return Result(success=True, asset={"log": "No unittest_command provided; skipping correctness validation."})
 
-		cmd_str = self.unittest_command
-		# Ensure we pass --validate to trigger correctness checking in the unit test
-		if "--validate" not in cmd_str.split():
-			cmd_str = f"{cmd_str} --validate"
-
-		success, output = capture_subprocess_output(
-			cmd_str.split(), working_directory=self._application.get_project_directory()
-		)
+		success, output = self._application.run_unit_test()
 		if not success:
 			return Result(success=False, error_report=f"Unit test validation failed. Output:\n{output}")
 		return Result(success=True, asset={"log": output})
@@ -673,30 +488,7 @@ class swizzling(Formula_Base):
 			self.best_iteration_report = self.optimization_report
 			with open(self.current_kernel_files[0], "r") as f:
 				self.best_kernel_code = f.read()
-				self.best_swizzling_pattern = self.current_swizzling_pattern
 
-		if self.output_kernel_file:
-			with open(self.output_kernel_file, "a") as f:
-				f.write(f"--- PROFILING ITERATION {self.current_iteration} ---\n")
-				f.write(f"{self.optimization_report}\n\n")
-
-		terminate = False
-		if self.current_iteration >= self.max_iterations:
-			logging.warning(f"Max iterations reached ({self.max_iterations}). Terminating optimization.")
-			terminate = True
-
-		self.success = self.best_l2_improvement > 0
-		
-		if self.success and self.output_kernel_file:
-			name, ext = os.path.splitext(self.output_kernel_file)
-			final_output_path = f"{name}_final{ext}"
-			with open(final_output_path, "w") as f:
-				f.write(f"L2 Hit Rate Improvement %: {self.best_l2_improvement}\n")
-				f.write(f"Speedup: {self.best_speedup}\n\n")
-				f.write(f"Swizzling Pattern:\n")
-				f.write(f"[[[{self.best_swizzling_pattern}]]]\n")
-				f.write("Full Kernel Code:\n")
-				f.write(f"[[[{self.best_kernel_code}]]]\n")
 		if self.current_iteration < self.max_iterations:
 			self.current_summary = self.optimization_report
 			# Always return success=False to continue iterating
@@ -708,18 +500,6 @@ class swizzling(Formula_Base):
 		"""
 		Writes the results to the output file.
 		"""
-		if self.success and self.best_kernel_code:
-			output_dir = os.path.join(self.project_directory, "outputted_optimizations")
-			os.makedirs(output_dir, exist_ok=True)
-			
-			# Sanitize kernel name to be a valid filename
-			kernel_filename = "".join(c if c.isalnum() or c in ('_') else '_' for c in self.best_kernel_name)
-			output_path = os.path.join(output_dir, f"{kernel_filename}.py")
-
-			with open(output_path, "w") as f:
-				f.write("#!/usr/bin/env python3\n")
-				f.write(self.best_kernel_code)
-
 		super().write_results(
 			output_file=output_file,
 			additional_results={"formula": "swizzling", "success": self.success},

@@ -288,7 +288,7 @@ def get_l2_cache_size_per_xcd_kb(device_id=None):
 	num_xcds = get_xcd_count(device_id)
 	if num_xcds == 0:
 		return 0
-	return total_l2 / num_xcds
+	return total_l2
 
 
 def get_cus_per_xcd(device_id=None):

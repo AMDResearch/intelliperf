@@ -94,14 +94,11 @@ def intelliperf_parser():
 			"atomicContention",
 			"diagnoseOnly",
 			"swizzling",
-			"swizzling_test",
-			"swizzling_baseline",
-			"swizzling_overload",
 		],
 		default="diagnoseOnly",
 		metavar="",
 		type=str,
-		help="Specify the formula to use for optimization.\nAvailable options: bankConflict, memoryAccess, atomicContention, diagnoseOnly, swizzling, swizzling_test, swizzling_baseline, swizzling_overload (default: diagnoseOnly)",
+		help="Specify the formula to use for optimization.\nAvailable options: bankConflict, memoryAccess, atomicContention, diagnoseOnly, swizzling (default: diagnoseOnly)",
 	)
 	optional_args.add_argument(
 		"--top_n",
@@ -168,7 +165,6 @@ def intelliperf_parser():
 
 	# Output arguments
 	optional_args.add_argument("-o", "--output_file", type=str, metavar="", help="Path to the output file")
-	optional_args.add_argument("--output_kernel_file", type=str, metavar="", help="Path to the output kernel file")
 
 	args = parser.parse_args()
 
@@ -235,18 +231,6 @@ def main():
 		from intelliperf.formulas.swizzling import swizzling
 
 		formula = swizzling
-	elif args.formula == "swizzling_test":
-		from intelliperf.formulas.swizzling_test import swizzling_test
-
-		formula = swizzling_test
-	elif args.formula == "swizzling_baseline":
-		from intelliperf.formulas.swizzling_baseline import swizzling_baseline
-
-		formula = swizzling_baseline
-	elif args.formula == "swizzling_overload":
-		from intelliperf.formulas.swizzling_overload import swizzling_overload
-
-		formula = swizzling_overload
 	else:
 		logging.error(f"Invalid formula specified. {args.formula} is not supported.")
 		import sys
@@ -265,13 +249,6 @@ def main():
 		"in_place": args.in_place,
 		"unittest_command": args.unittest_command,
 	}
-	if (
-		args.formula == "swizzling"
-		or args.formula == "swizzling_test"
-		or args.formula == "swizzling_baseline"
-		or args.formula == "swizzling_overload"
-	):
-		optimizer_args["output_kernel_file"] = args.output_kernel_file
 
 	optimizer = formula(**optimizer_args)
 
