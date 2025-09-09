@@ -166,6 +166,9 @@ def intelliperf_parser():
 	# Output arguments
 	optional_args.add_argument("-o", "--output_file", type=str, metavar="", help="Path to the output file")
 
+	# Output arguments
+	optional_args.add_argument("-k", "--kernel", type=str, metavar="", help="Kernel name to optimize")
+
 	args = parser.parse_args()
 
 	# Handle internal LLM option
@@ -281,10 +284,10 @@ def main():
 		logging.info(f"Executing pass {attempt + 1} of {num_attempts}.")
 
 		# Optimize the application based on insights from instrumentation.
-		optimize_result = optimizer.optimize_pass()
+		optimize_result = optimizer.optimize_pass(target_kernel=args.kernel)
 		if not optimize_result:
 			optimize_result.report_out()
-			logging.warning(f"Optimization pass {attempt + 1} failed. Retrying...")
+			logging.warning(f"{args.formula} optimization pass {attempt + 1} failed. Retrying...")
 			flush_logs_if_enabled()  # Flush after failed optimization
 			continue
 
