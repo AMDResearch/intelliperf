@@ -121,6 +121,7 @@ class swizzling(Formula_Base):
 		self.best_diff = ""
 		self.best_iteration_report = ""
 		self.best_kernel_code = ""
+		self.best_optimization_results = None
 		self.l2_improvement_history = []
 		self.gpu_spec = GPUSpec()
 
@@ -485,14 +486,14 @@ class swizzling(Formula_Base):
 			}
 		)
 
-		if l2_improvement > self.best_l2_improvement:
+		if speedup > self.best_speedup or l2_improvement > self.best_l2_improvement:
 			self.best_l2_improvement = l2_improvement
 			self.best_speedup = speedup
 			self.best_diff = self.last_applied_diff
 			self.best_iteration_report = self.optimization_report
+			self.best_optimization_results = self._optimization_results
 			with open(self.current_kernel_files[0], "r") as f:
 				self.best_kernel_code = f.read()
-
 		if self.current_iteration < self.max_iterations:
 			self.current_summary = self.optimization_report
 			# Always return success=False to continue iterating
@@ -504,6 +505,13 @@ class swizzling(Formula_Base):
 		"""
 		Writes the results to the output file.
 		"""
+		self._optimization_results = self.best_optimization_results
+		self.optimization_report = self.best_iteration_report
+		
+		for file in self.current_kernel_files:
+			with open(file, "w") as f:
+				f.write(self.best_kernel_code)
+    
 		super().write_results(
 			output_file=output_file,
 			additional_results={"formula": "swizzling", "success": self.success},
