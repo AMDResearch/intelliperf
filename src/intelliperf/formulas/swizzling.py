@@ -507,11 +507,11 @@ class swizzling(Formula_Base):
 		"""
 		self._optimization_results = self.best_optimization_results
 		self.optimization_report = self.best_iteration_report
-		
+
 		for file in self.current_kernel_files:
 			with open(file, "w") as f:
 				f.write(self.best_kernel_code)
-    
+
 		super().write_results(
 			output_file=output_file,
 			additional_results={"formula": "swizzling", "success": self.success},
