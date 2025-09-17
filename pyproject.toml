@@ -31,7 +31,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.rocprofiler-compute]
 git = "https://github.com/ROCm/rocprofiler-compute"
-branch = "4e24b2c60a1c0df6145309f033673281045847db"
+branch = "a3dc98e25106f0cfb5f996acc9848274b4e6cf15"
 build_command = """
 python3 -m pip install --ignore-installed blinker &&
 python3 -m pip install -r requirements.txt
