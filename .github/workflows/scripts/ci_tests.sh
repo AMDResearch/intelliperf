@@ -5,7 +5,9 @@ set -e
 echo 'Running IntelliPerf examples...'
 
 results_dir=~/intelliperf_results
+rm -rf $results_dir
 mkdir -p $results_dir
+
 
 provider="openrouter"
 model="openai/gpt-4o"
