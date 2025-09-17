@@ -12,7 +12,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 
 # Python dependencies 
-dependencies = ["tomli", "openai==1.68.2", "tabulate", "ml_dtypes", "dspy==2.6.27", "pandas", "duckdb", "rich", "pytest"]
+dependencies = ["tomli", "tabulate", "ml_dtypes", "dspy==3.0.3", "pandas", "duckdb", "rich", "pytest"]
 
 
 [tool.setuptools]
