@@ -41,7 +41,7 @@ jobs:
   run-tests:
     name: IntelliPerf Test
     needs: build-apptainer-image
-    runs-on: [self-hosted, mi3008x]
+    runs-on: [self-hosted]
     timeout-minutes: 20
 
     steps:

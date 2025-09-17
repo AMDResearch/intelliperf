@@ -2,21 +2,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2025 Advanced Micro Devices, Inc. All rights reserved.
 
-# Parse command line arguments
-dev_mode=false
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --dev|-d)
-            dev_mode=true
-            shift
-            ;;
-        *)
-            echo "Unknown option: $1"
-            exit 1
-            ;;
-    esac
-done
-
 # Container name
 name="intelliperf"
 
