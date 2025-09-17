@@ -73,10 +73,10 @@ jobs:
 
             # Run the IntelliPerf examples
             ./.github/workflows/scripts/ci_tests.sh
-
-            # Check test results for success
-            ./.github/workflows/scripts/check_test_results.sh
           "
+      - name: Check test results
+        run: |
+          ./.github/workflows/scripts/check_test_results.sh
 
       - name: Upload test outputs as artifact
         if: always()
