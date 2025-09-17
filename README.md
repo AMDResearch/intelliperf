@@ -93,7 +93,7 @@ docker run -it --rm --device=/dev/kfd --device=/dev/dri --group-add video -e LLM
 
 1. **Clone the Repository**:
    ```bash
-   git clone git@github.com:AMDResearch/intelliperf.git
+   git clone https://github.com/AMDResearch/intelliperf.git
    cd intelliperf
    ```
 
