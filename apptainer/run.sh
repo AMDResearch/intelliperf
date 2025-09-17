@@ -1,27 +1,6 @@
 #!/bin/bash
-################################################################################
-# MIT License
-
-# Copyright (c) 2025 Advanced Micro Devices, Inc. All Rights Reserved.
-
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-################################################################################
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Advanced Micro Devices, Inc. All rights reserved.
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 parent_dir="$(dirname "$script_dir")"
@@ -38,12 +17,8 @@ while [[ $# -gt 0 ]]; do
             size=$2
             shift 2
             ;;
-        -d|--debug)
-            debug=1
-            shift
-            ;;
         *)
-            echo "Usage: $0 [-s size] [-d|--debug]"
+            echo "Usage: $0 [-s size]"
             exit 1
             ;;
     esac
@@ -59,9 +34,5 @@ fi
 echo "[Log] Utilize the directory /var/cache/intelliperf as a sandbox to store data you'd like to persist between container runs."
 
 # Run the container
-if [[ $debug -eq 1 ]]; then
-    image="apptainer/intelliperf_debug.sif"
-else
-    image="apptainer/intelliperf.sif"
-fi
-apptainer exec --bind $HOME/.ssh:/root/.ssh:ro --overlay ${overlay} --pwd "$working_dir" --cleanenv --env OPENAI_API_KEY=$OPENAI_API_KEY $image bash --rcfile /etc/bash.bashrc
+image="apptainer/intelliperf.sif"
+apptainer exec --overlay ${overlay} --pwd "$working_dir" --cleanenv --env LLM_GATEWAY_KEY=$LLM_GATEWAY_KEY $image bash --rcfile /etc/bash.bashrc

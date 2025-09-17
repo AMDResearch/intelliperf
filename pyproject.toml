@@ -12,7 +12,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 
 # Python dependencies 
-dependencies = ["tomli", "openai>=1.0.0", "tabulate", "ml_dtypes", "dspy", "pandas", "duckdb", "rich", "pytest"]
+dependencies = ["tomli", "tabulate", "ml_dtypes", "dspy==3.0.3", "pandas", "duckdb", "rich", "pytest", "litellm[proxy]"]
 
 
 [tool.setuptools]
@@ -31,7 +31,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.rocprofiler-compute]
 git = "https://github.com/ROCm/rocprofiler-compute"
-branch = "41e73650d5cfc3dbd98e007d6279235578f8529a"
+branch = "a3dc98e25106f0cfb5f996acc9848274b4e6cf15"
 build_command = """
 python3 -m pip install --ignore-installed blinker &&
 python3 -m pip install -r requirements.txt
