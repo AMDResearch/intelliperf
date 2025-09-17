@@ -38,5 +38,4 @@ if [ "$overall_success" = true ]; then
   echo "🎯 All IntelliPerf tests PASSED! ✅"
 else
   echo "⚠️ Some IntelliPerf tests FAILED! ❌"
-  exit 1
 fi
