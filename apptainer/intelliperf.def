@@ -37,14 +37,5 @@ From: ubuntu:22.04
     export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
     export ROCM_PATH=/opt/rocm
 
-    # Install Triton
-    cd /root
-    export TRITON_HOME=/root
-    git clone -v https://github.com/triton-lang/triton.git
-    cd triton
-    git checkout 6fa33ef1eecc97348d056688df84845db7d22507
-    python3 -m pip install ninja wheel pybind11
-    python3 -m pip install -e python
-
     # Install PyTorch ROCm
     python3 -m pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/rocm6.3
