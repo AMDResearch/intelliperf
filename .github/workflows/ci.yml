@@ -63,6 +63,7 @@ jobs:
 
             # Install IntelliPerf (PyTorch ROCm and tools are already installed in container)
             pip install -e .
+            python3 scripts/install_tool.py --all
 
             # IntelliPerf is installed at /root/.local/bin
             export PATH=\$PATH:/root/.local/bin
