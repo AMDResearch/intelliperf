@@ -6,15 +6,18 @@ echo 'Running IntelliPerf examples...'
 
 mkdir -p /intelliperf_results
 
+provider="openrouter"
+model="openai/gpt-4o"
+
 # Formulas
-intelliperf -vvv --project_directory=./examples --build_command="./scripts/build_examples.sh -c" --formula=memoryAccess -o /intelliperf_results/memory_access_output.json -- ./build/access_pattern/uncoalesced || true
-intelliperf -vvv --project_directory=./examples --build_command="./scripts/build_examples.sh -c" --formula=bankConflict -o /intelliperf_results/bank_conflict_output.json -- ./build/bank_conflict/matrix_transpose 1024 1024 || true
-intelliperf -vvv --project_directory=./examples --build_command="./scripts/build_examples.sh -c" --instrument_command="./scripts/build_examples.sh -i -c" --formula=atomicContention -o /intelliperf_results/atomic_contention_output.json -- ./build/contention/reduction || true
+intelliperf -vvv --project_directory=./examples --provider $provider --model $model --build_command="./scripts/build_examples.sh -c" --formula=memoryAccess -o /intelliperf_results/memory_access_output.json -- ./build/access_pattern/uncoalesced || true
+intelliperf -vvv --project_directory=./examples --provider $provider --model $model --  build_command="./scripts/build_examples.sh -c" --formula=bankConflict -o /intelliperf_results/bank_conflict_output.json -- ./build/bank_conflict/matrix_transpose 1024 1024 || true
+intelliperf -vvv --project_directory=./examples --provider $provider --model $model --build_command="./scripts/build_examples.sh -c" --instrument_command="./scripts/build_examples.sh -i -c" --formula=atomicContention -o /intelliperf_results/atomic_contention_output.json -- ./build/contention/reduction || true
 
 # Diagnose Only
-intelliperf -vvv --formula=diagnoseOnly -o /intelliperf_results/diagnose_only_hip_uncoalesced.json -- ./examples/build/access_pattern/uncoalesced
-intelliperf -vvv --formula=diagnoseOnly -o /intelliperf_results/diagnose_only_torch_add.json -- python ./examples/torch/add.py
-TRITON_DISABLE_LINE_INFO=0 intelliperf -vvv --formula=diagnoseOnly -o /intelliperf_results/diagnose_only_triton_reduce.json -- python ./examples/triton/reduce.py
+intelliperf -vvv --provider $provider --model $model --formula=diagnoseOnly -o /intelliperf_results/diagnose_only_hip_uncoalesced.json -- ./examples/build/access_pattern/uncoalesced
+intelliperf -vvv --provider $provider --model $model --formula=diagnoseOnly -o /intelliperf_results/diagnose_only_torch_add.json -- python ./examples/torch/add.py
+TRITON_DISABLE_LINE_INFO=0 intelliperf -vvv --provider $provider --model $model --formula=diagnoseOnly -o /intelliperf_results/diagnose_only_triton_reduce.json -- python ./examples/triton/reduce.py
 
 # Display output files
 echo 'Memory Access Output:'

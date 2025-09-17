@@ -1,216 +1,129 @@
-name: IntelliPerf CI
+name: IntelliPerf Tests with Apptainer
 
 on:
-  pull_request:
-    branches: [ main ]
   push:
+    branches: [ main ]
+  pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  test-intelliperf:
-    runs-on: ubuntu-latest
-    env:
-      DIGITALOCEAN_API_URL: ${{ secrets.DIGITALOCEAN_API_URL }}
-    
+  build-apptainer-image:
+    runs-on: [self-hosted]
+    timeout-minutes: 90
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Install doctl
-      uses: digitalocean/action-doctl@v2
-      with:
-        token: ${{ secrets.DEV_CLOUD_KEY }}
+      - name: Setup Apptainer
+        run: |
+          apt-get update && apt-get install -y software-properties-common
+          add-apt-repository -y ppa:apptainer/ppa
+          apt-get update && apt-get install -y apptainer
 
-    - name: Install jq
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y jq
+      - name: Build IntelliPerf Apptainer container
+        run: |
+          # Create persistent Apptainer directory
+          mkdir -p ~/apptainer
 
-    - name: Create Droplet
-      id: create
-      env:
-        DIGITALOCEAN_API_URL: ${{ secrets.DIGITALOCEAN_API_URL }}
-      run: |
-        DROPLET_NAME="intelliperf-$(date +%s)"
-        
-        # Create droplet and capture JSON output
-        DROPLET_JSON=$(doctl compute droplet create \
-          --image 188571990 \
-          --size ${{ secrets.DIGITALOCEAN_SIZE }} \
-          --region atl1 \
-          --ssh-keys ${{ secrets.SSH_KEY_ID }} \
-          "$DROPLET_NAME" \
-          -o json \
-          --wait 2>&1)
-        
-        # Check if droplet creation was successful
-        if [ $? -ne 0 ]; then
-          echo "❌ Failed to create droplet"
-          echo "Error details:"
-          echo "$DROPLET_JSON"
-          exit 1
-        fi
-        
-        # Extract droplet ID and IP
-        DROPLET_ID=$(echo "$DROPLET_JSON" | jq -r '.[0].id')
-        PUBLIC_IP=$(echo "$DROPLET_JSON" | jq -r '.[0].networks.v4[] | select(.type=="public") | .ip_address')
-        
-        # Set outputs for other steps
-        echo "droplet_id=$DROPLET_ID" >> $GITHUB_OUTPUT
-        echo "public_ip=$PUBLIC_IP" >> $GITHUB_OUTPUT
-        
-        echo "✅ Droplet created successfully!"
-
-    - name: Setup SSH key
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H ${{ steps.create.outputs.public_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-    - name: Wait for SSH to be ready
-      run: |
-        echo "⏳ Waiting for SSH to be ready..."
-        for i in {1..30}; do
-          if ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }} "echo 'SSH ready'" 2>/dev/null; then
-            echo "✅ SSH is ready!"
-            break
+          # Build Apptainer image from definition file (only if it doesn't exist)
+          if [ ! -f ~/apptainer/intelliperf-dev.sif ]; then
+            echo "Building new Apptainer image..."
+            ./apptainer/build.sh --output ~/apptainer/intelliperf-dev.sif
+          else
+            echo "Using existing Apptainer image"
           fi
-          echo "Attempt $i/30: SSH not ready yet, waiting 10 seconds..."
-          sleep 10
-        done
+  run-tests:
+    name: IntelliPerf Test
+    needs: build-apptainer-image
+    runs-on: [self-hosted, mi3008x]
+    timeout-minutes: 20
 
-    - name: Determine commit hash
-      id: commit_hash
-      run: |
-        if [ "${{ github.event_name }}" == "pull_request" ]; then
-          echo "commit_hash=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
-        else
-          echo "commit_hash=${{ github.sha }}" >> $GITHUB_OUTPUT
-        fi
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Install IntelliPerf and run tests
-      run: |
-        echo "🚀IntelliPerf installation..."
-        
-        # Setup SSH, clone repo, and install dependencies
-        ssh -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }} "
-          set -e
-          
-          # Remove any stale dpkg locks
-          sudo rm -f /var/lib/apt/lists/lock
-          sudo rm -f /var/cache/apt/archives/lock
-          sudo rm -f /var/lib/dpkg/lock*
-          
-          # Setup SSH key for git access
-          mkdir -p ~/.ssh
-          echo '${{ secrets.SSH_PRIVATE_KEY }}' > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H github.com >> ~/.ssh/known_hosts
-          
-          # Set environment variables
-          export LLM_GATEWAY_KEY='${{ secrets.LLM_GATEWAY_KEY }}'
-          export ROCM_PATH=/opt/rocm
-          export PATH=\$ROCM_PATH/bin:\$PATH
-          export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
-          
-          # Install system dependencies
-          sudo apt-get update
-          sudo apt-get install -y python3-venv rocm-llvm-dev libzstd-dev libdwarf-dev locales git cmake
-          sudo locale-gen en_US.UTF-8
-          
-          # Clone the repository
-          git clone git@github.com:AMDResearch/intelliperf.git
-          cd intelliperf
-          echo 'Checking out commit ${{ steps.commit_hash.outputs.commit_hash }}'
-          git checkout ${{ steps.commit_hash.outputs.commit_hash }}
-          
-          # Setup Python environment
-          python3 -m venv intelliperf_env
-          source intelliperf_env/bin/activate
-          pip install --upgrade pip
-          pip install -e .
-          pip3 install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/rocm6.4
-          python3 scripts/install_tool.py --all
-          
-          # Verify installation
-          rocminfo
-          pip list | grep intelliperf || echo 'IntelliPerf not found in pip list'
-          
-          # Create results directory
-          mkdir -p /intelliperf_results
-          
-          # Run the IntelliPerf examples
-          ./.github/workflows/scripts/ci_tests.sh
-        "
+      - name: Run IntelliPerf Tests
+        env:
+          LLM_GATEWAY_KEY: ${{ secrets.LLM_GATEWAY_KEY }}
+        run: |
+          apptainer exec ~/apptainer/intelliperf-dev.sif bash -c "
+            set -e  # Exit on any error
 
-    - name: Download test outputs
-      if: always()
-      run: |
-        echo "📥 Downloading test outputs..."
-        mkdir -p test_outputs
-        scp -r -o StrictHostKeyChecking=no root@${{ steps.create.outputs.public_ip }}:/intelliperf_results/ ./test_outputs/ || echo "No results directory found"
-        
-        # Create tar artifact
-        tar -czf intelliperf_test_outputs.tar.gz -C test_outputs .
-        echo "✅ Test outputs archived as intelliperf_test_outputs.tar.gz"
-        
-        # Print test results summary with GitHub Actions annotations
-        echo "📊 IntelliPerf Test Results Summary:"
-        
-        # Check each test result by parsing the success field
-        check_test_result() {
-          local file="$1"
-          local test_name="$2"
-          if [ -f "$file" ]; then
-            if jq -e '.success == true' "$file" >/dev/null 2>&1; then
-              echo "::notice::✅ $test_name: PASSED"
-              return 0
+            # Set environment variables
+            export LLM_GATEWAY_KEY='${{ secrets.LLM_GATEWAY_KEY }}'
+            export ROCM_PATH=/opt/rocm
+            export PATH=\$ROCM_PATH/bin:\$PATH
+            export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
+
+            # Install IntelliPerf (PyTorch ROCm and tools are already installed in container)
+            pip install -e .
+
+            # Create results directory
+            mkdir -p /intelliperf_results
+
+            # Run the IntelliPerf examples
+            ./.github/workflows/scripts/ci_tests.sh
+          "
+
+      - name: Download test outputs
+        if: always()
+        run: |
+          echo "📥 Downloading test outputs..."
+          mkdir -p test_outputs
+          scp -r -o StrictHostKeyChecking=no root@localhost:/intelliperf_results/ ./test_outputs/ || echo "No results directory found"
+          
+          # Create tar artifact
+          tar -czf intelliperf_test_outputs.tar.gz -C test_outputs .
+          echo "✅ Test outputs archived as intelliperf_test_outputs.tar.gz"
+          
+          # Print test results summary with GitHub Actions annotations
+          echo "📊 IntelliPerf Test Results Summary:"
+          
+          # Check each test result by parsing the success field
+          check_test_result() {
+            local file="$1"
+            local test_name="$2"
+            if [ -f "$file" ]; then
+              if jq -e '.success == true' "$file" >/dev/null 2>&1; then
+                echo "::notice::✅ $test_name: PASSED"
+                return 0
+              else
+                echo "::warning::❌ $test_name: FAILED"
+                return 1
+              fi
             else
-              echo "::warning::❌ $test_name: FAILED"
+              echo "::warning::❌ $test_name: FAILED (file not found)"
               return 1
             fi
+          }
+          
+          # Track overall success
+          overall_success=true
+          
+          check_test_result "./test_outputs/intelliperf_results/memory_access_output.json" "Memory Access" || overall_success=false
+          check_test_result "./test_outputs/intelliperf_results/bank_conflict_output.json" "Bank Conflict" || overall_success=false
+          check_test_result "./test_outputs/intelliperf_results/atomic_contention_output.json" "Atomic Contention" || overall_success=false
+          check_test_result "./test_outputs/intelliperf_results/diagnose_only_hip_uncoalesced.json" "Diagnose Only (HIP)" || overall_success=false
+          check_test_result "./test_outputs/intelliperf_results/diagnose_only_torch_add.json" "Diagnose Only (Torch)" || overall_success=false
+          check_test_result "./test_outputs/intelliperf_results/diagnose_only_triton_reduce.json" "Diagnose Only (Triton)" || overall_success=false
+          
+          echo ""
+          if [ "$overall_success" = true ]; then
+            echo "::notice::🎯 All IntelliPerf tests PASSED! ✅"
           else
-            echo "::warning::❌ $test_name: FAILED (file not found)"
-            return 1
+            echo "::warning::⚠️ Some IntelliPerf tests FAILED! ❌"
           fi
-        }
-        
-        # Track overall success
-        overall_success=true
-        
-        check_test_result "./test_outputs/intelliperf_results/memory_access_output.json" "Memory Access" || overall_success=false
-        check_test_result "./test_outputs/intelliperf_results/bank_conflict_output.json" "Bank Conflict" || overall_success=false
-        check_test_result "./test_outputs/intelliperf_results/atomic_contention_output.json" "Atomic Contention" || overall_success=false
-        check_test_result "./test_outputs/intelliperf_results/diagnose_only_hip_uncoalesced.json" "Diagnose Only (HIP)" || overall_success=false
-        check_test_result "./test_outputs/intelliperf_results/diagnose_only_torch_add.json" "Diagnose Only (Torch)" || overall_success=false
-        check_test_result "./test_outputs/intelliperf_results/diagnose_only_triton_reduce.json" "Diagnose Only (Triton)" || overall_success=false
-        
-        echo ""
-        if [ "$overall_success" = true ]; then
-          echo "::notice::🎯 All IntelliPerf tests PASSED! ✅"
-        else
-          echo "::warning::⚠️ Some IntelliPerf tests FAILED! ❌"
-        fi
 
-    - name: Upload test outputs as artifact
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: intelliperf-test-outputs
-        path: intelliperf_test_outputs.tar.gz
-        retention-days: 15
-
-    - name: Auto-destroy droplet after use
-      if: always()
-      env:
-        DIGITALOCEAN_API_URL: ${{ secrets.DIGITALOCEAN_API_URL }}
-      run: |
-        echo "🗑️ Auto-destroying droplet ${{ steps.create.outputs.droplet_id }}..."
-        doctl compute droplet delete ${{ steps.create.outputs.droplet_id }} --force
-        echo "✅ Droplet auto-destroyed successfully!"
+      - name: Upload test outputs as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: intelliperf-test-outputs
+          path: intelliperf_test_outputs.tar.gz
+          retention-days: 15

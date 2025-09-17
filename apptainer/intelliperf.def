@@ -10,14 +10,6 @@ From: ubuntu:22.04
     export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
     export ROCM_PATH=/opt/rocm
 
-    # Misc globals
-    export GT_TUNING=/root/guided-tuning
-    export PATH=/opt/omniprobe/bin/logDuration:$PATH
-    export PATH=/root/rocprofiler-compute/src:$PATH
-
-%files
-    examples/bank_conflict/llm.c/requirements.txt /examples/bank_conflict/llm.c/requirements.txt
-
 %post
     # Set locale
     apt-get -y update
@@ -35,13 +27,6 @@ From: ubuntu:22.04
     python3 -m pip install --upgrade pip
     python3 -m pip install 'cmake==3.22'
 
-    # Add GitHub trusted host
-    mkdir -p ~/.ssh
-    touch ~/.ssh/known_hosts
-    ssh-keyscan github.com >> ~/.ssh/known_hosts
-    chmod 700 ~/.ssh
-    chmod 644 ~/.ssh/known_hosts
-
     # Install ROCm
     apt-get -y update
     wget https://repo.radeon.com/amdgpu-install/6.3.3/ubuntu/jammy/amdgpu-install_6.3.60303-1_all.deb
@@ -52,21 +37,7 @@ From: ubuntu:22.04
     export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
     export ROCM_PATH=/opt/rocm
 
-    # Install rocprof-compute (via package manager)
-    # python3 -m pip install --ignore-installed blinker
-    # python3 -m pip install -r /opt/rocm/libexec/rocprofiler-compute/requirements.txt
-    # Install rocprof-compute (from feature branch)
-    export SSH_AUTH_SOCK={{ SSH_AUTH_SOCK }}
-    cd /root
-    git clone -v https://github.com/ROCm/rocprofiler-compute.git
-    cd rocprofiler-compute
-    git checkout 41e73650d5cfc3dbd98e007d6279235578f8529a
-    python3 -m pip install --ignore-installed blinker
-    python3 -m pip install -r requirements.txt
-    cd src
-    export PATH=$PWD:$PATH
-
-    # Install Triton (version pinned)
+    # Install Triton
     cd /root
     export TRITON_HOME=/root
     git clone -v https://github.com/triton-lang/triton.git
@@ -75,24 +46,5 @@ From: ubuntu:22.04
     python3 -m pip install ninja wheel pybind11
     python3 -m pip install -e python
 
-    # Install omniprobe
-    echo "Building with CMAKE_BUILD_TYPE={{ CMAKE_BUILD_TYPE }}"
-    cd /root
-    git clone -v git@github.com:AARInternal/omniprobe.git
-    cd omniprobe
-    git checkout 9083730ab0da50114c767773df49cb1d2165ba7f
-    git submodule update --init --recursive
-    mkdir -p build 
-    cmake -DCMAKE_INSTALL_PREFIX=/opt/omniprobe\
-            -DCMAKE_PREFIX_PATH=${ROCM_PATH}\
-            -DTRITON_LLVM=/root/.triton/llvm/llvm-ubuntu-x64\
-            -DCMAKE_BUILD_TYPE={{ CMAKE_BUILD_TYPE }}\
-            -DCMAKE_VERBOSE_MAKEFILE=ON -S . -B build
-    cmake --build build --target install
-    export PATH=/opt/omniprobe/bin/logDuration:$PATH
-
-    # Install agents dependencies
-    python3 -m pip install openai
-
-    # Install examples dependencies
-    pip3 install --no-cache-dir -r /examples/bank_conflict/llm.c/requirements.txt
+    # Install PyTorch ROCm
+    python3 -m pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/rocm6.3
