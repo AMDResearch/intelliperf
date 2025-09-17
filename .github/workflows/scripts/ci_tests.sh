@@ -17,8 +17,8 @@ intelliperf -vvv --project_directory=./examples --provider $provider --model $mo
 
 # Diagnose Only
 intelliperf -vvv --formula=diagnoseOnly -o $results_dir/diagnose_only_hip_uncoalesced.json -- ./examples/build/access_pattern/uncoalesced
-intelliperf -vvv --formula=diagnoseOnly -o $results_dir/diagnose_only_torch_add.json -- python ./examples/torch/add.py
-TRITON_DISABLE_LINE_INFO=0 intelliperf -vvv --formula=diagnoseOnly -o $results_dir/diagnose_only_triton_reduce.json -- python ./examples/triton/reduce.py
+intelliperf -vvv --formula=diagnoseOnly -o $results_dir/diagnose_only_torch_add.json -- ./examples/torch/add.py
+TRITON_DISABLE_LINE_INFO=0 intelliperf -vvv --formula=diagnoseOnly -o $results_dir/diagnose_only_triton_reduce.json -- ./examples/triton/reduce.py
 
 # Display output files
 echo 'Memory Access Output:'
