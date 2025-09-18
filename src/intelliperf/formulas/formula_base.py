@@ -529,9 +529,19 @@ def filter_json_field(d, field, subfield=None, comparison_func=lambda x: True, t
 	    list: A list of dictionaries that satisfy the comparison function.
 	"""
 	if subfield is not None:
-		return [entry for entry in d if comparison_func(entry.get(field, {}).get(subfield, 0)) and (target_kernel is None or get_kernel_name(entry["kernel"])==target_kernel)]
+		return [
+			entry
+			for entry in d
+			if comparison_func(entry.get(field, {}).get(subfield, 0))
+			and (target_kernel is None or get_kernel_name(entry["kernel"]) == target_kernel)
+		]
 	else:
-		return [entry for entry in d if comparison_func(entry.get(field, 0)) and (target_kernel is None or get_kernel_name(entry["kernel"])==target_kernel)]
+		return [
+			entry
+			for entry in d
+			if comparison_func(entry.get(field, 0))
+			and (target_kernel is None or get_kernel_name(entry["kernel"]) == target_kernel)
+		]
 
 
 def validate_arrays(arr1, arr2, tolerance):
