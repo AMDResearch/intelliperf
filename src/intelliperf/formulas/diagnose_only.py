@@ -64,7 +64,7 @@ class diagnose_only(Formula_Base):
 	def instrument_pass(self):
 		return super().instrument_pass()
 
-	def optimize_pass(self):
+	def optimize_pass(self, target_kernel: str = None):
 		return super().optimize_pass()
 
 	def compile_pass(self):

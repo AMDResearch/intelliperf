@@ -201,7 +201,7 @@ class bank_conflict(Formula_Base):
 			)
 		return Result(success=True, asset=self._instrumentation_results)
 
-	def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000) -> Result:
+	def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000, target_kernel: str = None) -> Result:
 		"""
 		Optimize the kernel to remove shared memory bank conflicts via OpenAI API
 
@@ -248,6 +248,7 @@ class bank_conflict(Formula_Base):
 				field="lds",
 				subfield="bc",
 				comparison_func=lambda x: x > 0,
+				target_kernel=target_kernel,
 			)
 
 			if len(filtered_report_card) == 0:

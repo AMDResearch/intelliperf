@@ -126,7 +126,7 @@ class memory_access(Formula_Base):
 			error_report="The instrumentation is not implemented for memory access.",
 		)
 
-	def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000) -> Result:
+	def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000, target_kernel: str = None) -> Result:
 		"""
 		Optimize the kernel to remove uncoalesced memory access via OpenAI API
 
@@ -172,6 +172,7 @@ class memory_access(Formula_Base):
 				field=field,
 				subfield=subfield,
 				comparison_func=lambda x: x < peak_coal,
+				target_kernel=target_kernel,
 			)
 
 			if len(filtered_report_card) == 0:
