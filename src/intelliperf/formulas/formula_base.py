@@ -235,7 +235,7 @@ class Formula_Base:
 		self._application.build(instrumented=True)
 
 	@abstractmethod
-	def optimize_pass(self):
+	def optimize_pass(self, target_kernel: str = None):
 		"""
 		Optimize the application based on the data collected from the instrumentation pass.
 		"""
@@ -515,7 +515,7 @@ def flatten_dict(d, parent_key="", sep="_"):
 	return dict(items)
 
 
-def filter_json_field(d, field, subfield=None, comparison_func=lambda x: True):
+def filter_json_field(d, field, subfield=None, comparison_func=lambda x: True, target_kernel=None):
 	"""
 	Filters a list of dictionaries based on a comparison function applied to a specified field or subfield.
 
@@ -529,9 +529,19 @@ def filter_json_field(d, field, subfield=None, comparison_func=lambda x: True):
 	    list: A list of dictionaries that satisfy the comparison function.
 	"""
 	if subfield is not None:
-		return [entry for entry in d if comparison_func(entry.get(field, {}).get(subfield, 0))]
+		return [
+			entry
+			for entry in d
+			if comparison_func(entry.get(field, {}).get(subfield, 0))
+			and (target_kernel is None or get_kernel_name(entry["kernel"]) == target_kernel)
+		]
 	else:
-		return [entry for entry in d if comparison_func(entry.get(field, 0))]
+		return [
+			entry
+			for entry in d
+			if comparison_func(entry.get(field, 0))
+			and (target_kernel is None or get_kernel_name(entry["kernel"]) == target_kernel)
+		]
 
 
 def validate_arrays(arr1, arr2, tolerance):

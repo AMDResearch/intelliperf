@@ -166,7 +166,7 @@ class swizzling(Formula_Base):
 			error_report="The instrumentation is not implemented for swizzling.",
 		)
 
-	def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000) -> Result:
+	def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000, target_kernel: str = None) -> Result:
 		"""
 		Optimize the kernel to improve l2 hit rate through block swizzling via two-stage LLM approach
 
@@ -232,6 +232,7 @@ class swizzling(Formula_Base):
 				field=field,
 				subfield=subfield,
 				comparison_func=lambda x: x < min_l2_hit_rate,
+				target_kernel=target_kernel,
 			)
 
 			if len(filtered_report_card) == 0:
