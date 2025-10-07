@@ -117,8 +117,8 @@ class swizzling(Formula_Base):
 		self.initial_source_code = None
 
 		self.max_iterations = 10
-		self.best_l2_improvement = -float("inf")
-		self.best_speedup = 0.0
+		self.best_l2_improvement = 0.0  # Start at baseline (no improvement)
+		self.best_speedup = 1.0  # Start at 1.0x (no speedup)
 		self.best_diff = ""
 		self.best_iteration_report = ""
 		self.best_kernel_code = ""
