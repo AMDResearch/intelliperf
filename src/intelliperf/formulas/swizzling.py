@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import stat
+import sys
 
 import dspy
 
@@ -254,10 +255,11 @@ class swizzling(Formula_Base):
 							kernel_file = file
 							break
 			if kernel_file is None:
-				return Result(
-					success=False,
-					error_report=f"Kernel file not found for kernel {kernel}.",
-				)
+				logging.error(f"Kernel file not found for kernel {kernel}")
+				sys.exit(1)
+			else:
+				logging.debug(f"Kernel file found for kernel {kernel}: {kernel_file}")
+				
 
 			# Stage 1: Memory access pattern analysis (only run once)
 			if not self.memory_analysis_done:
@@ -487,7 +489,10 @@ class swizzling(Formula_Base):
 			}
 		)
 
-		if speedup > self.best_speedup or l2_improvement > self.best_l2_improvement:
+		# Update best if speedup improved AND L2 is better than reference (baseline)
+		is_better = speedup > self.best_speedup and l2_improvement > 0
+		
+		if is_better:
 			self.best_l2_improvement = l2_improvement
 			self.best_speedup = speedup
 			self.best_diff = self.last_applied_diff
@@ -495,6 +500,9 @@ class swizzling(Formula_Base):
 			self.best_optimization_results = self._optimization_results
 			with open(self.current_kernel_files[0], "r") as f:
 				self.best_kernel_code = f.read()
+			# Mark as successful if we achieved any improvement
+			if l2_improvement > 0 or speedup > 1.0:
+				self.success = True
 		if self.current_iteration < self.max_iterations:
 			self.current_summary = self.optimization_report
 			# Always return success=False to continue iterating

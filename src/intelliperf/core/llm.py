@@ -33,6 +33,36 @@ from intelliperf.core.logger import Logger
 
 
 class LLM:
+	def _get_model_context_length(self) -> Optional[int]:
+		"""Query the model's max context length from the API"""
+		import logging
+		try:
+			# Try to get model info from OpenRouter
+			if "openrouter" in self.provider.lower():
+				models_url = "https://openrouter.ai/api/v1/models"
+				headers = {"Authorization": f"Bearer {self.api_key}"}
+				resp = requests.get(models_url, headers=headers, timeout=5)
+				if resp.status_code == 200:
+					models_data = resp.json().get("data", [])
+					for model_info in models_data:
+						if model_info.get("id") == self.model:
+							context_length = model_info.get("context_length")
+							if context_length:
+								logging.info(f"Model {self.model} max context: {context_length:,} tokens")
+								return context_length
+			
+			# Try to get from litellm/dspy metadata if available
+			if hasattr(self.lm, 'model_info'):
+				context_length = getattr(self.lm.model_info, 'max_tokens', None)
+				if context_length:
+					logging.info(f"Model {self.model} max context: {context_length:,} tokens")
+					return context_length
+					
+		except Exception as e:
+			logging.debug(f"Could not query model context length: {e}")
+		
+		return None
+	
 	def __init__(
 		self,
 		api_key: str,
@@ -53,8 +83,13 @@ class LLM:
 			self.header = {"Ocp-Apim-Subscription-Key": api_key}
 		else:
 			self.use_amd = False
-			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key)
-			dspy.configure(lm=self.lm)
+			# Query model context and reserve ~20% for input, rest for output
+			max_context = self._get_model_context_length()
+			max_output_tokens = int(max_context * 0.8) if max_context else 4096
+			# Set timeout to 10 minutes (600 seconds)
+			timeout_mins = 1
+			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key, max_tokens=max_output_tokens, timeout=timeout_mins*60)
+			dspy.configure(lm=self.lm)   
 
 	def ask(
 		self,
@@ -108,54 +143,51 @@ class LLM:
 					)
 
 				return response_content
+			else: # DSPy path
+				dspy.context(description=self.system_prompt)
+				chain = dspy.ChainOfThought(signature)
+				ct_response = chain(prompt=user_prompt)
 
-			# DSPy path
-			dspy.context(description=self.system_prompt)
-			chain = dspy.ChainOfThought(signature)
-			ct_response = chain(prompt=user_prompt)
+				# Try to capture reasoning if available (not returned)
+				reasoning = getattr(ct_response, "reasoning", None)
 
-			# Try to capture reasoning if available (not returned)
-			reasoning = getattr(ct_response, "reasoning", None)
+				# Determine what to return based on signature type
+				if isinstance(signature, str):
+					# Simple signature: extract the requested answer_type field
+					response_content = getattr(ct_response, answer_type, str(ct_response))
+				else:
+					# Complex signature (e.g., dspy.Signature subclass): return full prediction object
+					response_content = ct_response
 
-			# Determine what to return based on signature type
-			if isinstance(signature, str):
-				# Simple signature: extract the requested answer_type field
-				response_content = getattr(ct_response, answer_type, str(ct_response))
-			else:
-				# Complex signature (e.g., dspy.Signature subclass): return full prediction object
-				response_content = ct_response
+				# Log successful response
+				if self.logger:
+					log_payload = {
+						"record_meta": record_meta,
+						"signature": str(signature),
+						"answer_type": answer_type,
+					}
+					try:
+						if isinstance(response_content, str):
+							log_payload["response"] = response_content
+							log_payload["response_length"] = len(response_content)
+						else:
+							# Best-effort: record fields present on prediction object
+							log_payload["response_fields"] = list(getattr(ct_response, "__dict__", {}).keys())
+					except Exception:
+						pass
+					if reasoning:
+						log_payload["reasoning"] = reasoning
+						log_payload["reasoning_type"] = "chain_of_thought"
+					self.logger.record("llm_call_success", log_payload)
 
-			# Log successful response
-			if self.logger:
-				log_payload = {
-					"record_meta": record_meta,
-					"signature": str(signature),
-					"answer_type": answer_type,
-				}
-				try:
-					if isinstance(response_content, str):
-						log_payload["response"] = response_content
-						log_payload["response_length"] = len(response_content)
-					else:
-						# Best-effort: record fields present on prediction object
-						log_payload["response_fields"] = list(getattr(ct_response, "__dict__", {}).keys())
-				except Exception:
-					pass
-				if reasoning:
-					log_payload["reasoning"] = reasoning
-					log_payload["reasoning_type"] = "chain_of_thought"
-				self.logger.record("llm_call_success", log_payload)
-
-			return response_content
+				return response_content
 
 		except Exception as e:
 			error_message = str(e)
 			error_type = type(e).__name__
-
 			if self.logger:
 				self.logger.record(
 					"llm_call_error", {"error": error_message, "error_type": error_type, "record_meta": record_meta}
 				)
-
 			print(f"ERROR: {error_message}")
 			sys.exit(1)

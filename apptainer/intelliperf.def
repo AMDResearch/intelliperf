@@ -1,41 +1,65 @@
 Bootstrap: docker
-From: ubuntu:22.04
+From: rocm/pytorch:rocm7.0_ubuntu22.04_py3.10_pytorch_release_2.8.0
 
 %environment
     # Locale
     export LANG=en_US.UTF-8
 
     # ROCm globals
-    export PATH=/opt/rocm/bin:$PATH
+    export PATH=/opt/conda/envs/py_3.10/bin:/opt/rocm/bin:$PATH
     export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
     export ROCM_PATH=/opt/rocm
+    export OMPI_MCA_mtl="^ofi"
+    export OMPI_MCA_pml="ob1"
 
 %post
+    /bin/bash -c "
     # Set locale
     apt-get -y update
     apt-get install -y locales
     locale-gen en_US.UTF-8
     export LANG=en_US.UTF-8
 
-    # Install dependencies
+    # Install additional system dependencies
     apt-get -y update
-    apt-get install -y software-properties-common
-    apt-get upgrade -y
-    apt-get install -y build-essential python3 python3-pip python3-setuptools python3-wheel git wget clang lld libzstd-dev libomp-dev vim libdwarf-dev
-    apt-get install -y locales
-    locale-gen en_US.UTF-8
-    python3 -m pip install --upgrade pip
-    python3 -m pip install 'cmake==3.22'
+    apt-get install -y software-properties-common git wget clang lld libzstd-dev libomp-dev vim libdwarf-dev gdb tmux
 
-    # Install ROCm
-    apt-get -y update
-    wget https://repo.radeon.com/amdgpu-install/6.3.3/ubuntu/jammy/amdgpu-install_6.3.60303-1_all.deb
-    apt-get -y install ./amdgpu-install_6.3.60303-1_all.deb
-    apt-get -y update
-    apt-get install -y rocm-dev rocm-llvm-dev rocm-hip-runtime-dev rocm-smi-lib rocminfo rocthrust-dev rocprofiler-compute rocblas rocm-gdb gdb tmux
-    export PATH=/opt/rocm/bin:$PATH
-    export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
-    export ROCM_PATH=/opt/rocm
+    # Upgrade pip
+    pip install --upgrade pip
 
-    # Install PyTorch ROCm
-    python3 -m pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/rocm6.3
+    # Install additional Python packages for intelliperf
+    pip install --no-cache-dir \
+        astunparse==1.6.2 \
+        colorlover \
+        dash-bootstrap-components \
+        dash-svg \
+        dash>=3.0.0 \
+        kaleido==0.2.1 \
+        matplotlib \
+        numpy>=1.17.5 \
+        pandas>=1.4.3 \
+        plotext \
+        plotille \
+        pymongo \
+        pyyaml \
+        setuptools \
+        tabulate \
+        textual \
+        textual_plotext \
+        textual-fspicker \
+        tqdm \
+        tomli\
+        tabulate\
+        ml_dtypes\
+        dspy==2.6.27\
+        pandas\
+        duckdb\
+        rich\
+        pytest\
+        litellm[proxy]
+    "
+
+%runscript
+    echo "Welcome to IntelliPerf with ROCm 7.0!"
+    source /opt/conda/bin/activate py_3.10
+    exec "$@"
