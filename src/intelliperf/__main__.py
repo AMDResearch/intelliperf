@@ -88,11 +88,17 @@ def intelliperf_parser():
 	optional_args.add_argument(
 		"-f",
 		"--formula",
-		choices=["bankConflict", "memoryAccess", "atomicContention", "diagnoseOnly"],
+		choices=[
+			"bankConflict",
+			"memoryAccess",
+			"atomicContention",
+			"diagnoseOnly",
+			"swizzling",
+		],
 		default="diagnoseOnly",
 		metavar="",
 		type=str,
-		help="Specify the formula to use for optimization.\nAvailable options: bankConflict, memoryAccess, atomicContention, diagnoseOnly (default: diagnoseOnly)",
+		help="Specify the formula to use for optimization.\nAvailable options: bankConflict, memoryAccess, atomicContention, diagnoseOnly, swizzling (default: diagnoseOnly)",
 	)
 	optional_args.add_argument(
 		"--top_n",
@@ -160,6 +166,9 @@ def intelliperf_parser():
 	# Output arguments
 	optional_args.add_argument("-o", "--output_file", type=str, metavar="", help="Path to the output file")
 
+	# Output arguments
+	optional_args.add_argument("-k", "--kernel", type=str, metavar="", help="Kernel name to optimize")
+
 	args = parser.parse_args()
 
 	# Handle internal LLM option
@@ -221,24 +230,30 @@ def main():
 		from intelliperf.formulas.atomic_contention import atomic_contention
 
 		formula = atomic_contention
+	elif args.formula == "swizzling":
+		from intelliperf.formulas.swizzling import swizzling
+
+		formula = swizzling
 	else:
 		logging.error(f"Invalid formula specified. {args.formula} is not supported.")
 		import sys
 
 		sys.exit(1)
 
-	optimizer = formula(
-		name=generated_name,
-		build_command=args.build_command,
-		instrument_command=args.instrument_command,
-		project_directory=args.project_directory,
-		app_cmd=args.remaining,
-		top_n=args.top_n,
-		model=args.model,
-		provider=args.provider,
-		in_place=args.in_place,
-		unittest_command=args.unittest_command,
-	)
+	optimizer_args = {
+		"name": generated_name,
+		"build_command": args.build_command,
+		"instrument_command": args.instrument_command,
+		"project_directory": args.project_directory,
+		"app_cmd": args.remaining,
+		"top_n": args.top_n,
+		"model": args.model,
+		"provider": args.provider,
+		"in_place": args.in_place,
+		"unittest_command": args.unittest_command,
+	}
+
+	optimizer = formula(**optimizer_args)
 
 	# Helper function to flush logs if tracing is enabled
 	def flush_logs_if_enabled():
@@ -269,10 +284,10 @@ def main():
 		logging.info(f"Executing pass {attempt + 1} of {num_attempts}.")
 
 		# Optimize the application based on insights from instrumentation.
-		optimize_result = optimizer.optimize_pass()
+		optimize_result = optimizer.optimize_pass(target_kernel=args.kernel)
 		if not optimize_result:
 			optimize_result.report_out()
-			logging.warning(f"Optimization pass {attempt + 1} failed. Retrying...")
+			logging.warning(f"{args.formula} optimization pass {attempt + 1} failed. Retrying...")
 			flush_logs_if_enabled()  # Flush after failed optimization
 			continue
 

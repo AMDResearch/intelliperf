@@ -130,7 +130,7 @@ class atomic_contention(Formula_Base):
 			self.current_summary = result.error_report
 		return result
 
-	def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000) -> Result:
+	def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000, target_kernel: str = None) -> Result:
 		"""
 		Optimize the kernel to remove atomic contention via OpenAI API
 
@@ -177,6 +177,7 @@ class atomic_contention(Formula_Base):
 				field=field,
 				subfield=subfield,
 				comparison_func=lambda x: x > average_atomic_lat,
+				target_kernel=target_kernel,
 			)
 
 			if len(filtered_report_card) == 0:
