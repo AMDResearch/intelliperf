@@ -12,8 +12,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 
 # Python dependencies 
-dependencies = ["tomli", "tabulate", "ml_dtypes", "dspy==2.6.27", "pandas", "duckdb", "rich", "pytest", "litellm[proxy]"]
-
+dependencies = ["tomli", "tabulate", "ml_dtypes", "dspy==2.6.27", "pandas", "duckdb", "rich", "pytest", "litellm[proxy]", "rpds-py"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
