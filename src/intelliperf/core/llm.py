@@ -36,6 +36,7 @@ class LLM:
 	def _get_model_context_length(self) -> Optional[int]:
 		"""Query the model's max context length from the API"""
 		import logging
+
 		try:
 			# Try to get model info from OpenRouter
 			if "openrouter" in self.provider.lower():
@@ -50,19 +51,19 @@ class LLM:
 							if context_length:
 								logging.info(f"Model {self.model} max context: {context_length:,} tokens")
 								return context_length
-			
+
 			# Try to get from litellm/dspy metadata if available
-			if hasattr(self.lm, 'model_info'):
-				context_length = getattr(self.lm.model_info, 'max_tokens', None)
+			if hasattr(self.lm, "model_info"):
+				context_length = getattr(self.lm.model_info, "max_tokens", None)
 				if context_length:
 					logging.info(f"Model {self.model} max context: {context_length:,} tokens")
 					return context_length
-					
+
 		except Exception as e:
 			logging.debug(f"Could not query model context length: {e}")
-		
+
 		return None
-	
+
 	def __init__(
 		self,
 		api_key: str,
@@ -88,8 +89,13 @@ class LLM:
 			max_output_tokens = int(max_context * 0.8) if max_context else 4096
 			# Set timeout to 10 minutes (600 seconds)
 			timeout_mins = 1
-			self.lm = dspy.LM(f"{self.provider}/{self.model}", api_key=api_key, max_tokens=max_output_tokens, timeout=timeout_mins*60)
-			dspy.configure(lm=self.lm)   
+			self.lm = dspy.LM(
+				f"{self.provider}/{self.model}",
+				api_key=api_key,
+				max_tokens=max_output_tokens,
+				timeout=timeout_mins * 60,
+			)
+			dspy.configure(lm=self.lm)
 
 	def ask(
 		self,
@@ -143,7 +149,7 @@ class LLM:
 					)
 
 				return response_content
-			else: # DSPy path
+			else:  # DSPy path
 				dspy.context(description=self.system_prompt)
 				chain = dspy.ChainOfThought(signature)
 				ct_response = chain(prompt=user_prompt)

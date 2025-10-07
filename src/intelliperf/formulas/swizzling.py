@@ -259,7 +259,6 @@ class swizzling(Formula_Base):
 				sys.exit(1)
 			else:
 				logging.debug(f"Kernel file found for kernel {kernel}: {kernel_file}")
-				
 
 			# Stage 1: Memory access pattern analysis (only run once)
 			if not self.memory_analysis_done:
@@ -491,7 +490,7 @@ class swizzling(Formula_Base):
 
 		# Update best if speedup improved AND L2 is better than reference (baseline)
 		is_better = speedup > self.best_speedup and l2_improvement > 0
-		
+
 		if is_better:
 			self.best_l2_improvement = l2_improvement
 			self.best_speedup = speedup
