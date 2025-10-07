@@ -16,7 +16,7 @@ model="openai/gpt-4o"
 intelliperf -vvv --project_directory=./examples --provider $provider --model $model --build_command="./scripts/build_examples.sh -c" --formula=memoryAccess -o $results_dir/memory_access_output.json -- ./build/access_pattern/uncoalesced || true
 intelliperf -vvv --project_directory=./examples --provider $provider --model $model --build_command="./scripts/build_examples.sh -c" --formula=bankConflict -o $results_dir/bank_conflict_output.json -- ./build/bank_conflict/matrix_transpose 1024 1024 || true
 intelliperf -vvv --project_directory=./examples --provider $provider --model $model --build_command="./scripts/build_examples.sh -c" --instrument_command="./scripts/build_examples.sh -i -c" --formula=atomicContention -o $results_dir/atomic_contention_output.json -- ./build/contention/reduction || true
-
+intelliperf -vvv --project_directory=./examples --provider $provider --model $model --formula=swizzling --project_directory="./examples" --unittest_command="triton/gemm_runner.py --validate" -o $results_dir/swizzling_output.json -- ./triton/gemm_runner.py || true
 # Diagnose Only
 intelliperf -vvv --formula=diagnoseOnly -o $results_dir/diagnose_only_hip_uncoalesced.json -- ./examples/build/access_pattern/uncoalesced
 intelliperf -vvv --formula=diagnoseOnly -o $results_dir/diagnose_only_torch_add.json -- ./examples/torch/add.py
