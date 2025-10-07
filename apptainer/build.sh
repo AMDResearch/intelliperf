@@ -25,4 +25,5 @@ echo "Building Apptainer image..."
 echo "Definition file: $definition"
 echo "Output path: $output_path"
 
-apptainer build $output_path $definition
+# Build the container
+apptainer build --force $output_path $definition

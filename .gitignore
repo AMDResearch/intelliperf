@@ -13,3 +13,4 @@ external/
 
 intelliperf_env/
 trace/
+.build/
