@@ -240,6 +240,8 @@ def main():
 
 		sys.exit(1)
 
+	num_attempts = 0 if args.formula == "diagnoseOnly" else args.num_attempts
+
 	optimizer_args = {
 		"name": generated_name,
 		"build_command": args.build_command,
@@ -251,6 +253,7 @@ def main():
 		"provider": args.provider,
 		"in_place": args.in_place,
 		"unittest_command": args.unittest_command,
+		"num_attempts": num_attempts,
 	}
 
 	optimizer = formula(**optimizer_args)
@@ -324,7 +327,9 @@ def main():
 	import sys
 
 	try:
-		if args.formula == "diagnoseOnly" or performance_result:
+		# Always write results if we ran any iterations (even if they all "failed" to continue iterating)
+		# For diagnoseOnly or if we have any performance result, write output
+		if args.formula == "diagnoseOnly" or performance_result is not None:
 			# Flush logger if tracing is enabled
 			if hasattr(optimizer, "get_logger") and args.trace_path:
 				logger = optimizer.get_logger()

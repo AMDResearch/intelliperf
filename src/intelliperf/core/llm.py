@@ -99,13 +99,34 @@ class LLM:
 
 	def ask(
 		self,
-		user_prompt: str,
+		user_prompt: str = "",
 		signature="prompt: str -> optimized_code: str",
 		answer_type: str = "optimized_code",
 		record_meta: str = None,
+		**input_kwargs,
 	):
+		"""
+		Ask the LLM a question using DSPy signatures.
+
+		Args:
+		        user_prompt: For simple string-based signatures, the prompt text
+		        signature: DSPy signature (string or Signature class)
+		        answer_type: Which field to extract from response (for string signatures)
+		        record_meta: Metadata for logging
+		        **input_kwargs: For complex signatures with multiple inputs (e.g., kernel_code, history, etc.)
+		"""
 		# Log the LLM interaction start
 		if self.logger:
+			# For input_kwargs, log the actual values
+			logged_inputs = {}
+			if input_kwargs:
+				for key, value in input_kwargs.items():
+					# For history object, extract the messages list
+					if key == "history" and hasattr(value, "messages"):
+						logged_inputs[key] = value.messages
+					else:
+						logged_inputs[key] = value
+
 			self.logger.record(
 				"llm_call_start",
 				{
@@ -116,6 +137,7 @@ class LLM:
 					"record_meta": record_meta,
 					"signature": str(signature),
 					"answer_type": answer_type,
+					"input_kwargs": logged_inputs if input_kwargs else None,
 				},
 			)
 
@@ -152,7 +174,14 @@ class LLM:
 			else:  # DSPy path
 				dspy.context(description=self.system_prompt)
 				chain = dspy.ChainOfThought(signature)
-				ct_response = chain(prompt=user_prompt)
+
+				# Determine how to call the chain
+				if input_kwargs:
+					# Complex signature with multiple inputs
+					ct_response = chain(**input_kwargs)
+				else:
+					# Simple signature with just prompt
+					ct_response = chain(prompt=user_prompt)
 
 				# Try to capture reasoning if available (not returned)
 				reasoning = getattr(ct_response, "reasoning", None)
@@ -171,16 +200,8 @@ class LLM:
 						"record_meta": record_meta,
 						"signature": str(signature),
 						"answer_type": answer_type,
+						"response": response_content,
 					}
-					try:
-						if isinstance(response_content, str):
-							log_payload["response"] = response_content
-							log_payload["response_length"] = len(response_content)
-						else:
-							# Best-effort: record fields present on prediction object
-							log_payload["response_fields"] = list(getattr(ct_response, "__dict__", {}).keys())
-					except Exception:
-						pass
 					if reasoning:
 						log_payload["reasoning"] = reasoning
 						log_payload["reasoning_type"] = "chain_of_thought"
@@ -193,7 +214,12 @@ class LLM:
 			error_type = type(e).__name__
 			if self.logger:
 				self.logger.record(
-					"llm_call_error", {"error": error_message, "error_type": error_type, "record_meta": record_meta}
+					"llm_call_error",
+					{
+						"error": error_message,
+						"error_type": error_type,
+						"record_meta": record_meta,
+					},
 				)
 			print(f"ERROR: {error_message}")
 			sys.exit(1)
