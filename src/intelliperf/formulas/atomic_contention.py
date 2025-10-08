@@ -247,7 +247,11 @@ class atomic_contention(Formula_Base):
 		# Log profiling results
 		if hasattr(self, "_initial_profiler_results") and self._initial_profiler_results:
 			self.get_logger().record(
-				"profile_pass_complete", {"profiler_results": self._initial_profiler_results, "top_n": self.top_n}
+				"profile_pass_complete",
+				{
+					"profiler_results": self._initial_profiler_results,
+					"top_n": self.top_n,
+				},
 			)
 
 	def instrument_pass(self) -> Result:
@@ -261,7 +265,11 @@ class atomic_contention(Formula_Base):
 
 		# Log instrumentation completion
 		self.get_logger().record(
-			"instrument_pass_complete", {"success": True, "note": "Instrumentation pass completed via parent class"}
+			"instrument_pass_complete",
+			{
+				"success": True,
+				"note": "Instrumentation pass completed via parent class",
+			},
 		)
 
 		return Result(
@@ -286,7 +294,12 @@ class atomic_contention(Formula_Base):
 			self.current_summary = result.error_report
 		return result
 
-	def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000, target_kernel: str = None) -> Result:
+	def optimize_pass(
+		self,
+		temperature: float = 0.0,
+		max_tokens: int = 3000,
+		target_kernel: str = None,
+	) -> Result:
 		"""
 		Optimize the kernel to remove atomic contention via OpenAI API
 
@@ -445,7 +458,10 @@ class atomic_contention(Formula_Base):
 			)
 		except Exception as e:
 			error_msg = f"An unexpected error occurred - {str(e)}"
-			self.get_logger().record("optimization_error", {"error": error_msg, "error_type": type(e).__name__})
+			self.get_logger().record(
+				"optimization_error",
+				{"error": error_msg, "error_type": type(e).__name__},
+			)
 			logging.error(error_msg)
 			return Result(success=False, error_report=error_msg)
 
@@ -615,6 +631,21 @@ class atomic_contention(Formula_Base):
 			with open(file, "w") as f:
 				f.write(self.best_kernel_code)
 
+		# Extract metrics from best optimization step
+		best_step = self.optimization_tracker.to_dict().get("best_step", {})
+		metrics = best_step.get("metrics", {})
+
+		# Build structured metric fields
+		metric_fields = {
+			"kernel_name": self.current_kernel,
+			"metric": "atomic_lat_cycles",  # The counter we're optimizing
+			"metric_name": "Atomic Latency",  # Human-readable name
+			"metric_before": metrics.get("unoptimized_lat", self.baseline_atomic_latency),
+			"metric_after": metrics.get("optimized_lat", self.baseline_atomic_latency),
+			"time_before_ms": metrics.get("unoptimized_time", 0) / 1e6,  # Convert ns to ms
+			"time_after_ms": metrics.get("optimized_time", 0) / 1e6,  # Convert ns to ms
+		}
+
 		# Include optimization history in results
 		super().write_results(
 			output_file=output_file,
@@ -622,6 +653,7 @@ class atomic_contention(Formula_Base):
 				"formula": "atomicContention",
 				"success": self.success,
 				"optimization_history": self.optimization_tracker.to_dict(),
+				**metric_fields,
 			},
 		)
 

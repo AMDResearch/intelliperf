@@ -126,6 +126,12 @@ class swizzling(Formula_Base):
 		self.l2_improvement_history = []
 		self.gpu_spec = GPUSpec()
 
+		# Store metrics for structured reporting
+		self.best_unoptimized_l2_hr = None
+		self.best_optimized_l2_hr = None
+		self.best_unoptimized_time = None
+		self.best_optimized_time = None
+
 	# Removed local compute_diff; using Formula_Base.compute_diff instead
 
 	def build_pass(self, validate_build_result=True) -> Result:
@@ -511,6 +517,11 @@ class swizzling(Formula_Base):
 			self.best_diff = self.last_applied_diff
 			self.best_iteration_report = self.optimization_report
 			self.best_optimization_results = self._optimization_results
+			# Store metrics for structured reporting
+			self.best_unoptimized_l2_hr = unoptimized_l2_hit_rate
+			self.best_optimized_l2_hr = optimized_l2_hit_rate
+			self.best_unoptimized_time = unoptimized_time
+			self.best_optimized_time = optimized_time
 			with open(self.current_kernel_files[0], "r") as f:
 				self.best_kernel_code = f.read()
 			# Mark as successful if we achieved any improvement
@@ -534,9 +545,30 @@ class swizzling(Formula_Base):
 			with open(file, "w") as f:
 				f.write(self.best_kernel_code)
 
+		# Build structured metric fields
+		metric_fields = {}
+		if self.best_unoptimized_l2_hr is not None and self.best_optimized_l2_hr is not None:
+			metric_fields = {
+				"kernel_name": self.current_kernel,
+				"metric": "l2_hr_pct",  # The counter we're optimizing (L2 cache hit rate)
+				"metric_name": "L2 Cache Hit Rate",  # Human-readable name
+				"metric_before": self.best_unoptimized_l2_hr,
+				"metric_after": self.best_optimized_l2_hr,
+				"time_before_ms": (
+					self.best_unoptimized_time / 1e6 if self.best_unoptimized_time else 0
+				),  # Convert ns to ms
+				"time_after_ms": (
+					self.best_optimized_time / 1e6 if self.best_optimized_time else 0
+				),  # Convert ns to ms
+			}
+
 		super().write_results(
 			output_file=output_file,
-			additional_results={"formula": "swizzling", "success": self.success},
+			additional_results={
+				"formula": "swizzling",
+				"success": self.success,
+				**metric_fields,
+			},
 		)
 
 	def summarize_previous_passes(self):

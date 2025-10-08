@@ -616,6 +616,21 @@ class memory_access(Formula_Base):
 			with open(file, "w") as f:
 				f.write(self.best_kernel_code)
 
+		# Extract metrics from best optimization step
+		best_step = self.optimization_tracker.to_dict().get("best_step", {})
+		metrics = best_step.get("metrics", {})
+
+		# Build structured metric fields
+		metric_fields = {
+			"kernel_name": self.current_kernel,
+			"metric": "coal_pct",  # The counter we're optimizing (memory coalescing)
+			"metric_name": "Memory Coalescing",  # Human-readable name
+			"metric_before": metrics.get("unoptimized_coal", self.baseline_coalesced_pct),
+			"metric_after": metrics.get("optimized_coal", self.baseline_coalesced_pct),
+			"time_before_ms": metrics.get("unoptimized_time", 0) / 1e6,  # Convert ns to ms
+			"time_after_ms": metrics.get("optimized_time", 0) / 1e6,  # Convert ns to ms
+		}
+
 		# Include optimization history in results
 		super().write_results(
 			output_file=output_file,
@@ -623,6 +638,7 @@ class memory_access(Formula_Base):
 				"formula": "memoryAccess",
 				"success": self.success,
 				"optimization_history": self.optimization_tracker.to_dict(),
+				**metric_fields,
 			},
 		)
 
