@@ -25,15 +25,153 @@
 import json
 import logging
 import os
+import dspy
 
-from intelliperf.core.llm import LLM
 from intelliperf.formulas.formula_base import (
 	Formula_Base,
+	OptimizationTracker,
 	Result,
 	filter_json_field,
 	get_kernel_name,
 )
-from intelliperf.utils.env import get_llm_api_key
+
+
+class AtomicContentionOptimization(dspy.Signature):
+	"""Optimize GPU kernel code to reduce atomic contention and improve performance."""
+
+	kernel_code = dspy.InputField(desc="The current kernel source code that needs atomic contention optimization.")
+	problem_description = dspy.InputField(
+		desc="Description of the atomic contention issue detected, including specific atomic operations with high latency and performance impact."
+	)
+
+	# Baseline metrics for reference
+	baseline_atomic_latency = dspy.InputField(
+		desc="Baseline average atomic latency in cycles. Indicates contention level - higher latency means more threads competing for atomic operations. This is the initial unoptimized value before any optimization attempts."
+	)
+	baseline_time_ms = dspy.InputField(
+		desc="Baseline kernel execution time in milliseconds. This is the initial unoptimized kernel runtime before any optimization attempts."
+	)
+
+	# History of all previous attempts
+	history = dspy.History = dspy.InputField(
+		desc="Complete history of previous optimization attempts, including the code changes (diffs), before/after atomic latency values, speedup ratios, and whether each attempt improved or regressed performance. Use this to avoid repeating failed approaches and build on successful patterns."
+	)
+
+	# Low-level optimization techniques
+	optimization_techniques = dspy.InputField(
+		desc="""Available low-level atomic contention optimization techniques to consider:
+
+1. **Non-temporal loads**: Treat read-once data as streaming, avoid cache pollution.
+   Example: float x = __builtin_nontemporal_load(&input[i]);
+
+2. **Warp-wide cooperative loads** using shuffles:
+   float val = __shfl_sync(0xffffffff, local_data, 0);
+
+3. **Prefetching into registers**:
+   float prefetch = input[i + 1]; // Use later
+
+4. **Manual register tiling with unrolled loops**:
+   float tile[4];
+   #pragma unroll
+   for (int i = 0; i < 4; ++i) tile[i] = input[idx + i];
+
+5. **Double-buffering** for overlapping memory + compute:
+   load_tile(buf_a);
+   load_tile(buf_b); compute(buf_a); swap();
+
+6. **Structure-of-Arrays transformation** to align thread memory access:
+   float val = soa.x[threadIdx.x]; // Coalesced
+
+7. **Aligned vectorized memory access** using float4:
+   float4 x = reinterpret_cast<float4*>(input)[idx];"""
+	)
+
+	amd_specific_optimizations = dspy.InputField(
+		desc="""AMD-specific optimizations for CDNA GPUs (MI250X, MI300X):
+
+**AMD MFMA (Matrix Fused Multiply-Add) intrinsics**:
+These instructions execute on a **wavefront-wide** basis (64 threads), using per-lane vector registers to load parts of matrices A, B, C.
+
+**MFMA Intrinsic Syntax:**
+  d = __builtin_amdgcn_mfma_<CDfmt>_<MxNxK><ABfmt>(a, b, c, cbsz, abid, blgp);
+
+**Parameters:**
+- CDfmt: format of C and D (e.g., f32, fp32)
+- ABfmt: format of A and B (e.g., f16, bf16, i8)
+- M, N, K: matrix tile dimensions
+- a, b, c: registers or scalars from matrices A, B, C
+- d: output register of resulting matrix tile D
+- cbsz: broadcast size (0=no broadcast, 1=2-wide broadcast, etc.)
+- abid: A-matrix block to broadcast from (used with cbsz)
+- blgp: B-matrix swizzle pattern (0=normal, 1=lanes 0-31→32-63, 2=lanes 32-63→0-31, 3=rotate down by 16, 4-7=group-wide broadcast)
+
+**Example (FP32, 16x16x4 GEMM):**
+```cpp
+__global__ void sgemm_16x16x4(const float *A, const float *B, float *D) {
+  using float4 = __attribute__((__vector_size__(4 * sizeof(float)))) float;
+  float4 d = {0};
+
+  int mk = threadIdx.y + 4 * threadIdx.x;
+  int kn = threadIdx.x + 16 * threadIdx.y;
+
+  float amk = A[mk];
+  float bkn = B[kn];
+  d = __builtin_amdgcn_mfma_f32_16x16x4f32(amk, bkn, d, 0, 0, 0);
+
+  for (int i = 0; i < 4; ++i)
+    D[threadIdx.x + i * 16 + threadIdx.y * 4 * 16] = d[i];
+}
+```
+Launch with: dim3 block(16, 4); dim3 grid(1, 1);
+
+**Performance (CDNA2/CDNA3 - MI250X/MI300X):**
+- FP32 16x16x4: 256 flops/cycle/CU
+- FP16/BF16 16x16x16: 1024 flops/cycle/CU
+- INT8 16x16x16: 1024 flops/cycle/CU
+- FP64 4x4x4: 128-256 flops/cycle/CU
+
+**Key Benefits:**
+- MFMA offers 2-4× throughput over vector FMAs
+- Use wavefront-aligned loads and register blocking to match instruction layout
+- Avoid using warp-level primitives with the _sync suffix (e.g., __shfl_sync, __ballot_sync) and use the non-sync variants instead for broader compatibility
+- We are optimizing for CDNA GPUs (MI300X) so target this architecture"""
+	)
+
+	optimization_categories = dspy.InputField(
+		desc="""Categories of optimization strategies to explore:
+
+1. **Atomic Reduction Strategies:**
+   - Replace atomics with thread-local accumulation + final reduction
+   - Use hierarchical reduction (warp-level → block-level → global)
+   - Batch atomic operations to reduce frequency
+   - Use lock-free data structures when possible
+
+2. **Memory Access Pattern Changes:**
+   - Non-temporal loads for streaming data (__ldg, __builtin_nontemporal_load)
+   - Warp-wide cooperative loads with shuffles (__shfl, __shfl_down)
+   - Manual register tiling and double-buffering
+   - Structure-of-Arrays transformations
+
+3. **Advanced Vectorization:**
+   - Vectorized memory access patterns (float4, int4)
+   - SIMD-friendly loop unrolling
+   - Memory coalescing with vector types
+
+4. **AMD-Specific Optimizations:**
+   - AMD MFMA (Matrix Fused Multiply-Add) intrinsics for CDNA GPUs (MI250X, MI300X)
+   - Wavefront-level optimizations (64-thread blocks)
+   - AMD-specific memory hierarchy optimizations
+
+5. **Algorithmic Changes:**
+   - Different loop ordering strategies
+   - Alternative memory layout schemes
+   - New data structure organizations
+   - Wavefront/warp specialization and/or workgroup/block specialization"""
+	)
+
+	optimized_code = dspy.OutputField(
+		desc="The complete, runnable optimized kernel code with reduced atomic contention. Must preserve the exact kernel signature, all comments, licenses, and copyright notices. The code should reduce atomic operations or reorganize computation to minimize contention."
+	)
 
 
 class atomic_contention(Formula_Base):
@@ -73,8 +211,28 @@ class atomic_contention(Formula_Base):
 		self.current_summary = None
 		self.previous_source_code = None
 		self.success = False
-		self.optimization_attempts = []  # Track optimization strategies attempted
-		self.iteration_count = 0  # Track current iteration
+
+		# Initialize optimization tracker
+		# Atomic contention optimization maximizes latency reduction (minimize atomic_lat)
+		# Automatically calculates latency_improvement from unoptimized_lat / optimized_lat
+		self.optimization_tracker = OptimizationTracker(
+			max_iterations=self.num_attempts,
+			primary_metric="latency_improvement",
+			maximize=True,
+			before_metric="unoptimized_lat",
+			after_metric="optimized_lat",
+		)
+
+		# Store baseline metrics (set during first profiling)
+		self.baseline_atomic_latency = None
+		self.baseline_time_ms = None
+
+		# Track best optimization across iterations
+		self.best_speedup = 1.0  # Start at 1.0x (no speedup)
+		self.best_latency_improvement = 1.0  # Start at 1.0x (no improvement)
+		self.best_kernel_code = ""
+		self.best_iteration_report = ""
+		self.best_optimization_results = None
 
 	def profile_pass(self) -> Result:
 		"""
@@ -84,9 +242,6 @@ class atomic_contention(Formula_Base):
 		    Result: DataFrame containing the performance report card
 		"""
 		super().profile_pass()
-
-		# Reset optimization state for new optimization cycle
-		self.reset_optimization_state()
 
 		# Log profiling results
 		if hasattr(self, "_initial_profiler_results") and self._initial_profiler_results:
@@ -142,7 +297,6 @@ class atomic_contention(Formula_Base):
 		    Result: Optimized kernel as a file path
 		"""
 		super().optimize_pass()
-		llm_key = get_llm_api_key()
 
 		system_prompt = (
 			"You are a skilled GPU HIP programmer. Given a kernel,"
@@ -153,15 +307,8 @@ class atomic_contention(Formula_Base):
 			" Do not include any markdown code blocks or text other than the code."
 		)
 
-		model = self.model
-		provider = self.provider
-		llm = LLM(
-			api_key=llm_key,
-			system_prompt=system_prompt,
-			model=model,
-			provider=provider,
-			logger=self.get_logger(),  # Add logger here
-		)
+		# Get LLM instance (initialized once per formula)
+		llm = self.get_llm(system_prompt)
 
 		kernel = None
 		kernel_file = None
@@ -187,6 +334,12 @@ class atomic_contention(Formula_Base):
 
 			kernel = filtered_report_card[0]["kernel"]
 			self._parse_kernel_signature(kernel)
+
+			# Store baseline metrics on first run
+			if self.baseline_atomic_latency is None:
+				self.baseline_atomic_latency = filtered_report_card[0]["atomics"]["atomic_lat"]
+				self.baseline_time_ms = filtered_report_card[0]["durations"]["ns"] / 1e6
+
 			files = filtered_report_card[0]["source"]["files"]
 			kernel_name = get_kernel_name(kernel)
 			kernel_file = None
@@ -204,33 +357,18 @@ class atomic_contention(Formula_Base):
 			if kernel_file is None:
 				return Result(success=False, error_report="Kernel file not found.")
 
-			user_prompt = (
-				f"OPTIMIZATION ITERATION: You are optimizing kernel '{kernel}' to reduce atomic contention.\n\n"
-				f"SOURCE CODE:\n{unoptimized_file_content}\n\n"
+			# Build problem description
+			problem_description = (
+				f"High atomic contention detected in kernel {kernel}. "
+				f"Please optimize to reduce atomic contention but do not change the semantics. "
+				"Do not remove any comments or licenses. "
+				"Do not include any markdown code blocks or text other than the code."
 			)
 
-			# Add iteration context if this is not the first attempt
 			if self.current_summary is not None:
-				user_prompt += (
-					f"PREVIOUS OPTIMIZATION RESULTS:\n{self.current_summary}\n\n"
-					"The previous optimization approach did not improve atomic contention. "
-					"Try a different strategy.\n\n"
-				)
-
-				# Add optimization history context
-				history_context = self.get_optimization_history_context()
-				user_prompt += f"{history_context}\n\n"
-
-				# Add diff information to show what was changed
+				problem_description += f"\n\nPrevious attempt summary: {self.current_summary}"
 				cur_diff = self.compute_diff([kernel_file])
-				if cur_diff:
-					user_prompt += f"CHANGES FROM ORIGINAL CODE:\n{cur_diff}\n\n"
-
-			user_prompt += (
-				"OBJECTIVE: Reduce atomic contention while maintaining or improving runtime performance.\n"
-				"CONSTRAINTS: Preserve kernel signature and program semantics.\n"
-				"Return only the optimized code without any markdown or explanatory text."
-			)
+				problem_description += f"\nDiff from initial code:\n{cur_diff}"
 
 			self.previous_source_code = unoptimized_file_content
 
@@ -257,26 +395,33 @@ class atomic_contention(Formula_Base):
 
 		self.current_kernel_files = [kernel_file]
 
-		logging.debug(f"LLM prompt: {user_prompt}")
 		logging.debug(f"System prompt: {system_prompt}")
+		logging.debug(f"Problem description: {problem_description}")
 
 		try:
-			record_meta = f"Iteration {self.iteration_count + 1}"
-			optimized_file_content = llm.ask(user_prompt, record_meta=record_meta).strip()
-			optimized_file_content = self.postprocess_llm_code(optimized_file_content)
-
-			# Track this optimization attempt
-			self.iteration_count += 1
-
-			# Store attempt info (will be updated with results after validation)
-			self.optimization_attempts.append(
-				{
-					"iteration": self.iteration_count,
-					"code": optimized_file_content,
-					"success": None,  # Will be updated after performance validation
-					"improvement": 0.0,  # Will be updated after performance validation
-				}
+			# Use DSPy signature with history - pass inputs as kwargs
+			response = llm.ask(
+				signature=AtomicContentionOptimization,
+				answer_type=None,  # Return full response object
+				record_meta="atomic_contention_optimization",
+				kernel_code=unoptimized_file_content,
+				problem_description=problem_description,
+				baseline_atomic_latency=str(self.baseline_atomic_latency),
+				baseline_time_ms=str(self.baseline_time_ms),
+				history=self.optimization_tracker.get_dspy_history(),
+				optimization_techniques="",  # Field description contains the full content
+				amd_specific_optimizations="",  # Field description contains the full content
+				optimization_categories="",  # Field description contains the full content
 			)
+
+			# Extract optimized code from response
+			if hasattr(response, "optimized_code"):
+				optimized_file_content = response.optimized_code.strip()
+			else:
+				# Fallback for string response
+				optimized_file_content = str(response).strip()
+
+			optimized_file_content = self.postprocess_llm_code(optimized_file_content)
 
 			# Log successful optimization
 			self.get_logger().record(
@@ -284,7 +429,6 @@ class atomic_contention(Formula_Base):
 				{
 					"optimized_code_length": len(optimized_file_content),
 					"kernel_file": kernel_file,
-					"iteration": self.iteration_count,
 				},
 			)
 
@@ -399,35 +543,7 @@ class atomic_contention(Formula_Base):
 				f"({(1 / speedup - 1) * 100:.1f}% slower)."
 			)
 
-		if not success or speedup < 1:
-			self.current_summary = self.optimization_report
-
-			# Update the latest optimization attempt with results
-			if self.optimization_attempts:
-				latest_attempt = self.optimization_attempts[-1]
-				latest_attempt["success"] = False
-				latest_attempt["improvement"] = -cycle_latency_improvement  # Negative for worsening
-				logging.info(
-					f"Optimization iteration {latest_attempt['iteration']} FAILED: "
-					f"Atomic contention increased by {abs(cycle_latency_improvement):.1f}%"
-				)
-
-			return Result(success=False, error_report=self.optimization_report)
-
-		# Update the latest optimization attempt with results
-		if self.optimization_attempts:
-			latest_attempt = self.optimization_attempts[-1]
-			latest_attempt["success"] = True
-			latest_attempt["improvement"] = cycle_latency_improvement
-			logging.info(
-				f"Optimization iteration {latest_attempt['iteration']} SUCCEEDED: "
-				f"Atomic contention reduced by {cycle_latency_improvement:.1f}%"
-			)
-
-		# Log performance validation results
-		optimized_code_string = None
-		if self.optimization_attempts:
-			optimized_code_string = self.optimization_attempts[-1].get("code")
+		# Log performance validation results (always, even if failed)
 		self.get_logger().record(
 			"performance_validation_complete",
 			{
@@ -440,22 +556,72 @@ class atomic_contention(Formula_Base):
 				"metric_improvement": metric_improvement,
 				"cycle_latency_improvement": cycle_latency_improvement,
 				"optimization_report": self.optimization_report,
-				"optimized_code_string": optimized_code_string,
 			},
 		)
 
 		logging.info(self.optimization_report)
 
-		self.success = True
-		return Result(success=True, asset={"log": self.optimization_report})
+		# Add step to optimization tracker (always - for learning)
+		# Tracker will automatically calculate latency_improvement from before/after values
+		diff = self.compute_diff(self.current_kernel_files)
+
+		# Read the optimized code to store in history
+		with open(self.current_kernel_files[0], "r") as f:
+			optimized_code = f.read()
+
+		self.optimization_tracker.add_step(
+			diff=diff,
+			report=self.optimization_report,
+			metrics={
+				"speedup": speedup,
+				"unoptimized_time": unoptimized_time,
+				"optimized_time": optimized_time,
+				"unoptimized_lat": unoptimized_metric,
+				"optimized_lat": optimized_metric,
+			},
+			success=success and speedup >= 1,
+			request=f"Optimize atomic contention in kernel {self.current_kernel_signature}",
+			optimized_code=optimized_code,
+		)
+
+		# Update best if this iteration improved both speedup and latency
+		is_better = speedup > self.best_speedup and metric_improvement > self.best_latency_improvement
+
+		if is_better:
+			self.best_speedup = speedup
+			self.best_latency_improvement = metric_improvement
+			self.best_iteration_report = self.optimization_report
+			self.best_optimization_results = self._optimization_results
+			self.best_kernel_code = optimized_code
+			# Mark as successful if we achieved any improvement
+			if metric_improvement > 1.0 or speedup > 1.0:
+				self.success = True
+
+		self.current_summary = self.optimization_report
+
+		# Always return False to continue through all iterations
+		return Result(success=False, error_report=self.optimization_report)
 
 	def write_results(self, output_file: str = None):
 		"""
-		Writes the results to the output file.
+		Writes the results to the output file using the best optimization attempt.
 		"""
+		# Restore best results for output
+		self._optimization_results = self.best_optimization_results
+		self.optimization_report = self.best_iteration_report
+
+		for file in self.current_kernel_files:
+			with open(file, "w") as f:
+				f.write(self.best_kernel_code)
+
+		# Include optimization history in results
 		super().write_results(
 			output_file=output_file,
-			additional_results={"formula": "atomicContention", "success": self.success},
+			additional_results={
+				"formula": "atomicContention",
+				"success": self.success,
+				"optimization_history": self.optimization_tracker.to_dict(),
+			},
 		)
 
 	def summarize_previous_passes(self):
@@ -463,34 +629,3 @@ class atomic_contention(Formula_Base):
 		Summarizes the results of the previous passes for future prompts.
 		"""
 		pass
-
-	def get_optimization_history_context(self) -> str:
-		"""
-		Generate context about previous optimization attempts for the LLM.
-
-		Returns:
-		    str: Formatted context about previous optimization attempts
-		"""
-		if not self.optimization_attempts:
-			return "This is the first optimization attempt."
-
-		context = "PREVIOUS OPTIMIZATION ATTEMPTS:\n"
-		for i, attempt in enumerate(self.optimization_attempts, 1):
-			context += f"Iteration {i}: "
-			if attempt["success"]:
-				context += f"SUCCESS - Atomic contention reduced by {attempt['improvement']:.1f}%\n"
-			else:
-				context += f"FAILED - Atomic contention increased by {abs(attempt['improvement']):.1f}%\n"
-
-		return context
-
-	def reset_optimization_state(self):
-		"""
-		Reset the optimization state for a new optimization cycle.
-		"""
-		self.optimization_attempts = []
-		self.iteration_count = 0
-		self.current_summary = None
-		self.previous_source_code = None
-		self.success = False
-		logging.info("Optimization state reset for new cycle")
