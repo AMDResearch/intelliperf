@@ -213,6 +213,14 @@ def main():
 	else:
 		logging.basicConfig(level=logging.WARNING, format="[INTELLIPERF] %(levelname)s: %(message)s")
 
+	# Validate LLM credentials early before doing any work (only for non-diagnoseOnly formulas)
+	if args.formula != "diagnoseOnly":
+		from intelliperf.core.llm import validate_llm_credentials
+		from intelliperf.utils.env import get_llm_api_key
+
+		llm_key = get_llm_api_key()
+		validate_llm_credentials(api_key=llm_key, model=args.model, provider=args.provider)
+
 	# Create an optimizer based on available IntelliPerf formulas.
 	if args.formula == "bankConflict":
 		from intelliperf.formulas.bank_conflict import bank_conflict
