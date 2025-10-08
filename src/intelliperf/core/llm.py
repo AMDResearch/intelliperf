@@ -23,16 +23,73 @@
 ################################################################################
 
 
+import logging
 import sys
 from typing import Optional
 
 import dspy
 import requests
-
 from intelliperf.core.logger import Logger
 
 
 class LLM:
+	def _validate_credentials(self) -> bool:
+		"""Validate that the LLM credentials, model, and provider are correct.
+
+		Returns:
+		    bool: True if credentials are valid, False otherwise.
+
+		Raises:
+		    SystemExit: If credentials are invalid, exits with error message.
+		"""
+		try:
+			if self.use_amd:
+				# Test AMD/Azure credentials with a minimal request
+				body = {
+					"messages": [
+						{"role": "system", "content": "You are a helpful assistant."},
+						{"role": "user", "content": "Hi"},
+					],
+					"max_Tokens": 10,
+					"max_Completion_Tokens": 10,
+				}
+				url = f"{self.provider}/engines/{self.model}/chat/completions"
+				resp = requests.post(url, json=body, headers=self.header, timeout=10)
+				resp.raise_for_status()
+				logging.info("LLM credentials validated successfully.")
+				return True
+			else:
+				# Test DSPy/OpenAI credentials with a minimal request
+				try:
+					# Make a simple test call through dspy
+					test_signature = "input: str -> output: str"
+					chain = dspy.ChainOfThought(test_signature)
+					chain(input="test")
+					logging.info("LLM credentials validated successfully.")
+					return True
+				except Exception as e:
+					raise e
+		except requests.exceptions.HTTPError as e:
+			status_code = e.response.status_code if hasattr(e, "response") else None
+			error_msg = "LLM credential validation failed.\n"
+			error_msg += f"Provider: {self.provider}\n"
+			error_msg += f"Model: {self.model}\n"
+			if status_code == 401:
+				error_msg += "Error: Authentication failed. Please check your API key.\n"
+			elif status_code == 404:
+				error_msg += "Error: Model or endpoint not found. Please check the model name and provider URL.\n"
+			else:
+				error_msg += f"Error: HTTP {status_code} - {str(e)}\n"
+			logging.error(error_msg)
+			sys.exit(1)
+		except Exception as e:
+			error_msg = "LLM credential validation failed.\n"
+			error_msg += f"Provider: {self.provider}\n"
+			error_msg += f"Model: {self.model}\n"
+			error_msg += f"Error: {str(e)}\n"
+			logging.error(error_msg)
+			sys.exit(1)
+
 	def _get_model_context_length(self) -> Optional[int]:
 		"""Query the model's max context length from the API"""
 		import logging
@@ -96,6 +153,9 @@ class LLM:
 				timeout=timeout_mins * 60,
 			)
 			dspy.configure(lm=self.lm)
+
+		# Validate credentials before proceeding with any work
+		self._validate_credentials()
 
 	def ask(
 		self,
