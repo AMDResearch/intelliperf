@@ -32,6 +32,25 @@ import requests
 from intelliperf.core.logger import Logger
 
 
+def validate_llm_credentials(api_key: str, model: str, provider: str) -> bool:
+	"""Validate LLM credentials before doing any work.
+
+	Args:
+	    api_key: The API key to validate
+	    model: The model name to validate
+	    provider: The provider URL to validate
+
+	Returns:
+	    bool: True if credentials are valid, False otherwise.
+
+	Raises:
+	    SystemExit: If credentials are invalid, exits with error message.
+	"""
+	# Create a temporary LLM instance to validate credentials
+	temp_llm = LLM(api_key=api_key, system_prompt="test", model=model, provider=provider)
+	return temp_llm._validate_credentials()
+
+
 class LLM:
 	def _validate_credentials(self) -> bool:
 		"""Validate that the LLM credentials, model, and provider are correct.
@@ -153,9 +172,6 @@ class LLM:
 				timeout=timeout_mins * 60,
 			)
 			dspy.configure(lm=self.lm)
-
-		# Validate credentials before proceeding with any work
-		self._validate_credentials()
 
 	def ask(
 		self,
