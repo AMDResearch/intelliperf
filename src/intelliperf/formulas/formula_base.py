@@ -29,7 +29,9 @@ import os
 import sys
 import time
 from abc import abstractmethod
+from dataclasses import asdict, dataclass, field
 from pprint import pformat
+from typing import List, Optional
 
 import ml_dtypes
 import numpy as np
@@ -42,6 +44,143 @@ from intelliperf.core.application import Application
 from intelliperf.core.logger import Logger
 from intelliperf.utils.env import get_accordo_path
 from intelliperf.utils.process import capture_subprocess_output, exit_on_fail
+
+
+@dataclass
+class OptimizationStep:
+	"""Represents a single optimization attempt"""
+
+	iteration: int
+	diff: str
+	report: str
+	metrics: dict
+	success: bool
+	timestamp: float = field(default_factory=time.time)
+
+	def get_metric(self, key: str, default=0.0):
+		"""Helper to safely get metrics"""
+		return self.metrics.get(key, default)
+
+
+class OptimizationTracker:
+	"""Tracks optimization history using dspy.History for proper conversation management"""
+
+	def __init__(
+		self,
+		max_iterations: int = 10,
+		primary_metric: str = "speedup",
+		maximize: bool = True,
+		before_metric: Optional[str] = None,
+		after_metric: Optional[str] = None,
+	):
+		self.steps: List[OptimizationStep] = []
+		self.current_iteration: int = 0
+		self.max_iterations: int = max_iterations
+		self.best_step: Optional[OptimizationStep] = None
+		self.primary_metric: str = primary_metric
+		self.maximize: bool = maximize
+		self.initial_source_code: Optional[str] = None
+		# For auto-calculating improvements from before/after metrics
+		self.before_metric: Optional[str] = before_metric
+		self.after_metric: Optional[str] = after_metric
+
+		# History messages for DSPy (stored as list of dicts)
+		self.history_messages = []
+
+	def add_step(
+		self,
+		diff: str,
+		report: str,
+		metrics: dict,
+		success: bool,
+		request: str = "",
+		optimized_code: str = "",
+	) -> OptimizationStep:
+		"""Add step and auto-update best based on primary metric"""
+		# Auto-calculate improvement if before/after metrics are configured
+		if self.before_metric and self.after_metric:
+			before = metrics.get(self.before_metric, 0)
+			after = metrics.get(self.after_metric, 0)
+			if before != 0:
+				improvement = after / before if after != 0 else 1.0
+				metrics[self.primary_metric] = improvement
+
+		step = OptimizationStep(
+			iteration=self.current_iteration,
+			diff=diff,
+			report=report,
+			metrics=metrics,
+			success=success,
+		)
+		self.steps.append(step)
+		self.current_iteration += 1
+
+		# Add to DSPy history with explicit counters for better LLM learning
+		# Extract common metrics for structured history
+		history_entry = {
+			"iteration": self.current_iteration - 1,
+			"request": request,
+			"optimized_code": optimized_code,
+			"result_summary": report,
+			"diff": diff,
+			"success": "✓ Improved" if success else "✗ Regressed",
+		}
+
+		# Add explicit before/after counters if available
+		if self.before_metric and self.after_metric:
+			before_val = metrics.get(self.before_metric, 0)
+			after_val = metrics.get(self.after_metric, 0)
+			improvement_val = metrics.get(self.primary_metric, 1.0)
+
+			history_entry.update(
+				{
+					f"before_{self.before_metric}": before_val,
+					f"after_{self.after_metric}": after_val,
+					f"{self.primary_metric}": improvement_val,
+				}
+			)
+
+		# Add all other metrics
+		history_entry["all_metrics"] = metrics
+
+		self.history_messages.append(history_entry)
+
+		# Auto-update best
+		if self.best_step is None:
+			self.best_step = step
+		else:
+			new_val = step.get_metric(self.primary_metric)
+			cur_val = self.best_step.get_metric(self.primary_metric)
+
+			if (self.maximize and new_val > cur_val) or (not self.maximize and new_val < cur_val):
+				self.best_step = step
+
+		return step
+
+	def get_dspy_history(self):
+		"""Get the DSPy history messages for use in signatures"""
+
+		# Return a simple object with messages attribute for DSPy
+		class HistoryWrapper:
+			def __init__(self, messages):
+				self.messages = messages
+
+		return HistoryWrapper(self.history_messages)
+
+	def has_reached_max_iterations(self) -> bool:
+		"""Check if max iterations reached"""
+		return self.current_iteration >= self.max_iterations
+
+	def to_dict(self) -> dict:
+		"""Serialize for JSON output"""
+		return {
+			"steps": [asdict(step) for step in self.steps],
+			"best_step": asdict(self.best_step) if self.best_step else None,
+			"current_iteration": self.current_iteration,
+			"max_iterations": self.max_iterations,
+			"primary_metric": self.primary_metric,
+			"maximize": self.maximize,
+		}
 
 
 class Result:
@@ -84,6 +223,7 @@ class Formula_Base:
 		provider: str = "openai",
 		in_place: bool = False,
 		unittest_command: str = None,
+		num_attempts: int = 10,
 	):
 		# Private
 		self.__name = name  # name of the run
@@ -92,6 +232,9 @@ class Formula_Base:
 		logging.debug(f"instrument_command: {instrument_command}")
 		logging.debug(f"project_directory: {project_directory}")
 		logging.debug(f"app_cmd: {app_cmd}")
+
+		# Store num_attempts
+		self.num_attempts = num_attempts
 
 		# Initialize logger
 		self._logger = Logger(run_name=name)
@@ -107,6 +250,7 @@ class Formula_Base:
 				"model": model,
 				"provider": provider,
 				"in_place": in_place,
+				"num_attempts": num_attempts,
 			},
 		)
 
@@ -144,6 +288,10 @@ class Formula_Base:
 		self.current_args = None
 		self.current_kernel_signature = None
 
+		# Initialize DSPy LLM once per formula (lazily, only if needed)
+		self._llm = None
+		self._dspy_configured = False
+
 		self.build()
 
 	def get_logger(self) -> Logger:
@@ -151,9 +299,36 @@ class Formula_Base:
 		Get the logger instance for this formula run.
 
 		Returns:
-			Logger: The logger instance
+		        Logger: The logger instance
 		"""
 		return self._logger
+
+	def get_llm(self, system_prompt: str):
+		"""
+		Get or create the LLM instance for this formula (lazy initialization).
+
+		DSPy is configured once per formula instance for efficiency.
+
+		Args:
+		        system_prompt: System prompt for the LLM
+
+		Returns:
+		        LLM: The LLM instance configured for this formula
+		"""
+		from intelliperf.core.llm import LLM
+		from intelliperf.utils.env import get_llm_api_key
+
+		if self._llm is None:
+			llm_key = get_llm_api_key()
+			self._llm = LLM(
+				api_key=llm_key,
+				system_prompt=system_prompt,
+				model=self.model,
+				provider=self.provider,
+				logger=self.get_logger(),
+			)
+			logging.debug(f"Initialized LLM once for formula: {self.model} via {self.provider}")
+		return self._llm
 
 	def _parse_kernel_signature(self, kernel_signature: str):
 		"""
@@ -394,10 +569,10 @@ class Formula_Base:
 		Removes markdown code blocks (```c++, ```python, etc.) from the LLM response.
 
 		Args:
-			optimized_file_content (str): The LLM generated code
+		        optimized_file_content (str): The LLM generated code
 
 		Returns:
-			str: The post-processed code
+		        str: The post-processed code
 		"""
 		# Remove markdown code blocks if present
 		content = optimized_file_content.strip()
@@ -456,7 +631,12 @@ class Formula_Base:
 			with open(reference_filepath, "w") as f:
 				f.write(optimized_content)
 
-	def write_results(self, output_file: str = None, additional_results: dict = {}, diagnose_only: bool = False):
+	def write_results(
+		self,
+		output_file: str = None,
+		additional_results: dict = {},
+		diagnose_only: bool = False,
+	):
 		"""
 		Writes the results to the output file.
 		"""
@@ -480,12 +660,46 @@ class Formula_Base:
 		write_results(results, output_file)
 
 
+def _add_diff_lines_recursive(obj):
+	"""
+	Recursively add diff_lines field to any dict that contains a diff field.
+
+	Args:
+	    obj: Object to process (dict, list, or other)
+
+	Returns:
+	    Processed object with diff_lines added where applicable
+	"""
+	if isinstance(obj, dict):
+		# Process all values in the dict recursively
+		result = {}
+		for key, value in obj.items():
+			result[key] = _add_diff_lines_recursive(value)
+
+		# Add diff_lines if diff exists and diff_lines doesn't
+		if "diff" in result and "diff_lines" not in result:
+			diff_value = result["diff"]
+			if isinstance(diff_value, str):
+				result["diff_lines"] = diff_value.split("\n") if diff_value else []
+
+		return result
+	elif isinstance(obj, list):
+		# Process all items in the list recursively
+		return [_add_diff_lines_recursive(item) for item in obj]
+	else:
+		# Return other types as-is
+		return obj
+
+
 def write_results(json_results: dict, output_file: str = None):
 	"""
 	Writes the results to the output file.
 	"""
 	log_message = f"Writing results to {output_file}" if output_file is not None else "Writing results to stdout"
 	logging.info(log_message)
+
+	# Add diff_lines to all diffs in the results recursively
+	json_results = _add_diff_lines_recursive(json_results)
 
 	if output_file is None:
 		print(json.dumps(json_results, indent=2))

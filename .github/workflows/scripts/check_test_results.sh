@@ -1,6 +1,14 @@
 #!/bin/bash
 set -e
 
+# Check if jq is installed
+if ! command -v jq &> /dev/null; then
+    echo "❌ Error: jq is not installed"
+    echo "   Please install jq to parse JSON test results"
+    echo "   Install with: apt-get install jq (Ubuntu/Debian) or yum install jq (RHEL/CentOS)"
+    exit 1
+fi
+
 # Check test results for success
 echo 'Checking test results...'
 results_dir=~/intelliperf_results
@@ -9,6 +17,8 @@ results_dir=~/intelliperf_results
 check_test_result() {
   local file="$1"
   local test_name="$2"
+  echo "Checking test result for $test_name"
+  echo "File: $file"
   if [ -f "$file" ]; then
     if jq -e '.success == true' "$file" >/dev/null 2>&1; then
       echo "✅ $test_name: PASSED"
