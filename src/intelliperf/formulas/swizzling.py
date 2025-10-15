@@ -77,6 +77,7 @@ class swizzling(Formula_Base):
 		provider: str = "openai",
 		in_place: bool = False,
 		unittest_command: str = None,
+		num_attempts: int = 10,
 	):
 		super().__init__(
 			name,
@@ -89,6 +90,7 @@ class swizzling(Formula_Base):
 			provider,
 			in_place,
 			unittest_command,
+			num_attempts,
 		)
 
 		# This temp option allows us to toggle if we want a full or partial instrumentation report

@@ -42,6 +42,42 @@ class MemoryAccessOptimization(dspy.Signature):
 	"""Optimize GPU kernel code to improve memory coalescing and access patterns."""
 
 	kernel_code = dspy.InputField(desc="The current kernel source code that needs memory access optimization.")
+
+	code_preservation_rules = dspy.InputField(
+		desc="""CRITICAL: These rules MUST be followed to avoid compilation errors:
+
+1. **NEVER modify, abbreviate, or remove copyright/license headers**
+   - Copy the ENTIRE copyright header exactly as written, character by character
+   - DO NOT use '...' or any ellipsis inside comments - this creates unterminated comment errors
+   - If you see: /* Copyright (c) 2025... */ you MUST write the full text
+
+2. **NEVER use '...' or ellipsis in C/C++ comments**
+   - The sequence '...' does NOT close a /* */ comment block
+   - This causes: error: unterminated /* comment
+   - Either copy the full comment text or remove it entirely (but keep copyright!)
+
+3. **Preserve the EXACT kernel signature**
+   - Do not change: function name, parameter types, parameter names, or return type
+   - The kernel must be callable with the same arguments as before"""
+	)
+
+	output_format_rules = dspy.InputField(
+		desc="""CRITICAL: Output format requirements:
+
+1. **No markdown code blocks or formatting**
+   - Do NOT include: ```cpp, ```c, ```hip, or ``` markers
+   - Do NOT include any explanatory text before or after the code
+
+2. **Output ONLY the complete, compilable source code**
+   - Include all necessary #include statements
+   - Include the full copyright header (copied verbatim)
+   - Include all function implementations
+   - The output must be ready to write directly to a .hip file
+
+3. **Preserve all existing comments and licenses**
+   - Copy them exactly as they appear in the original code"""
+	)
+
 	problem_description = dspy.InputField(
 		desc="Description of the memory access issue detected, including specific uncoalesced access patterns and performance impact."
 	)
@@ -57,6 +93,14 @@ class MemoryAccessOptimization(dspy.Signature):
 	# History of all previous attempts
 	history = dspy.History = dspy.InputField(
 		desc="Complete history of previous optimization attempts, including the code changes (diffs), before/after coalescing percentages, speedup ratios, and whether each attempt improved or regressed performance. Use this to avoid repeating failed approaches and build on successful patterns."
+	)
+
+	previous_failures = dspy.InputField(
+		desc="CRITICAL: Analysis of previous failed attempts. DO NOT repeat these mistakes: compilation errors (unterminated comments, missing semicolons), correctness failures (changed semantics, wrong outputs), or performance regressions (same approach with minor variations). Learn from these failures and try fundamentally different optimization strategies."
+	)
+
+	latest_diff = dspy.InputField(
+		desc="The most recent code change that was attempted. If this resulted in a failure, you MUST try a completely different approach. Do not make minor variations of the same optimization - innovate with a new strategy."
 	)
 
 	# Low-level optimization techniques
@@ -243,8 +287,47 @@ class memory_access(Formula_Base):
 		    Result: Build status and the output file path
 		"""
 		result = super().build(validate_build_result=validate_build_result)
+
+		# Log build result
 		if not result:
 			self.current_summary = result.error_report
+			self.get_logger().record(
+				"build_pass_failed",
+				{
+					"success": False,
+					"error_report": result.error_report,
+					"kernel_files": getattr(self, "current_kernel_files", []),
+				},
+			)
+			# Add compilation failure to history so LLM learns from the error
+			if hasattr(self, "current_kernel_files") and self.current_kernel_files:
+				diff = self.compute_diff(self.current_kernel_files)
+				with open(self.current_kernel_files[0], "r") as f:
+					failed_code = f.read()
+
+				error_report = f"Compilation Failed: {result.error_report}"
+				self.optimization_tracker.add_step(
+					diff=diff,
+					report=error_report,
+					metrics={
+						"speedup": 0.0,
+						"unoptimized_time": 0,
+						"optimized_time": 0,
+						"unoptimized_coal": self.baseline_coalesced_pct or 0,
+						"optimized_coal": self.baseline_coalesced_pct or 0,
+					},
+					success=False,
+					request=f"Optimize memory coalescing in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
+					optimized_code=failed_code,
+				)
+		else:
+			self.get_logger().record(
+				"build_pass_success",
+				{
+					"success": True,
+					"kernel_files": getattr(self, "current_kernel_files", []),
+				},
+			)
 		return result
 
 	def profile_pass(self) -> Result:
@@ -309,12 +392,8 @@ class memory_access(Formula_Base):
 		super().optimize_pass()
 
 		system_prompt = (
-			"You are a skilled GPU HIP programmer. Given a kernel,"
-			" you will optimize it to remove uncoalesced memory access as much as possible"
-			" and provide a correct performant implementation. Do not modify"
-			" the kernel signature. Do not touch any other code, licenses, copyrights, or comments in the file."
-			" If you remove the copyright, your solution will be rejected."
-			" Do not include any markdown code blocks or text other than the code."
+			"You are a skilled GPU HIP programmer specializing in optimizing kernels "
+			"to improve memory coalescing and access patterns."
 		)
 
 		# Get LLM instance (initialized once per formula)
@@ -374,15 +453,8 @@ class memory_access(Formula_Base):
 			# Build problem description
 			problem_description = (
 				f"Uncoalesced memory access detected in kernel {kernel}. "
-				f"Please fix the access pattern to improve memory coalescing but do not change the semantics. "
-				"Do not remove any comments or licenses. "
-				"Do not include any markdown code blocks or text other than the code."
+				f"Please fix the access pattern to improve memory coalescing but do not change the semantics."
 			)
-
-			if self.current_summary is not None:
-				problem_description += f"\n\nPrevious attempt summary: {self.current_summary}"
-				cur_diff = self.compute_diff([kernel_file])
-				problem_description += f"\nDiff from initial code:\n{cur_diff}"
 
 			self.previous_source_code = unoptimized_file_content
 
@@ -413,15 +485,38 @@ class memory_access(Formula_Base):
 
 		try:
 			# Use DSPy signature with history - pass inputs as kwargs
+			# Build failure analysis from history
+			tracker_dict = self.optimization_tracker.to_dict()
+			failed_steps = [s for s in tracker_dict.get("steps", []) if not s.get("success", False)]
+			previous_failures_text = ""
+			if failed_steps:
+				previous_failures_text = "Previous failed attempts:\n"
+				for i, step in enumerate(failed_steps[-3:], 1):  # Show last 3 failures
+					previous_failures_text += f"\nAttempt {i}: {step.get('report', 'Unknown error')}\n"
+			else:
+				previous_failures_text = "No previous failures yet. This is an early iteration."
+
+			# Get latest diff if available
+			latest_diff_text = ""
+			if tracker_dict.get("steps"):
+				latest_step = tracker_dict["steps"][-1]
+				latest_diff_text = latest_step.get("diff", "No diff available")
+			else:
+				latest_diff_text = "No previous attempts yet."
+
 			response = llm.ask(
 				signature=MemoryAccessOptimization,
 				answer_type=None,  # Return full response object
 				record_meta="memory_access_optimization",
 				kernel_code=unoptimized_file_content,
+				code_preservation_rules="",  # Field description contains the critical rules
+				output_format_rules="",  # Field description contains the format requirements
 				problem_description=problem_description,
 				baseline_coalesced_pct=str(self.baseline_coalesced_pct),
 				baseline_time_ms=str(self.baseline_time_ms),
 				history=self.optimization_tracker.get_dspy_history(),
+				previous_failures=previous_failures_text,
+				latest_diff=latest_diff_text,
 				optimization_techniques="",  # Field description contains the full content
 				amd_specific_optimizations="",  # Field description contains the full content
 				optimization_categories="",  # Field description contains the full content
@@ -484,8 +579,49 @@ class memory_access(Formula_Base):
 		    Result: Validation status
 		"""
 		result = super().correctness_validation_pass(self.current_kernel, self.current_args, accordo_absolute_tolerance)
+
+		# Log correctness validation result
 		if not result:
 			self.current_summary = result.error_report
+			self.get_logger().record(
+				"correctness_validation_failed",
+				{
+					"success": False,
+					"error_report": result.error_report,
+					"kernel": self.current_kernel,
+					"args": self.current_args,
+				},
+			)
+			# Add correctness failure to history so LLM learns from the error
+			if hasattr(self, "current_kernel_files") and self.current_kernel_files:
+				diff = self.compute_diff(self.current_kernel_files)
+				with open(self.current_kernel_files[0], "r") as f:
+					failed_code = f.read()
+
+				error_report = f"Correctness Validation Failed: {result.error_report}"
+				self.optimization_tracker.add_step(
+					diff=diff,
+					report=error_report,
+					metrics={
+						"speedup": 0.0,
+						"unoptimized_time": 0,
+						"optimized_time": 0,
+						"unoptimized_coal": self.baseline_coalesced_pct or 0,
+						"optimized_coal": self.baseline_coalesced_pct or 0,
+					},
+					success=False,
+					request=f"Optimize memory coalescing in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
+					optimized_code=failed_code,
+				)
+		else:
+			self.get_logger().record(
+				"correctness_validation_success",
+				{
+					"success": True,
+					"kernel": self.current_kernel,
+					"args": self.current_args,
+				},
+			)
 		return result
 
 	def performance_validation_pass(self) -> Result:
