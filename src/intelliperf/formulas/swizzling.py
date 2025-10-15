@@ -77,6 +77,7 @@ class swizzling(Formula_Base):
 		provider: str = "openai",
 		in_place: bool = False,
 		unittest_command: str = None,
+		num_attempts: int = 10,
 	):
 		super().__init__(
 			name,
@@ -89,6 +90,7 @@ class swizzling(Formula_Base):
 			provider,
 			in_place,
 			unittest_command,
+			num_attempts,
 		)
 
 		# This temp option allows us to toggle if we want a full or partial instrumentation report
@@ -116,7 +118,7 @@ class swizzling(Formula_Base):
 		self.last_applied_diff = None
 		self.initial_source_code = None
 
-		self.max_iterations = 10
+		self.max_iterations = self.num_attempts
 		self.best_l2_improvement = 0.0  # Start at baseline (no improvement)
 		self.best_speedup = 1.0  # Start at 1.0x (no speedup)
 		self.best_diff = ""
@@ -125,6 +127,12 @@ class swizzling(Formula_Base):
 		self.best_optimization_results = None
 		self.l2_improvement_history = []
 		self.gpu_spec = GPUSpec()
+
+		# Store metrics for structured reporting
+		self.best_unoptimized_l2_hr = None
+		self.best_optimized_l2_hr = None
+		self.best_unoptimized_time = None
+		self.best_optimized_time = None
 
 	# Removed local compute_diff; using Formula_Base.compute_diff instead
 
@@ -167,7 +175,12 @@ class swizzling(Formula_Base):
 			error_report="The instrumentation is not implemented for swizzling.",
 		)
 
-	def optimize_pass(self, temperature: float = 0.0, max_tokens: int = 3000, target_kernel: str = None) -> Result:
+	def optimize_pass(
+		self,
+		temperature: float = 0.0,
+		max_tokens: int = 3000,
+		target_kernel: str = None,
+	) -> Result:
 		"""
 		Optimize the kernel to improve l2 hit rate through block swizzling via two-stage LLM approach
 
@@ -294,7 +307,10 @@ class swizzling(Formula_Base):
 					self.memory_analysis_done = True
 				except Exception as e:
 					logging.error(f"Failed to get memory analysis - {str(e)}")
-					return Result(success=False, error_report=f"Failed to get memory analysis - {str(e)}")
+					return Result(
+						success=False,
+						error_report=f"Failed to get memory analysis - {str(e)}",
+					)
 
 			history_prompt_part = ""
 			if self.iteration_history:
@@ -412,11 +428,17 @@ class swizzling(Formula_Base):
 		If no unittest_command is provided, skip validation (treat as success).
 		"""
 		if not self.unittest_command:
-			return Result(success=True, asset={"log": "No unittest_command provided; skipping correctness validation."})
+			return Result(
+				success=True,
+				asset={"log": "No unittest_command provided; skipping correctness validation."},
+			)
 
 		success, output = self._application.run_unit_test()
 		if not success:
-			return Result(success=False, error_report=f"Unit test validation failed. Output:\n{output}")
+			return Result(
+				success=False,
+				error_report=f"Unit test validation failed. Output:\n{output}",
+			)
 		return Result(success=True, asset={"log": output})
 
 	def performance_validation_pass(self) -> Result:
@@ -497,6 +519,11 @@ class swizzling(Formula_Base):
 			self.best_diff = self.last_applied_diff
 			self.best_iteration_report = self.optimization_report
 			self.best_optimization_results = self._optimization_results
+			# Store metrics for structured reporting
+			self.best_unoptimized_l2_hr = unoptimized_l2_hit_rate
+			self.best_optimized_l2_hr = optimized_l2_hit_rate
+			self.best_unoptimized_time = unoptimized_time
+			self.best_optimized_time = optimized_time
 			with open(self.current_kernel_files[0], "r") as f:
 				self.best_kernel_code = f.read()
 			# Mark as successful if we achieved any improvement
@@ -520,9 +547,30 @@ class swizzling(Formula_Base):
 			with open(file, "w") as f:
 				f.write(self.best_kernel_code)
 
+		# Build structured metric fields
+		metric_fields = {}
+		if self.best_unoptimized_l2_hr is not None and self.best_optimized_l2_hr is not None:
+			metric_fields = {
+				"kernel_name": self.current_kernel,
+				"metric": "l2_hr_pct",  # The counter we're optimizing (L2 cache hit rate)
+				"metric_name": "L2 Cache Hit Rate",  # Human-readable name
+				"metric_before": self.best_unoptimized_l2_hr,
+				"metric_after": self.best_optimized_l2_hr,
+				"time_before_ms": (
+					self.best_unoptimized_time / 1e6 if self.best_unoptimized_time else 0
+				),  # Convert ns to ms
+				"time_after_ms": (
+					self.best_optimized_time / 1e6 if self.best_optimized_time else 0
+				),  # Convert ns to ms
+			}
+
 		super().write_results(
 			output_file=output_file,
-			additional_results={"formula": "swizzling", "success": self.success},
+			additional_results={
+				"formula": "swizzling",
+				"success": self.success,
+				**metric_fields,
+			},
 		)
 
 	def summarize_previous_passes(self):

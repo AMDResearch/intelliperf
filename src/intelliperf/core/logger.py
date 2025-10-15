@@ -45,7 +45,14 @@ class Logger:
 		self.start_time = time.time()
 
 		# Record run start
-		self.record("run_start", {"run_id": self.run_id, "run_name": self.run_name, "timestamp": self.start_time})
+		self.record(
+			"run_start",
+			{
+				"run_id": self.run_id,
+				"run_name": self.run_name,
+				"timestamp": self.start_time,
+			},
+		)
 
 	def __del__(self):
 		"""Destructor to ensure logs are flushed when Logger object is destroyed"""
@@ -64,11 +71,88 @@ class Logger:
 		    event_type: Type of event (e.g., "llm_call", "optimization_pass", "validation_result")
 		    data: Event data dictionary
 		"""
-		entry = {"timestamp": time.time(), "type": event_type, "data": data}
+		# Serialize complex objects in data
+		serialized_data = self._serialize_data(data)
+		entry = {"timestamp": time.time(), "type": event_type, "data": serialized_data}
 		self.buffer.append(entry)
 
 		# Also log to console for immediate visibility
 		logging.debug(f"Logger: {event_type} - {data}")
+
+	def _serialize_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+		"""
+		Recursively serialize data, converting complex objects to dictionaries.
+
+		Args:
+		    data: Data dictionary to serialize
+
+		Returns:
+		    Serialized data dictionary
+		"""
+		serialized = {}
+		for key, value in data.items():
+			serialized[key] = self._serialize_value(value)
+
+		# Automatically add diff_lines when diff is present
+		if "diff" in serialized and "diff_lines" not in serialized:
+			diff_value = serialized["diff"]
+			if isinstance(diff_value, str):
+				serialized["diff_lines"] = diff_value.split("\n") if diff_value else []
+
+		return serialized
+
+	def _serialize_value(self, value: Any) -> Any:
+		"""
+		Serialize a single value, handling various types.
+
+		Args:
+		    value: Value to serialize
+
+		Returns:
+		    Serialized value
+		"""
+		# Handle basic types
+		if value is None or isinstance(value, (str, int, float, bool)):
+			return value
+
+		# Handle lists and tuples
+		if isinstance(value, (list, tuple)):
+			return [self._serialize_value(item) for item in value]
+
+		# Handle dictionaries
+		if isinstance(value, dict):
+			result = {k: self._serialize_value(v) for k, v in value.items()}
+			# Add diff_lines if diff exists and diff_lines doesn't
+			if "diff" in result and "diff_lines" not in result:
+				diff_value = result["diff"]
+				if isinstance(diff_value, str):
+					result["diff_lines"] = diff_value.split("\n") if diff_value else []
+			return result
+
+		# Handle objects with __dict__
+		if hasattr(value, "__dict__"):
+			obj_dict = {}
+			for attr, attr_value in value.__dict__.items():
+				if not attr.startswith("_"):
+					obj_dict[attr] = self._serialize_value(attr_value)
+			return obj_dict
+
+		# Handle objects with accessible attributes via dir()
+		if hasattr(value, "__class__"):
+			obj_dict = {}
+			for attr in dir(value):
+				if not attr.startswith("_"):
+					try:
+						attr_value = getattr(value, attr)
+						if not callable(attr_value):
+							obj_dict[attr] = self._serialize_value(attr_value)
+					except Exception:
+						pass
+			if obj_dict:
+				return obj_dict
+
+		# Fall back to string representation
+		return str(value)
 
 	def get_buffer(self) -> List[Dict[str, Any]]:
 		"""
