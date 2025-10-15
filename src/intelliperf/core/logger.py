@@ -92,6 +92,13 @@ class Logger:
 		serialized = {}
 		for key, value in data.items():
 			serialized[key] = self._serialize_value(value)
+
+		# Automatically add diff_lines when diff is present
+		if "diff" in serialized and "diff_lines" not in serialized:
+			diff_value = serialized["diff"]
+			if isinstance(diff_value, str):
+				serialized["diff_lines"] = diff_value.split("\n") if diff_value else []
+
 		return serialized
 
 	def _serialize_value(self, value: Any) -> Any:
@@ -114,7 +121,13 @@ class Logger:
 
 		# Handle dictionaries
 		if isinstance(value, dict):
-			return {k: self._serialize_value(v) for k, v in value.items()}
+			result = {k: self._serialize_value(v) for k, v in value.items()}
+			# Add diff_lines if diff exists and diff_lines doesn't
+			if "diff" in result and "diff_lines" not in result:
+				diff_value = result["diff"]
+				if isinstance(diff_value, str):
+					result["diff_lines"] = diff_value.split("\n") if diff_value else []
+			return result
 
 		# Handle objects with __dict__
 		if hasattr(value, "__dict__"):

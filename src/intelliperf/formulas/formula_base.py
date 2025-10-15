@@ -660,12 +660,46 @@ class Formula_Base:
 		write_results(results, output_file)
 
 
+def _add_diff_lines_recursive(obj):
+	"""
+	Recursively add diff_lines field to any dict that contains a diff field.
+
+	Args:
+	    obj: Object to process (dict, list, or other)
+
+	Returns:
+	    Processed object with diff_lines added where applicable
+	"""
+	if isinstance(obj, dict):
+		# Process all values in the dict recursively
+		result = {}
+		for key, value in obj.items():
+			result[key] = _add_diff_lines_recursive(value)
+
+		# Add diff_lines if diff exists and diff_lines doesn't
+		if "diff" in result and "diff_lines" not in result:
+			diff_value = result["diff"]
+			if isinstance(diff_value, str):
+				result["diff_lines"] = diff_value.split("\n") if diff_value else []
+
+		return result
+	elif isinstance(obj, list):
+		# Process all items in the list recursively
+		return [_add_diff_lines_recursive(item) for item in obj]
+	else:
+		# Return other types as-is
+		return obj
+
+
 def write_results(json_results: dict, output_file: str = None):
 	"""
 	Writes the results to the output file.
 	"""
 	log_message = f"Writing results to {output_file}" if output_file is not None else "Writing results to stdout"
 	logging.info(log_message)
+
+	# Add diff_lines to all diffs in the results recursively
+	json_results = _add_diff_lines_recursive(json_results)
 
 	if output_file is None:
 		print(json.dumps(json_results, indent=2))
