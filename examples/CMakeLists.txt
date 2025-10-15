@@ -44,7 +44,8 @@ function(add_example name source_file)
         endif()
         # Must include debug information to get line numbers
     endif()
-    target_compile_options(${name} PRIVATE -g)    
+    target_compile_options(${name} PRIVATE -g)
+    target_compile_options(${name} PRIVATE -gline-tables-only)
 endfunction()
 
 add_subdirectory(bank_conflict)
