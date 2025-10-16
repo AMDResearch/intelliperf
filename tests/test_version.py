@@ -1,6 +1,7 @@
 """Test dynamic versioning with setuptools-scm."""
 
 import re
+
 import tomllib
 
 
