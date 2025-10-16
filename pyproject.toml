@@ -1,6 +1,9 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Advanced Micro Devices, Inc. All rights reserved.
+
 [project]
 name = "intelliperf"
-version = "0.0.1"
+dynamic = ["version"]
 description = "Automated bottleneck detection and solution orchestration"
 authors = [
     { name = "Muhammad Awad", email = "muhaawad@amd.com" },
@@ -25,7 +28,7 @@ include = ["intelliperf", "accordo"]
 intelliperf = "intelliperf.__main__:main"
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61", "wheel", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [tool.rocprofiler-compute]
@@ -101,3 +104,9 @@ line-ending = "auto"
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"  # Use Google-style docstrings
+
+# ---- setuptools-scm versioning ----
+[tool.setuptools_scm]
+version_scheme = "post-release"   # .postN after last tag
+local_scheme = "node-and-date"    # add commit hash (e.g. +gabc1234) and date (e.g. +20250914)
+fallback_version = "0.0.0"        # used if git metadata unavailable

@@ -21,3 +21,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 ################################################################################
+
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+	__version__ = version("intelliperf")
+except PackageNotFoundError:
+	__version__ = "unknown"
