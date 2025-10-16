@@ -40,6 +40,7 @@ import pandas as pd
 from accordo.python.code_gen import generate_header
 from accordo.python.communicate import get_kern_arg_data, send_response
 from accordo.python.utils import run_subprocess
+from intelliperf import __version__
 from intelliperf.core.application import Application
 from intelliperf.core.logger import Logger
 from intelliperf.utils.env import get_accordo_path
@@ -643,11 +644,13 @@ class Formula_Base:
 		# create a new json contining optimized and unoptimized results
 		if diagnose_only:
 			results = {
+				"version": __version__,
 				"initial": self._initial_profiler_results,
 				**additional_results,
 			}
 		else:
 			results = {
+				"version": __version__,
 				"optimized": self._optimization_results,
 				"initial": self._initial_profiler_results,
 				"report_message": self.optimization_report,
