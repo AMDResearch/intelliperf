@@ -1,6 +1,7 @@
 """Test dynamic versioning with setuptools-scm."""
 
 import re
+import tomllib
 
 
 def test_version_format():
@@ -20,8 +21,6 @@ def test_version_format():
 
 def test_fallback_version():
 	"""Test that fallback version is set correctly in config."""
-	import tomllib
-
 	with open("pyproject.toml", "rb") as f:
 		config = tomllib.load(f)
 
@@ -31,8 +30,6 @@ def test_fallback_version():
 
 def test_dynamic_version_config():
 	"""Test that version is configured as dynamic."""
-	import tomllib
-
 	with open("pyproject.toml", "rb") as f:
 		config = tomllib.load(f)
 
@@ -42,8 +39,6 @@ def test_dynamic_version_config():
 
 def test_build_requirements():
 	"""Test that setuptools-scm is in build requirements."""
-	import tomllib
-
 	with open("pyproject.toml", "rb") as f:
 		config = tomllib.load(f)
 
