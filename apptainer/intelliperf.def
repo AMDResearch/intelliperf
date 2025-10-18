@@ -48,14 +48,12 @@ From: rocm/pytorch:rocm7.0_ubuntu22.04_py3.10_pytorch_release_2.8.0
         textual_plotext \
         textual-fspicker \
         tqdm \
-        tomli\
-        tabulate\
-        ml_dtypes\
-        dspy==2.6.27\
-        pandas\
-        duckdb\
-        rich\
-        pytest\
+        tomli \
+        ml_dtypes \
+        dspy==2.6.27 \
+        duckdb \
+        rich \
+        pytest \
         litellm[proxy]
     "
 

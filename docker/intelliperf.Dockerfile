@@ -50,10 +50,8 @@ RUN pip install --no-cache-dir \
     textual-fspicker \
     tqdm \
     tomli \
-    tabulate \
     ml_dtypes \
     dspy==2.6.27 \
-    pandas \
     duckdb \
     rich \
     pytest \
