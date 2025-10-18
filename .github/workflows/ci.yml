@@ -1,4 +1,4 @@
-name: IntelliPerf Tests with Apptainer
+name: IntelliPerf Tests
 
 on:
   push:
@@ -12,9 +12,36 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  detect-container-runtime:
+    runs-on: [self-hosted]
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      runtime: ${{ steps.detect.outputs.runtime }}
+    
+    steps:
+      - name: Detect available container runtime
+        id: detect
+        run: |
+          if command -v docker &> /dev/null; then
+            echo "Docker found"
+            echo "runtime=docker" >> $GITHUB_OUTPUT
+          elif command -v apptainer &> /dev/null; then
+            echo "Apptainer found"
+            echo "runtime=apptainer" >> $GITHUB_OUTPUT
+          else
+            echo "No container runtime found, will install Apptainer"
+            echo "runtime=apptainer" >> $GITHUB_OUTPUT
+          fi
+
   build-apptainer-image:
+    needs: detect-container-runtime
+    if: needs.detect-container-runtime.outputs.runtime == 'apptainer'
     runs-on: [self-hosted]
     timeout-minutes: 90
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
@@ -22,10 +49,12 @@ jobs:
 
       - name: Setup Apptainer
         run: |
-          apt-get update && apt-get install -y software-properties-common
-          echo "deb [trusted=yes] https://ppa.launchpadcontent.net/apptainer/ppa/ubuntu $(lsb_release -cs) main" \
-            | tee /etc/apt/sources.list.d/apptainer.list
-          apt-get update && apt-get install -y apptainer
+          if ! command -v apptainer &> /dev/null; then
+            apt-get update && apt-get install -y software-properties-common
+            echo "deb [trusted=yes] https://ppa.launchpadcontent.net/apptainer/ppa/ubuntu $(lsb_release -cs) main" \
+              | tee /etc/apt/sources.list.d/apptainer.list
+            apt-get update && apt-get install -y apptainer
+          fi
 
       - name: Build IntelliPerf Apptainer container
         run: |
@@ -39,9 +68,31 @@ jobs:
           else
             echo "Using existing Apptainer image"
           fi
+
+  build-docker-image:
+    needs: detect-container-runtime
+    if: needs.detect-container-runtime.outputs.runtime == 'docker'
+    runs-on: [self-hosted]
+    timeout-minutes: 90
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build IntelliPerf Docker container
+        run: |
+          # Build Docker image
+          echo "Building Docker image..."
+          ./docker/build.sh
+
   run-tests:
     name: IntelliPerf Test
-    needs: build-apptainer-image
+    needs: [detect-container-runtime, build-apptainer-image, build-docker-image]
+    if: |
+      always() &&
+      (needs.build-apptainer-image.result == 'success' || needs.build-docker-image.result == 'success' || needs.build-apptainer-image.result == 'skipped' || needs.build-docker-image.result == 'skipped')
     runs-on: [self-hosted]
     timeout-minutes: 60
 
@@ -49,7 +100,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run IntelliPerf Tests
+      - name: Run IntelliPerf Tests (Apptainer)
+        if: needs.detect-container-runtime.outputs.runtime == 'apptainer'
         env:
           LLM_GATEWAY_KEY: ${{ secrets.LLM_GATEWAY_KEY }}
         run: |
@@ -75,6 +127,49 @@ jobs:
             # Run the IntelliPerf examples
             ./.github/workflows/scripts/ci_tests.sh
           "
+
+      - name: Run IntelliPerf Tests (Docker)
+        if: needs.detect-container-runtime.outputs.runtime == 'docker'
+        env:
+          LLM_GATEWAY_KEY: ${{ secrets.LLM_GATEWAY_KEY }}
+        run: |
+          # Copy repository into a temporary directory for Docker
+          mkdir -p /tmp/intelliperf_ci
+          rsync -av --exclude='.git' ./ /tmp/intelliperf_ci/
+
+          # Run tests in Docker container
+          docker run --rm \
+            --device=/dev/kfd --device=/dev/dri --group-add video \
+            -v /tmp/intelliperf_ci:/intelliperf \
+            -v $HOME/intelliperf_results:/root/intelliperf_results \
+            -e LLM_GATEWAY_KEY="${{ secrets.LLM_GATEWAY_KEY }}" \
+            intelliperf bash -c "
+              set -e  # Exit on any error
+
+              # Activate conda environment if available
+              if [ -f /opt/conda/bin/activate ]; then
+                source /opt/conda/bin/activate py_3.10
+              fi
+
+              # Set environment variables
+              export ROCM_PATH=/opt/rocm
+              export PATH=\$ROCM_PATH/bin:\$PATH
+              export LD_LIBRARY_PATH=\$ROCM_PATH/lib:\$LD_LIBRARY_PATH
+
+              # Install IntelliPerf
+              pip install -e .
+              python3 scripts/install_tool.py --all
+
+              # IntelliPerf is installed at /root/.local/bin
+              export PATH=\$PATH:/root/.local/bin
+
+              # Create results directory
+              mkdir -p ~/intelliperf_results
+
+              # Run the IntelliPerf examples
+              ./.github/workflows/scripts/ci_tests.sh
+            "
+
       - name: Check test results
         run: |
           ./.github/workflows/scripts/check_test_results.sh
