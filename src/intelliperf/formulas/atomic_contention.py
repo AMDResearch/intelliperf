@@ -24,7 +24,6 @@
 
 import json
 import logging
-import os
 
 import dspy
 
@@ -33,12 +32,17 @@ from intelliperf.formulas.formula_base import (
 	OptimizationTracker,
 	Result,
 	filter_json_field,
-	get_kernel_name,
 )
 
 
 class AtomicContentionOptimization(dspy.Signature):
-	"""Optimize GPU kernel code to reduce atomic contention and improve performance."""
+	"""Optimize GPU kernel code to reduce atomic contention and improve performance.
+
+	YOU HAVE TERMINAL ACCESS: You can use the execute_terminal_command tool to explore the codebase,
+	read files, search for patterns, and DIRECTLY edit the kernel files. Instead of returning full code,
+	you can use commands like 'pwd', 'ls', 'find', 'grep', 'cat', 'sed', etc. to understand and modify files.
+	Your commands execute in a sandboxed project directory. Use 'pwd' to see where you are.
+	"""
 
 	kernel_code = dspy.InputField(desc="The current kernel source code that needs atomic contention optimization.")
 
@@ -255,15 +259,15 @@ class atomic_contention(Formula_Base):
 		self.bottleneck_report = None
 		self.current_summary = None
 		self.previous_source_code = None
-		self.success = False
 
 		# Initialize optimization tracker
-		# Atomic contention optimization maximizes latency reduction (minimize atomic_lat)
-		# Automatically calculates latency_improvement from unoptimized_lat / optimized_lat
+		# Atomic contention optimization: minimize latency (lower is better)
+		# Automatically calculates latency_improvement = unoptimized_lat / optimized_lat
+		# Higher improvement ratio is better (e.g., 100 / 50 = 2.0x improvement)
 		self.optimization_tracker = OptimizationTracker(
 			max_iterations=self.num_attempts,
 			primary_metric="latency_improvement",
-			maximize=True,
+			maximize=False,  # False = minimize raw metric (latency)
 			before_metric="unoptimized_lat",
 			after_metric="optimized_lat",
 		)
@@ -271,13 +275,6 @@ class atomic_contention(Formula_Base):
 		# Store baseline metrics (set during first profiling)
 		self.baseline_atomic_latency = None
 		self.baseline_time_ms = None
-
-		# Track best optimization across iterations
-		self.best_speedup = 1.0  # Start at 1.0x (no speedup)
-		self.best_latency_improvement = 1.0  # Start at 1.0x (no improvement)
-		self.best_kernel_code = ""
-		self.best_iteration_report = ""
-		self.best_optimization_results = None
 
 	def profile_pass(self) -> Result:
 		"""
@@ -360,8 +357,8 @@ class atomic_contention(Formula_Base):
 						"speedup": 0.0,
 						"unoptimized_time": 0,
 						"optimized_time": 0,
-						"unoptimized_latency": self.baseline_atomic_latency or 0,
-						"optimized_latency": self.baseline_atomic_latency or 0,
+						"unoptimized_lat": self.baseline_atomic_latency or 0,
+						"optimized_lat": self.baseline_atomic_latency or 0,
 					},
 					success=False,
 					request=f"Optimize atomic contention in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
@@ -397,11 +394,15 @@ class atomic_contention(Formula_Base):
 
 		system_prompt = (
 			"You are a skilled GPU HIP programmer specializing in optimizing kernels "
-			"to reduce atomic contention and improve performance."
+			"to reduce atomic contention and improve performance. "
+			"You have terminal access to explore the codebase and edit files directly."
 		)
 
 		# Get LLM instance (initialized once per formula)
 		llm = self.get_llm(system_prompt)
+
+		# Setup MCP terminal access (uses already-cloned project dir)
+		self.setup_mcp_terminal()
 
 		kernel = None
 		kernel_file = None
@@ -434,21 +435,7 @@ class atomic_contention(Formula_Base):
 				self.baseline_time_ms = filtered_report_card[0]["durations"]["ns"] / 1e6
 
 			files = filtered_report_card[0]["source"]["files"]
-			kernel_name = get_kernel_name(kernel)
-			kernel_file = None
-			unoptimized_file_content = None
-			for file in files:
-				project_dir = os.path.abspath(self._application.get_project_directory())
-				file_path = os.path.abspath(file)
-				isfile_in_project = os.path.commonpath([project_dir, file_path]) == project_dir
-				if os.path.exists(file) and isfile_in_project:
-					with open(file, "r") as f:
-						unoptimized_file_content = f.read()
-						if kernel_name in unoptimized_file_content:
-							kernel_file = file
-							break
-			if kernel_file is None:
-				return Result(success=False, error_report="Kernel file not found.")
+			kernel_file, unoptimized_file_content = self.find_kernel_file(files, kernel)
 
 			# Build problem description
 			problem_description = (
@@ -607,8 +594,8 @@ class atomic_contention(Formula_Base):
 						"speedup": 0.0,
 						"unoptimized_time": 0,
 						"optimized_time": 0,
-						"unoptimized_latency": self.baseline_atomic_latency or 0,
-						"optimized_latency": self.baseline_atomic_latency or 0,
+						"unoptimized_lat": self.baseline_atomic_latency or 0,
+						"optimized_lat": self.baseline_atomic_latency or 0,
 					},
 					success=False,
 					request=f"Optimize atomic contention in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
@@ -656,28 +643,51 @@ class atomic_contention(Formula_Base):
 		optimized_time = optimized_results[0]["durations"]["ns"]
 		optimized_metric = optimized_results[0][field][subfield]
 
-		success = optimized_metric < unoptimized_metric
-		speedup = unoptimized_time / optimized_time
-		metric_improvement = unoptimized_metric / optimized_metric if optimized_metric != 0 else 1
+		# Add step to optimization tracker (always - for learning)
+		# Tracker will automatically calculate: speedup, latency_improvement, and success
+		diff = self.compute_diff(self.current_kernel_files)
 
-		# Calculate cycle latency improvement percentage
+		# Read the optimized code to store in history
+		with open(self.current_kernel_files[0], "r") as f:
+			optimized_code = f.read()
+
+		step = self.optimization_tracker.add_step(
+			diff=diff,
+			report="",  # Will build report after calculations
+			metrics={
+				"unoptimized_time": unoptimized_time,
+				"optimized_time": optimized_time,
+				"unoptimized_lat": unoptimized_metric,
+				"optimized_lat": optimized_metric,
+			},
+			request=f"Optimize atomic contention in kernel {self.current_kernel_signature}",
+			optimized_code=optimized_code,
+		)
+
+		# Query calculated values from tracker
+		speedup = step.metrics.get("speedup", 1.0)
+		latency_improvement = step.metrics.get("latency_improvement", 1.0)
+
+		# Calculate percentage improvement for readability
 		cycle_latency_improvement = (
 			(unoptimized_metric - optimized_metric) / unoptimized_metric * 100 if unoptimized_metric > 0 else 0
 		)
+
+		# Build report using tracker's calculated values
 		self.optimization_report = ""
 
 		# Format the atomic contention improvement message
-		if metric_improvement > 1:
+		if latency_improvement > 1:
 			self.optimization_report += (
 				f"Atomic Contention Reduction: Successfully reduced atomic contention by "
-				f"{metric_improvement:.2f}x. "
+				f"{latency_improvement:.2f}x. "
 				f"Average atomic latency improved from {unoptimized_metric:.0f} to {optimized_metric:.0f} cycles "
 				f"({cycle_latency_improvement:.1f}% reduction - lower latency means less contention). "
 			)
 		else:
 			self.optimization_report += (
 				f"Atomic Contention Increase: Atomic contention increased by "
-				f"{1 / metric_improvement:.2f}x. "
+				f"{1 / latency_improvement:.2f}x. "
 				f"Average atomic latency worsened from {unoptimized_metric:.0f} to {optimized_metric:.0f} cycles "
 				f"({abs(cycle_latency_improvement):.1f}% increase - higher latency means more contention). "
 			)
@@ -696,59 +706,26 @@ class atomic_contention(Formula_Base):
 				f"({(1 / speedup - 1) * 100:.1f}% slower)."
 			)
 
-		# Log performance validation results (always, even if failed)
+		# Update the step's report with the built message
+		step.report = self.optimization_report
+
+		# Log performance validation results (using tracker's calculated values)
 		self.get_logger().record(
 			"performance_validation_complete",
 			{
-				"success": success,
+				"success": step.success,
 				"unoptimized_time_ns": unoptimized_time,
 				"optimized_time_ns": optimized_time,
 				"unoptimized_metric": unoptimized_metric,
 				"optimized_metric": optimized_metric,
 				"speedup": speedup,
-				"metric_improvement": metric_improvement,
+				"metric_improvement": latency_improvement,
 				"cycle_latency_improvement": cycle_latency_improvement,
 				"optimization_report": self.optimization_report,
 			},
 		)
 
 		logging.info(self.optimization_report)
-
-		# Add step to optimization tracker (always - for learning)
-		# Tracker will automatically calculate latency_improvement from before/after values
-		diff = self.compute_diff(self.current_kernel_files)
-
-		# Read the optimized code to store in history
-		with open(self.current_kernel_files[0], "r") as f:
-			optimized_code = f.read()
-
-		self.optimization_tracker.add_step(
-			diff=diff,
-			report=self.optimization_report,
-			metrics={
-				"speedup": speedup,
-				"unoptimized_time": unoptimized_time,
-				"optimized_time": optimized_time,
-				"unoptimized_lat": unoptimized_metric,
-				"optimized_lat": optimized_metric,
-			},
-			success=success and speedup >= 1,
-			request=f"Optimize atomic contention in kernel {self.current_kernel_signature}",
-			optimized_code=optimized_code,
-		)
-
-		# Update best if this iteration improved both speedup and latency
-		is_better = speedup > self.best_speedup and metric_improvement > self.best_latency_improvement
-
-		if is_better:
-			self.best_speedup = speedup
-			self.best_latency_improvement = metric_improvement
-			self.best_iteration_report = self.optimization_report
-			self.best_optimization_results = self._optimization_results
-			self.best_kernel_code = optimized_code
-			# Mark as successful if we achieved any improvement
-			if metric_improvement > 1.0 or speedup > 1.0:
-				self.success = True
 
 		self.current_summary = self.optimization_report
 
@@ -759,17 +736,15 @@ class atomic_contention(Formula_Base):
 		"""
 		Writes the results to the output file using the best optimization attempt.
 		"""
-		# Restore best results for output
-		self._optimization_results = self.best_optimization_results
-		self.optimization_report = self.best_iteration_report
-
-		for file in self.current_kernel_files:
-			with open(file, "w") as f:
-				f.write(self.best_kernel_code)
+		# Restore best code from tracker
+		best_code = self.optimization_tracker.get_best_code()
+		if best_code:
+			for file in self.current_kernel_files:
+				with open(file, "w") as f:
+					f.write(best_code)
 
 		# Extract metrics from best optimization step
-		best_step = self.optimization_tracker.to_dict().get("best_step", {})
-		metrics = best_step.get("metrics", {})
+		metrics = self.optimization_tracker.get_best_metrics()
 
 		# Build structured metric fields
 		metric_fields = {
@@ -787,7 +762,7 @@ class atomic_contention(Formula_Base):
 			output_file=output_file,
 			additional_results={
 				"formula": "atomicContention",
-				"success": self.success,
+				"success": self.optimization_tracker.is_successful(),
 				"optimization_history": self.optimization_tracker.to_dict(),
 				**metric_fields,
 			},
