@@ -24,7 +24,6 @@
 
 import json
 import logging
-import os
 import sys
 
 import dspy
@@ -34,7 +33,6 @@ from intelliperf.formulas.formula_base import (
 	OptimizationTracker,
 	Result,
 	filter_json_field,
-	get_kernel_name,
 )
 
 
@@ -252,15 +250,15 @@ class memory_access(Formula_Base):
 		self.bottleneck_report = None
 		self.current_summary = None
 		self.previous_source_code = None
-		self.success = False
 
 		# Initialize optimization tracker
-		# Memory access optimization maximizes coalescing improvement
-		# Automatically calculates coal_improvement from unoptimized_coal / optimized_coal
+		# Memory access optimization: maximize coalescing (higher % is better)
+		# Automatically calculates coal_improvement = optimized_coal / unoptimized_coal
+		# Higher improvement ratio is better (e.g., 90% / 50% = 1.8x improvement)
 		self.optimization_tracker = OptimizationTracker(
 			max_iterations=self.num_attempts,
 			primary_metric="coal_improvement",
-			maximize=True,
+			maximize=True,  # True = maximize raw metric (coalescing %)
 			before_metric="unoptimized_coal",
 			after_metric="optimized_coal",
 		)
@@ -268,13 +266,6 @@ class memory_access(Formula_Base):
 		# Store baseline metrics (set during first profiling)
 		self.baseline_coalesced_pct = None
 		self.baseline_time_ms = None
-
-		# Track best optimization across iterations
-		self.best_speedup = 1.0  # Start at 1.0x (no speedup)
-		self.best_coal_improvement = 1.0  # Start at 1.0x (no improvement)
-		self.best_kernel_code = ""
-		self.best_iteration_report = ""
-		self.best_optimization_results = None
 
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
@@ -430,25 +421,7 @@ class memory_access(Formula_Base):
 				self.baseline_time_ms = filtered_report_card[0]["durations"]["ns"] / 1e6
 
 			files = filtered_report_card[0]["source"]["files"]
-			kernel_name = get_kernel_name(kernel)
-
-			logging.debug(f"Kernel name: {kernel_name}")
-			kernel_file = None
-			unoptimized_file_content = None
-			for file in files:
-				project_dir = os.path.abspath(self._application.get_project_directory())
-				file_path = os.path.abspath(file)
-				isfile_in_project = os.path.commonpath([project_dir, file_path]) == project_dir
-
-				if os.path.exists(file) and isfile_in_project:
-					with open(file, "r") as f:
-						unoptimized_file_content = f.read()
-						if kernel_name in unoptimized_file_content:
-							kernel_file = file
-							break
-			if kernel_file is None:
-				logging.error(f"Kernel file not found for kernel {kernel}")
-				sys.exit(1)
+			kernel_file, unoptimized_file_content = self.find_kernel_file(files, kernel)
 
 			# Build problem description
 			problem_description = (
@@ -722,19 +695,6 @@ class memory_access(Formula_Base):
 			optimized_code=optimized_code,
 		)
 
-		# Update best if this iteration improved both speedup and coalescing
-		is_better = speedup > self.best_speedup and coal_improvement > self.best_coal_improvement
-
-		if is_better:
-			self.best_speedup = speedup
-			self.best_coal_improvement = coal_improvement
-			self.best_iteration_report = self.optimization_report
-			self.best_optimization_results = self._optimization_results
-			self.best_kernel_code = optimized_code
-			# Mark as successful if we achieved any improvement
-			if coal_improvement > 1.0 or speedup > 1.0:
-				self.success = True
-
 		self.current_summary = self.optimization_report
 
 		# Always return False to continue through all iterations
@@ -744,17 +704,15 @@ class memory_access(Formula_Base):
 		"""
 		Writes the results to the output file using the best optimization attempt.
 		"""
-		# Restore best results for output
-		self._optimization_results = self.best_optimization_results
-		self.optimization_report = self.best_iteration_report
-
-		for file in self.current_kernel_files:
-			with open(file, "w") as f:
-				f.write(self.best_kernel_code)
+		# Restore best code from tracker
+		best_code = self.optimization_tracker.get_best_code()
+		if best_code:
+			for file in self.current_kernel_files:
+				with open(file, "w") as f:
+					f.write(best_code)
 
 		# Extract metrics from best optimization step
-		best_step = self.optimization_tracker.to_dict().get("best_step", {})
-		metrics = best_step.get("metrics", {})
+		metrics = self.optimization_tracker.get_best_metrics()
 
 		# Build structured metric fields
 		metric_fields = {
@@ -772,7 +730,7 @@ class memory_access(Formula_Base):
 			output_file=output_file,
 			additional_results={
 				"formula": "memoryAccess",
-				"success": self.success,
+				"success": self.optimization_tracker.is_successful(),
 				"optimization_history": self.optimization_tracker.to_dict(),
 				**metric_fields,
 			},
