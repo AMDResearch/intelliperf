@@ -401,9 +401,6 @@ class atomic_contention(Formula_Base):
 		# Get LLM instance (initialized once per formula)
 		llm = self.get_llm(system_prompt)
 
-		# Setup MCP terminal access (uses already-cloned project dir)
-		self.setup_mcp_terminal()
-
 		kernel = None
 		kernel_file = None
 
