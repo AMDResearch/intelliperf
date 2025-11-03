@@ -12,9 +12,9 @@ authors = [
 
 license = { text = "MIT" }
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 
-# Python dependencies 
+# Python dependencies
 dependencies = ["tomli", "tabulate", "ml_dtypes", "dspy==2.6.27", "pandas", "duckdb", "rich", "pytest", "litellm[proxy]", "rpds-py"]
 
 [tool.setuptools]
