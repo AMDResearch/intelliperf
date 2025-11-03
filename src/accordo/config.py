@@ -11,32 +11,19 @@ class KernelArg:
 	Args:
 		name: Argument name (e.g., "result", "input", "count")
 		type: C/C++ type string (e.g., "double*", "const float*", "int")
-		direction: Data flow direction - "in", "out", "inout", or "auto" (infers from const)
 
 	Examples:
-		>>> KernelArg(name="result", type="double*", direction="out")
-		>>> KernelArg(name="input", type="const double*", direction="in")
-		>>> KernelArg(name="count", type="unsigned long")  # direction="auto"
+		>>> KernelArg(name="result", type="double*")
+		>>> KernelArg(name="input", type="const double*")
+		>>> KernelArg(name="count", type="unsigned long")
+
+	Note:
+		Output arguments are identified by checking for "*" without "const" in the type.
+		This matches the existing IPC logic.
 	"""
 
 	name: str
 	type: str
-	direction: str = "auto"
-
-	def __post_init__(self):
-		"""Validate direction and infer from type if auto."""
-		valid_directions = {"in", "out", "inout", "auto"}
-		if self.direction not in valid_directions:
-			raise ValueError(f"direction must be one of {valid_directions}, got '{self.direction}'")
-
-		# Auto-infer direction from type if not specified
-		if self.direction == "auto":
-			if "const" in self.type and "*" in self.type:
-				self.direction = "in"
-			elif "*" in self.type:
-				self.direction = "out"  # Default assumption for pointers
-			else:
-				self.direction = "in"  # Scalars are typically inputs
 
 	@classmethod
 	def from_string(cls, type_str: str, name: str = None) -> "KernelArg":
