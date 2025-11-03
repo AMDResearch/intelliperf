@@ -5,6 +5,16 @@
 #include <random>
 #include <vector>
 
+#define hip_try(expr)                                             \
+  do {                                                            \
+    hipError_t err = (expr);                                      \
+    if (err != hipSuccess) {                                      \
+      const char* msg = hipGetErrorString(err);                   \
+      throw std::runtime_error(std::string("HIP error: ") + msg); \
+    }                                                             \
+  } while (0)
+
+
 using index_type = std::size_t;
 using real_type = double;
 
@@ -75,17 +85,17 @@ int main(int argc, char* argv[]) {
   real_type* d_input;
   real_type* d_output;
 
-  hipMalloc(&d_labels, n * sizeof(index_type));
-  hipMalloc(&d_flip, n * sizeof(index_type));
-  hipMalloc(&d_input, n * sizeof(real_type));
-  hipMalloc(&d_output, k * sizeof(real_type));
+  hip_try(hipMalloc(&d_labels, n * sizeof(index_type)));
+  hip_try(hipMalloc(&d_flip, n * sizeof(index_type)));
+  hip_try(hipMalloc(&d_input, n * sizeof(real_type)));
+  hip_try(hipMalloc(&d_output, k * sizeof(real_type)));
 
-  hipMemcpy(d_labels, h_labels.data(), n * sizeof(index_type), hipMemcpyHostToDevice);
-  hipMemcpy(d_flip, h_flip.data(), n * sizeof(index_type), hipMemcpyHostToDevice);
-  hipMemcpy(d_input, h_input.data(), n * sizeof(real_type), hipMemcpyHostToDevice);
-  hipMemcpy(d_output, h_output.data(), k * sizeof(real_type), hipMemcpyHostToDevice);
+  hip_try(hipMemcpy(d_labels, h_labels.data(), n * sizeof(index_type), hipMemcpyHostToDevice));
+  hip_try(hipMemcpy(d_flip, h_flip.data(), n * sizeof(index_type), hipMemcpyHostToDevice));
+  hip_try(hipMemcpy(d_input, h_input.data(), n * sizeof(real_type), hipMemcpyHostToDevice));
+  hip_try(hipMemcpy(d_output, h_output.data(), k * sizeof(real_type), hipMemcpyHostToDevice));
 
   histogram(n, k, d_labels, d_flip, d_input, d_output);
 
-  hipDeviceSynchronize();
+  hip_try(hipDeviceSynchronize());
 }

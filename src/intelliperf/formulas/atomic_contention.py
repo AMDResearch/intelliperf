@@ -525,8 +525,8 @@ class atomic_contention(Formula_Base):
 				},
 			)
 
-			with open(kernel_file, "w") as f:
-				f.write(optimized_file_content)
+			# Write and log optimized code immediately after LLM generation
+			self.write_and_log_optimized_code(kernel_file, optimized_file_content)
 			logging.debug(f"Optimized file content: {optimized_file_content}")
 			return Result(
 				success=True,
