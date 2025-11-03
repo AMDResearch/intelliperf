@@ -35,7 +35,6 @@ from intelliperf.formulas.formula_base import (
 	OptimizationTracker,
 	Result,
 	filter_json_field,
-	get_kernel_name,
 )
 from intelliperf.utils.process import capture_subprocess_output
 from intelliperf.utils.regex import generate_ecma_regex_from_list
@@ -267,15 +266,15 @@ class bank_conflict(Formula_Base):
 		self.bottleneck_report = None
 		self.current_summary = None
 		self.previous_source_code = None
-		self.success = False
 
 		# Initialize optimization tracker
-		# Bank conflict optimization maximizes conflict reduction (minimize bank conflicts)
-		# Automatically calculates conflict_improvement from unoptimized_conflicts / optimized_conflicts
+		# Bank conflict optimization: minimize conflicts (lower is better)
+		# Automatically calculates conflict_improvement = unoptimized_conflicts / optimized_conflicts
+		# Higher improvement ratio is better (e.g., 3.5 / 0.5 = 7.0x improvement)
 		self.optimization_tracker = OptimizationTracker(
 			max_iterations=self.num_attempts,
 			primary_metric="conflict_improvement",
-			maximize=True,
+			maximize=False,  # False = minimize raw metric (conflicts)
 			before_metric="unoptimized_conflicts",
 			after_metric="optimized_conflicts",
 		)
@@ -283,13 +282,6 @@ class bank_conflict(Formula_Base):
 		# Store baseline metrics (set during first profiling)
 		self.baseline_bank_conflicts = None
 		self.baseline_time_ms = None
-
-		# Track best optimization across iterations
-		self.best_speedup = 1.0  # Start at 1.0x (no speedup)
-		self.best_conflict_improvement = 1.0  # Start at 1.0x (no improvement)
-		self.best_kernel_code = ""
-		self.best_iteration_report = ""
-		self.best_optimization_results = None
 
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
@@ -320,21 +312,22 @@ class bank_conflict(Formula_Base):
 				with open(self.current_kernel_files[0], "r") as f:
 					failed_code = f.read()
 
-				error_report = f"Compilation Failed: {result.error_report}"
-				self.optimization_tracker.add_step(
-					diff=diff,
-					report=error_report,
-					metrics={
-						"speedup": 0.0,
-						"unoptimized_time": 0,
-						"optimized_time": 0,
-						"unoptimized_conflicts": self.baseline_bank_conflicts or 0,
-						"optimized_conflicts": self.baseline_bank_conflicts or 0,
-					},
-					success=False,
-					request=f"Optimize bank conflicts in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
-					optimized_code=failed_code,
-				)
+			error_report = f"Compilation Failed: {result.error_report}"
+			self.optimization_tracker.add_step(
+				diff=diff,
+				report=error_report,
+				metrics={
+					"speedup": 1.0,  # No change
+					"unoptimized_time": self.baseline_time_ms * 1e6 if self.baseline_time_ms else 0,
+					"optimized_time": self.baseline_time_ms * 1e6 if self.baseline_time_ms else 0,
+					"unoptimized_conflicts": self.baseline_bank_conflicts or 0,
+					"optimized_conflicts": self.baseline_bank_conflicts or 0,
+					"conflict_improvement": 1.0,  # Explicitly set to 1.0 (no change)
+				},
+				success=False,
+				request=f"Optimize bank conflicts in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
+				optimized_code=failed_code,
+			)
 		else:
 			self.get_logger().record(
 				"build_pass_success",
@@ -522,22 +515,7 @@ class bank_conflict(Formula_Base):
 				self.baseline_time_ms = filtered_report_card[0]["durations"]["ns"] / 1e6
 
 			files = filtered_report_card[0]["source"]["files"]
-			kernel_name = get_kernel_name(kernel)
-			kernel_file = None
-
-			unoptimized_file_content = None
-			for file in files:
-				project_dir = os.path.abspath(self._application.get_project_directory())
-				file_path = os.path.abspath(file)
-				isfile_in_project = os.path.commonpath([project_dir, file_path]) == project_dir
-				if os.path.exists(file) and isfile_in_project:
-					with open(file, "r") as f:
-						unoptimized_file_content = f.read()
-						if kernel_name in unoptimized_file_content:
-							kernel_file = file
-							break
-			if kernel_file is None:
-				return Result(success=False, error_report="Kernel file not found.")
+			kernel_file, unoptimized_file_content = self.find_kernel_file(files, kernel)
 
 			# Build problem description
 			problem_description = (
@@ -686,21 +664,24 @@ class bank_conflict(Formula_Base):
 				with open(self.current_kernel_files[0], "r") as f:
 					failed_code = f.read()
 
-				error_report = f"Correctness Validation Failed: {result.error_report}"
-				self.optimization_tracker.add_step(
-					diff=diff,
-					report=error_report,
-					metrics={
-						"speedup": 0.0,
-						"unoptimized_time": 0,
-						"optimized_time": 0,
-						"unoptimized_conflicts": self.baseline_bank_conflicts or 0,
-						"optimized_conflicts": self.baseline_bank_conflicts or 0,
-					},
-					success=False,
-					request=f"Optimize bank conflicts in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
-					optimized_code=failed_code,
-				)
+			error_report = f"Correctness Validation Failed: {result.error_report}"
+			# For correctness failures, we don't have valid metrics since the code didn't run correctly
+			# Set conflict_improvement to 1.0 (no change) to indicate no progress
+			self.optimization_tracker.add_step(
+				diff=diff,
+				report=error_report,
+				metrics={
+					"speedup": 1.0,  # No change
+					"unoptimized_time": self.baseline_time_ms * 1e6 if self.baseline_time_ms else 0,
+					"optimized_time": self.baseline_time_ms * 1e6 if self.baseline_time_ms else 0,
+					"unoptimized_conflicts": self.baseline_bank_conflicts or 0,
+					"optimized_conflicts": self.baseline_bank_conflicts or 0,  # Same as baseline (no improvement)
+					"conflict_improvement": 1.0,  # Explicitly set to 1.0 (no change)
+				},
+				success=False,
+				request=f"Optimize bank conflicts in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
+				optimized_code=failed_code,
+			)
 		else:
 			self.get_logger().record(
 				"correctness_validation_success",
@@ -734,50 +715,79 @@ class bank_conflict(Formula_Base):
 		optimized_time = optimized_results[0]["durations"]["ns"]
 		optimized_conflicts = optimized_results[0]["lds"]["bc"]
 
-		success = optimized_conflicts < unoptimized_conflicts
-		speedup = unoptimized_time / optimized_time
-		conflict_improvement = unoptimized_conflicts / optimized_conflicts if optimized_conflicts != 0 else 1
-		conflict_improvement_percentage = (
-			(unoptimized_conflicts - optimized_conflicts) / unoptimized_conflicts if unoptimized_conflicts != 0 else 0
-		) * 100
+		# Add step to optimization tracker (always - for learning)
+		# Tracker will automatically calculate: speedup, conflict_improvement, and success
+		diff = self.compute_diff(self.current_kernel_files)
 
+		# Read the optimized code to store in history
+		with open(self.current_kernel_files[0], "r") as f:
+			optimized_code = f.read()
+
+		step = self.optimization_tracker.add_step(
+			diff=diff,
+			report="",  # Will build report after calculations
+			metrics={
+				"unoptimized_time": unoptimized_time,
+				"optimized_time": optimized_time,
+				"unoptimized_conflicts": unoptimized_conflicts,
+				"optimized_conflicts": optimized_conflicts,
+			},
+			request=f"Optimize bank conflicts in kernel {self.current_kernel_signature}",
+			optimized_code=optimized_code,
+		)
+
+		# Query calculated values from tracker
+		speedup = step.metrics.get("speedup", 1.0)
+		conflict_improvement = step.metrics.get("conflict_improvement", 1.0)
+
+		# Calculate percentage improvement for readability
+		conflict_improvement_percentage = (
+			(unoptimized_conflicts - optimized_conflicts) / unoptimized_conflicts * 100
+			if unoptimized_conflicts > 0
+			else 0
+		)
+
+		# Build report using tracker's calculated values
 		self.optimization_report = ""
 
 		# Format the conflict improvement message
-		if conflict_improvement_percentage > 1:
+		if conflict_improvement > 1:
 			self.optimization_report += (
 				f"Bank Conflict Reduction: Successfully reduced shared memory bank conflicts by "
-				f"{conflict_improvement_percentage:.1f}%. "
+				f"{conflict_improvement:.2f}x. "
 				f"Conflict ratio improved from {unoptimized_conflicts:.1f} to {optimized_conflicts:.1f} "
-				f"(lower values indicate fewer conflicts and better performance). "
+				f"({conflict_improvement_percentage:.1f}% reduction - lower values mean fewer conflicts). "
 			)
 		else:
 			self.optimization_report += (
 				f"Bank Conflict Increase: Bank conflicts increased by "
-				f"{abs(conflict_improvement_percentage):.1f}%. "
+				f"{1 / conflict_improvement:.2f}x. "
 				f"Conflict ratio worsened from {unoptimized_conflicts:.1f} to {optimized_conflicts:.1f} "
-				f"(higher values indicate more conflicts and worse performance). "
+				f"({abs(conflict_improvement_percentage):.1f}% increase - higher values mean more conflicts). "
 			)
 
 		# Format the performance improvement message
 		if speedup > 1:
 			self.optimization_report += (
 				f"Performance Gain: Achieved {speedup:.2f}x speedup with execution time "
-				f"reduced from {unoptimized_time / 1_000_000:.2f}ms to {optimized_time / 1_000_000:.2f}ms "
+				f"reduced from {unoptimized_time / 1e6:.2f}ms to {optimized_time / 1e6:.2f}ms "
 				f"({(speedup - 1) * 100:.1f}% faster)."
 			)
 		else:
 			self.optimization_report += (
 				f"Performance Loss: Experienced {1 / speedup:.2f}x slowdown with execution time "
-				f"increased from {unoptimized_time / 1_000_000:.2f}ms to {optimized_time / 1_000_000:.2f}ms "
+				f"increased from {unoptimized_time / 1e6:.2f}ms to {optimized_time / 1e6:.2f}ms "
 				f"({(1 / speedup - 1) * 100:.1f}% slower)."
 			)
 
-		# Log performance validation results (always, even if failed)
+		# Update the step's report with the built message
+		step.report = self.optimization_report
+
+		# Log performance validation results (using tracker's calculated values)
 		self.get_logger().record(
 			"performance_validation_complete",
 			{
-				"success": success,
+				"success": step.success,
 				"unoptimized_time_ns": unoptimized_time,
 				"optimized_time_ns": optimized_time,
 				"unoptimized_conflicts": unoptimized_conflicts,
@@ -791,42 +801,6 @@ class bank_conflict(Formula_Base):
 
 		logging.info(self.optimization_report)
 
-		# Add step to optimization tracker (always - for learning)
-		# Tracker will automatically calculate conflict_improvement from before/after values
-		diff = self.compute_diff(self.current_kernel_files)
-
-		# Read the optimized code to store in history
-		with open(self.current_kernel_files[0], "r") as f:
-			optimized_code = f.read()
-
-		self.optimization_tracker.add_step(
-			diff=diff,
-			report=self.optimization_report,
-			metrics={
-				"speedup": speedup,
-				"unoptimized_time": unoptimized_time,
-				"optimized_time": optimized_time,
-				"unoptimized_conflicts": unoptimized_conflicts,
-				"optimized_conflicts": optimized_conflicts,
-			},
-			success=success and speedup >= 1,
-			request=f"Optimize bank conflicts in kernel {self.current_kernel_signature}",
-			optimized_code=optimized_code,
-		)
-
-		# Update best if this iteration improved both speedup and conflict reduction
-		is_better = speedup > self.best_speedup and conflict_improvement > self.best_conflict_improvement
-
-		if is_better:
-			self.best_speedup = speedup
-			self.best_conflict_improvement = conflict_improvement
-			self.best_iteration_report = self.optimization_report
-			self.best_optimization_results = self._optimization_results
-			self.best_kernel_code = optimized_code
-			# Mark as successful if we achieved any improvement
-			if conflict_improvement > 1.0 or speedup > 1.0:
-				self.success = True
-
 		self.current_summary = self.optimization_report
 
 		# Always return False to continue through all iterations
@@ -836,27 +810,34 @@ class bank_conflict(Formula_Base):
 		"""
 		Writes the results to the output file using the best optimization attempt.
 		"""
-		# Restore best results for output
-		self._optimization_results = self.best_optimization_results
-		self.optimization_report = self.best_iteration_report
-
-		for file in self.current_kernel_files:
-			with open(file, "w") as f:
-				f.write(self.best_kernel_code)
+		# Restore best code from tracker
+		best_code = self.optimization_tracker.get_best_code()
+		if best_code:
+			for file in self.current_kernel_files:
+				with open(file, "w") as f:
+					f.write(best_code)
 
 		# Extract metrics from best optimization step
-		best_step = self.optimization_tracker.to_dict().get("best_step", {})
-		metrics = best_step.get("metrics", {})
+		metrics = self.optimization_tracker.get_best_metrics()
+
+		# Determine metric_after: use best if available, otherwise null to indicate no improvement
+		metric_after = None
+		time_after_ms = None
+		if metrics and "optimized_conflicts" in metrics:
+			# Only use the measured value if it actually improved
+			if metrics["optimized_conflicts"] < self.baseline_bank_conflicts:
+				metric_after = metrics["optimized_conflicts"]
+				time_after_ms = metrics.get("optimized_time", 0) / 1e6
 
 		# Build structured metric fields
 		metric_fields = {
 			"kernel_name": self.current_kernel,
 			"metric": "lds_bank_conflict",  # The counter we're optimizing
 			"metric_name": "LDS Bank Conflicts",  # Human-readable name
-			"metric_before": metrics.get("unoptimized_conflicts", self.baseline_bank_conflicts),
-			"metric_after": metrics.get("optimized_conflicts", self.baseline_bank_conflicts),
-			"time_before_ms": metrics.get("unoptimized_time", 0) / 1e6,  # Convert ns to ms
-			"time_after_ms": metrics.get("optimized_time", 0) / 1e6,  # Convert ns to ms
+			"metric_before": self.baseline_bank_conflicts,
+			"metric_after": metric_after,  # None if no optimization succeeded
+			"time_before_ms": self.baseline_time_ms if self.baseline_time_ms else 0.0,
+			"time_after_ms": time_after_ms,  # None if no optimization succeeded
 		}
 
 		# Include optimization history in results
@@ -864,7 +845,7 @@ class bank_conflict(Formula_Base):
 			output_file=output_file,
 			additional_results={
 				"formula": "bankConflict",
-				"success": self.success,
+				"success": self.optimization_tracker.is_successful(),
 				"optimization_history": self.optimization_tracker.to_dict(),
 				**metric_fields,
 			},
