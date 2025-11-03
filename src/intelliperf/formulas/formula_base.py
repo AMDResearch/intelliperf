@@ -600,6 +600,70 @@ class Formula_Base:
 
 		logging.debug(f"Wrote and logged optimized code to {kernel_file} (iteration {iteration_num})")
 
+	def find_kernel_file(self, files: list, kernel: str) -> tuple:
+		"""
+		Find the kernel file containing the given kernel name from a list of files.
+
+		Args:
+		        files: List of file paths to search
+		        kernel: Kernel signature to find
+
+		Returns:
+		        tuple: (kernel_file_path, file_content) or (None, None) if not found
+
+		Note:
+		        - Validates files exist and are within the project directory
+		        - Logs warnings for invalid files
+		        - Exits with sys.exit(1) if kernel file not found after checking all files
+		"""
+		kernel_name = get_kernel_name(kernel)
+		logging.debug(f"Searching for kernel: {kernel_name}")
+
+		kernel_file = None
+		unoptimized_file_content = None
+		project_dir = os.path.abspath(self._application.get_project_directory())
+
+		for file in files:
+			file_path = os.path.abspath(file)
+
+			# Check if file exists
+			if not os.path.exists(file):
+				logging.warning(f"File {file} does not exist")
+				continue
+
+			# Check if file is in project directory
+			try:
+				isfile_in_project = os.path.commonpath([project_dir, file_path]) == project_dir
+			except ValueError:
+				# Happens when paths are on different drives (Windows)
+				isfile_in_project = False
+
+			if not isfile_in_project:
+				logging.warning(f"File {file} is not in the project")
+				continue
+
+			# Try to read file and find kernel
+			try:
+				with open(file, "r") as f:
+					unoptimized_file_content = f.read()
+					if kernel_name in unoptimized_file_content:
+						kernel_file = file
+						break
+			except Exception as e:
+				logging.error(f"Error reading file {file}: {e}")
+				continue
+
+		# If kernel file not found, log error and exit
+		if kernel_file is None:
+			logging.error(f"Kernel file not found for kernel {kernel}")
+			logging.error(f"Kernel name: {kernel_name}")
+			logging.error(f"Files searched: {files}")
+			if unoptimized_file_content:
+				logging.error(f"Last file content (first 200 chars): {unoptimized_file_content[:200]}")
+			sys.exit(1)
+
+		return kernel_file, unoptimized_file_content
+
 	def compute_diff(self, filepaths: list[str]) -> str:
 		diffs = []
 		for filepath in filepaths:

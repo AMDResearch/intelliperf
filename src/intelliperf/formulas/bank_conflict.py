@@ -522,22 +522,7 @@ class bank_conflict(Formula_Base):
 				self.baseline_time_ms = filtered_report_card[0]["durations"]["ns"] / 1e6
 
 			files = filtered_report_card[0]["source"]["files"]
-			kernel_name = get_kernel_name(kernel)
-			kernel_file = None
-
-			unoptimized_file_content = None
-			for file in files:
-				project_dir = os.path.abspath(self._application.get_project_directory())
-				file_path = os.path.abspath(file)
-				isfile_in_project = os.path.commonpath([project_dir, file_path]) == project_dir
-				if os.path.exists(file) and isfile_in_project:
-					with open(file, "r") as f:
-						unoptimized_file_content = f.read()
-						if kernel_name in unoptimized_file_content:
-							kernel_file = file
-							break
-			if kernel_file is None:
-				return Result(success=False, error_report="Kernel file not found.")
+			kernel_file, unoptimized_file_content = self.find_kernel_file(files, kernel)
 
 			# Build problem description
 			problem_description = (
