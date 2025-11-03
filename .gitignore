@@ -14,3 +14,5 @@ external/
 intelliperf_env/
 trace/
 .build/
+
+.rocprofv3/
