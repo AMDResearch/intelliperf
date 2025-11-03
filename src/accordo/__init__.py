@@ -6,20 +6,20 @@ Public API:
     - Snapshot: Captured kernel argument data from binary execution
     - ValidationResult: Result of validation with detailed metrics
     - ArrayMismatch: Information about array validation failures
-    - AccordoValidator: Main validator class for kernel validation
+    - Accordo: Main validator class for kernel validation
     - Exceptions: AccordoError, AccordoBuildError, AccordoTimeoutError, etc.
 
 Quick Example (one-off validation):
-    >>> from accordo import ValidationConfig, KernelArg, AccordoValidator
-    >>> config = ValidationConfig(
+    >>> from accordo import Accordo
+    >>> config = Accordo.Config(
     ...     kernel_name="my_kernel",
     ...     kernel_args=[
-    ...         KernelArg(name="result", type="double*"),
-    ...         KernelArg(name="input", type="const double*"),
+    ...         Accordo.KernelArg(name="result", type="double*"),
+    ...         Accordo.KernelArg(name="input", type="const double*"),
     ...     ],
     ...     tolerance=1e-6
     ... )
-    >>> validator = AccordoValidator(config)
+    >>> validator = Accordo(config)
     >>> result = validator.validate(
     ...     reference_binary=["./app_ref"],
     ...     optimized_binary=["./app_opt"],
@@ -57,27 +57,44 @@ from .exceptions import (
 )
 from .result import ArrayMismatch, ValidationResult
 from .snapshot import Snapshot
-from .validator import AccordoValidator
+from .validator import Accordo as _Accordo
 
 # Version
 __version__ = "0.2.0"
 
+# Nest all classes under Accordo namespace
+class Accordo(_Accordo):
+	"""Main Accordo validator with nested classes for clean API.
+
+	All Accordo components are accessible as Accordo.ClassName:
+	- Accordo.Config (ValidationConfig)
+	- Accordo.KernelArg
+	- Accordo.Snapshot
+	- Accordo.Result (ValidationResult)
+	- Accordo.ArrayMismatch
+	- Accordo.Error (AccordoError)
+	- Accordo.BuildError (AccordoBuildError)
+	- Accordo.TimeoutError (AccordoTimeoutError)
+	- Accordo.ProcessError (AccordoProcessError)
+	- Accordo.ValidationError (AccordoValidationError)
+	"""
+	# Configuration
+	Config = ValidationConfig
+	KernelArg = KernelArg
+
+	# Data structures
+	Snapshot = Snapshot
+	Result = ValidationResult
+	ArrayMismatch = ArrayMismatch
+
+	# Exceptions
+	Error = AccordoError
+	BuildError = AccordoBuildError
+	TimeoutError = AccordoTimeoutError
+	ProcessError = AccordoProcessError
+	ValidationError = AccordoValidationError
+
 # Public API
 __all__ = [
-	# Config
-	"ValidationConfig",
-	"KernelArg",
-	# Validator
-	"AccordoValidator",
-	# Snapshot
-	"Snapshot",
-	# Results
-	"ValidationResult",
-	"ArrayMismatch",
-	# Exceptions
-	"AccordoError",
-	"AccordoBuildError",
-	"AccordoTimeoutError",
-	"AccordoProcessError",
-	"AccordoValidationError",
+	"Accordo",
 ]

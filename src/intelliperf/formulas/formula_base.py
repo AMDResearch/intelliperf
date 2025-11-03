@@ -38,7 +38,7 @@ import ml_dtypes
 import numpy as np
 import pandas as pd
 
-from accordo import AccordoValidator, KernelArg, ValidationConfig, Snapshot
+from accordo import Accordo
 from intelliperf import __version__
 from intelliperf.core.application import Application
 from intelliperf.core.logger import Logger
@@ -641,16 +641,16 @@ class Formula_Base:
 
 		# Create validator if not already created (and cache it)
 		if self._accordo_validator is None:
-			kernel_arg_objects = [KernelArg(name=f"arg{i}", type=arg_type) for i, arg_type in enumerate(kernel_args)]
+			kernel_arg_objects = [Accordo.KernelArg(name=f"arg{i}", type=arg_type) for i, arg_type in enumerate(kernel_args)]
 
-			config = ValidationConfig(
+			config = Accordo.Config(
 				kernel_name=kernel,
 				kernel_args=kernel_arg_objects,
 				tolerance=accordo_absolute_tolerance,
 				timeout_multiplier=2.0,
 			)
 
-			self._accordo_validator = AccordoValidator(config)
+			self._accordo_validator = Accordo(config)
 			logging.debug("Created and cached Accordo validator")
 
 		# Capture reference snapshot if not already captured (and cache it)
