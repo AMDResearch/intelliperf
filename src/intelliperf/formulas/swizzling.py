@@ -27,7 +27,6 @@ import json
 import logging
 import os
 import stat
-import sys
 
 import dspy
 
@@ -37,7 +36,6 @@ from intelliperf.formulas.formula_base import (
 	Formula_Base,
 	Result,
 	filter_json_field,
-	get_kernel_name,
 )
 from intelliperf.utils.env import get_llm_api_key
 
@@ -256,22 +254,8 @@ class swizzling(Formula_Base):
 
 			kernel = filtered_report_card[0]["kernel"]
 			files = filtered_report_card[0]["source"]["files"]
-			kernel_name = get_kernel_name(kernel)
-
-			logging.debug(f"Kernel name: {kernel_name}")
-			kernel_file = None
-			for file in files:
-				if os.path.exists(file):
-					with open(file, "r") as f:
-						unoptimized_file_content = f.read()
-						if kernel_name in unoptimized_file_content:
-							kernel_file = file
-							break
-			if kernel_file is None:
-				logging.error(f"Kernel file not found for kernel {kernel}")
-				sys.exit(1)
-			else:
-				logging.debug(f"Kernel file found for kernel {kernel}: {kernel_file}")
+			kernel_file, unoptimized_file_content = self.find_kernel_file(files, kernel)
+			logging.debug(f"Kernel file found for kernel {kernel}: {kernel_file}")
 
 			# Stage 1: Memory access pattern analysis (only run once)
 			if not self.memory_analysis_done:
@@ -287,7 +271,7 @@ class swizzling(Formula_Base):
 
 				self.bottleneck_report = (
 					f"L2 Cache Locality Detection: IntelliPerf identified suboptimal L2 cache hit rate "
-					f"in kernel `{kernel_name}`. Poor cache locality occurs when "
+					f"in kernel `{kernel}`. Poor cache locality occurs when "
 					f"blocks accessing related memory are scheduled to different XCDs with separate L2 caches, "
 					f"reducing overall cache effectiveness."
 				)
@@ -532,7 +516,10 @@ class swizzling(Formula_Base):
 		if self.current_iteration < self.max_iterations:
 			self.current_summary = self.optimization_report
 			# Always return success=False to continue iterating
-			return Result(success=False, error_report=self.best_iteration_report)
+			error_msg = (
+				self.best_iteration_report if self.best_iteration_report else "Continuing optimization iterations..."
+			)
+			return Result(success=False, error_report=error_msg)
 
 		return Result(success=True, asset={"log": self.best_iteration_report})
 

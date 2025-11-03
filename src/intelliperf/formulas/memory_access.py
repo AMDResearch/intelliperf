@@ -24,7 +24,6 @@
 
 import json
 import logging
-import os
 import sys
 
 import dspy
@@ -34,7 +33,6 @@ from intelliperf.formulas.formula_base import (
 	OptimizationTracker,
 	Result,
 	filter_json_field,
-	get_kernel_name,
 )
 
 
@@ -252,15 +250,15 @@ class memory_access(Formula_Base):
 		self.bottleneck_report = None
 		self.current_summary = None
 		self.previous_source_code = None
-		self.success = False
 
 		# Initialize optimization tracker
-		# Memory access optimization maximizes coalescing improvement
-		# Automatically calculates coal_improvement from unoptimized_coal / optimized_coal
+		# Memory access optimization: maximize coalescing (higher % is better)
+		# Automatically calculates coal_improvement = optimized_coal / unoptimized_coal
+		# Higher improvement ratio is better (e.g., 90% / 50% = 1.8x improvement)
 		self.optimization_tracker = OptimizationTracker(
 			max_iterations=self.num_attempts,
 			primary_metric="coal_improvement",
-			maximize=True,
+			maximize=True,  # True = maximize raw metric (coalescing %)
 			before_metric="unoptimized_coal",
 			after_metric="optimized_coal",
 		)
@@ -268,13 +266,6 @@ class memory_access(Formula_Base):
 		# Store baseline metrics (set during first profiling)
 		self.baseline_coalesced_pct = None
 		self.baseline_time_ms = None
-
-		# Track best optimization across iterations
-		self.best_speedup = 1.0  # Start at 1.0x (no speedup)
-		self.best_coal_improvement = 1.0  # Start at 1.0x (no improvement)
-		self.best_kernel_code = ""
-		self.best_iteration_report = ""
-		self.best_optimization_results = None
 
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
@@ -305,21 +296,22 @@ class memory_access(Formula_Base):
 				with open(self.current_kernel_files[0], "r") as f:
 					failed_code = f.read()
 
-				error_report = f"Compilation Failed: {result.error_report}"
-				self.optimization_tracker.add_step(
-					diff=diff,
-					report=error_report,
-					metrics={
-						"speedup": 0.0,
-						"unoptimized_time": 0,
-						"optimized_time": 0,
-						"unoptimized_coal": self.baseline_coalesced_pct or 0,
-						"optimized_coal": self.baseline_coalesced_pct or 0,
-					},
-					success=False,
-					request=f"Optimize memory coalescing in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
-					optimized_code=failed_code,
-				)
+			error_report = f"Compilation Failed: {result.error_report}"
+			self.optimization_tracker.add_step(
+				diff=diff,
+				report=error_report,
+				metrics={
+					"speedup": 1.0,  # No change
+					"unoptimized_time": self.baseline_time_ms * 1e6 if self.baseline_time_ms else 0,
+					"optimized_time": self.baseline_time_ms * 1e6 if self.baseline_time_ms else 0,
+					"unoptimized_coal": self.baseline_coalesced_pct or 0,
+					"optimized_coal": self.baseline_coalesced_pct or 0,
+					"coal_improvement": 1.0,  # Explicitly set to 1.0 (no change)
+				},
+				success=False,
+				request=f"Optimize memory coalescing in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
+				optimized_code=failed_code,
+			)
 		else:
 			self.get_logger().record(
 				"build_pass_success",
@@ -430,25 +422,7 @@ class memory_access(Formula_Base):
 				self.baseline_time_ms = filtered_report_card[0]["durations"]["ns"] / 1e6
 
 			files = filtered_report_card[0]["source"]["files"]
-			kernel_name = get_kernel_name(kernel)
-
-			logging.debug(f"Kernel name: {kernel_name}")
-			kernel_file = None
-			unoptimized_file_content = None
-			for file in files:
-				project_dir = os.path.abspath(self._application.get_project_directory())
-				file_path = os.path.abspath(file)
-				isfile_in_project = os.path.commonpath([project_dir, file_path]) == project_dir
-
-				if os.path.exists(file) and isfile_in_project:
-					with open(file, "r") as f:
-						unoptimized_file_content = f.read()
-						if kernel_name in unoptimized_file_content:
-							kernel_file = file
-							break
-			if kernel_file is None:
-				logging.error(f"Kernel file not found for kernel {kernel}")
-				sys.exit(1)
+			kernel_file, unoptimized_file_content = self.find_kernel_file(files, kernel)
 
 			# Build problem description
 			problem_description = (
@@ -598,21 +572,24 @@ class memory_access(Formula_Base):
 				with open(self.current_kernel_files[0], "r") as f:
 					failed_code = f.read()
 
-				error_report = f"Correctness Validation Failed: {result.error_report}"
-				self.optimization_tracker.add_step(
-					diff=diff,
-					report=error_report,
-					metrics={
-						"speedup": 0.0,
-						"unoptimized_time": 0,
-						"optimized_time": 0,
-						"unoptimized_coal": self.baseline_coalesced_pct or 0,
-						"optimized_coal": self.baseline_coalesced_pct or 0,
-					},
-					success=False,
-					request=f"Optimize memory coalescing in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
-					optimized_code=failed_code,
-				)
+			error_report = f"Correctness Validation Failed: {result.error_report}"
+			# For correctness failures, we don't have valid metrics since the code didn't run correctly
+			# Set coal_improvement to 1.0 (no change) to indicate no progress
+			self.optimization_tracker.add_step(
+				diff=diff,
+				report=error_report,
+				metrics={
+					"speedup": 1.0,  # No change
+					"unoptimized_time": self.baseline_time_ms * 1e6 if self.baseline_time_ms else 0,
+					"optimized_time": self.baseline_time_ms * 1e6 if self.baseline_time_ms else 0,
+					"unoptimized_coal": self.baseline_coalesced_pct or 0,
+					"optimized_coal": self.baseline_coalesced_pct or 0,  # Same as baseline (no improvement)
+					"coal_improvement": 1.0,  # Explicitly set to 1.0 (no change)
+				},
+				success=False,
+				request=f"Optimize memory coalescing in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
+				optimized_code=failed_code,
+			)
 		else:
 			self.get_logger().record(
 				"correctness_validation_success",
@@ -646,26 +623,54 @@ class memory_access(Formula_Base):
 		optimized_time = optimized_results[0]["durations"]["ns"]
 		optimized_coal = optimized_results[0]["l1"]["coal"]
 
-		success = optimized_coal > unoptimized_coal
-		speedup = unoptimized_time / optimized_time
-		coal_improvement = optimized_coal / unoptimized_coal if optimized_coal != 0 else 1
+		# Add step to optimization tracker (always - for learning)
+		# Tracker will automatically calculate: speedup, coal_improvement, and success
+		diff = self.compute_diff(self.current_kernel_files)
 
+		# Read the optimized code to store in history
+		with open(self.current_kernel_files[0], "r") as f:
+			optimized_code = f.read()
+
+		step = self.optimization_tracker.add_step(
+			diff=diff,
+			report="",  # Will build report after calculations
+			metrics={
+				"unoptimized_time": unoptimized_time,
+				"optimized_time": optimized_time,
+				"unoptimized_coal": unoptimized_coal,
+				"optimized_coal": optimized_coal,
+			},
+			request=f"Optimize memory access pattern in kernel {self.current_kernel_signature}",
+			optimized_code=optimized_code,
+		)
+
+		# Query calculated values from tracker
+		speedup = step.metrics.get("speedup", 1.0)
+		coal_improvement = step.metrics.get("coal_improvement", 1.0)
+
+		# Build report using tracker's calculated values
 		self.optimization_report = ""
 
 		# Format the memory coalescing improvement message
 		if coal_improvement > 1:
+			coal_pct_improvement = (
+				((optimized_coal - unoptimized_coal) / unoptimized_coal * 100) if unoptimized_coal > 0 else 0
+			)
 			self.optimization_report += (
 				f"Memory Coalescing Improvement: Successfully improved memory access patterns by "
 				f"{coal_improvement:.2f}x. "
 				f"Coalescing efficiency increased from {unoptimized_coal:.1f}% to {optimized_coal:.1f}% "
-				f"(higher percentages indicate more efficient memory access patterns). "
+				f"({coal_pct_improvement:.1f}% increase - higher percentages indicate more efficient memory access). "
 			)
 		else:
+			coal_pct_decrease = (
+				((unoptimized_coal - optimized_coal) / unoptimized_coal * 100) if unoptimized_coal > 0 else 0
+			)
 			self.optimization_report += (
 				f"Memory Coalescing Degradation: Memory access patterns worsened by "
 				f"{1 / coal_improvement:.2f}x. "
 				f"Coalescing efficiency decreased from {unoptimized_coal:.1f}% to {optimized_coal:.1f}% "
-				f"(lower percentages indicate less efficient memory access patterns). "
+				f"({coal_pct_decrease:.1f}% decrease - lower percentages indicate less efficient memory access). "
 			)
 
 		# Format the performance improvement message
@@ -682,11 +687,14 @@ class memory_access(Formula_Base):
 				f"({(1 / speedup - 1) * 100:.1f}% slower)."
 			)
 
-		# Log performance validation results (always, even if failed)
+		# Update the step's report with the built message
+		step.report = self.optimization_report
+
+		# Log performance validation results (using tracker's calculated values)
 		self.get_logger().record(
 			"performance_validation_complete",
 			{
-				"success": success,
+				"success": step.success,
 				"unoptimized_time_ns": unoptimized_time,
 				"optimized_time_ns": optimized_time,
 				"unoptimized_coal": unoptimized_coal,
@@ -699,42 +707,6 @@ class memory_access(Formula_Base):
 
 		logging.info(self.optimization_report)
 
-		# Add step to optimization tracker (always - for learning)
-		# Tracker will automatically calculate coal_improvement from before/after values
-		diff = self.compute_diff(self.current_kernel_files)
-
-		# Read the optimized code to store in history
-		with open(self.current_kernel_files[0], "r") as f:
-			optimized_code = f.read()
-
-		self.optimization_tracker.add_step(
-			diff=diff,
-			report=self.optimization_report,
-			metrics={
-				"speedup": speedup,
-				"unoptimized_time": unoptimized_time,
-				"optimized_time": optimized_time,
-				"unoptimized_coal": unoptimized_coal,
-				"optimized_coal": optimized_coal,
-			},
-			success=success and speedup >= 1,
-			request=f"Optimize memory access pattern in kernel {self.current_kernel_signature}",
-			optimized_code=optimized_code,
-		)
-
-		# Update best if this iteration improved both speedup and coalescing
-		is_better = speedup > self.best_speedup and coal_improvement > self.best_coal_improvement
-
-		if is_better:
-			self.best_speedup = speedup
-			self.best_coal_improvement = coal_improvement
-			self.best_iteration_report = self.optimization_report
-			self.best_optimization_results = self._optimization_results
-			self.best_kernel_code = optimized_code
-			# Mark as successful if we achieved any improvement
-			if coal_improvement > 1.0 or speedup > 1.0:
-				self.success = True
-
 		self.current_summary = self.optimization_report
 
 		# Always return False to continue through all iterations
@@ -744,27 +716,34 @@ class memory_access(Formula_Base):
 		"""
 		Writes the results to the output file using the best optimization attempt.
 		"""
-		# Restore best results for output
-		self._optimization_results = self.best_optimization_results
-		self.optimization_report = self.best_iteration_report
-
-		for file in self.current_kernel_files:
-			with open(file, "w") as f:
-				f.write(self.best_kernel_code)
+		# Restore best code from tracker
+		best_code = self.optimization_tracker.get_best_code()
+		if best_code:
+			for file in self.current_kernel_files:
+				with open(file, "w") as f:
+					f.write(best_code)
 
 		# Extract metrics from best optimization step
-		best_step = self.optimization_tracker.to_dict().get("best_step", {})
-		metrics = best_step.get("metrics", {})
+		metrics = self.optimization_tracker.get_best_metrics()
+
+		# Determine metric_after: use best if available, otherwise null to indicate no improvement
+		metric_after = None
+		time_after_ms = None
+		if metrics and "optimized_coal" in metrics:
+			# Only use the measured value if it actually improved (maximize=True, so higher is better)
+			if metrics["optimized_coal"] > self.baseline_coalesced_pct:
+				metric_after = metrics["optimized_coal"]
+				time_after_ms = metrics.get("optimized_time", 0) / 1e6
 
 		# Build structured metric fields
 		metric_fields = {
 			"kernel_name": self.current_kernel,
 			"metric": "coal_pct",  # The counter we're optimizing (memory coalescing)
 			"metric_name": "Memory Coalescing",  # Human-readable name
-			"metric_before": metrics.get("unoptimized_coal", self.baseline_coalesced_pct),
-			"metric_after": metrics.get("optimized_coal", self.baseline_coalesced_pct),
-			"time_before_ms": metrics.get("unoptimized_time", 0) / 1e6,  # Convert ns to ms
-			"time_after_ms": metrics.get("optimized_time", 0) / 1e6,  # Convert ns to ms
+			"metric_before": self.baseline_coalesced_pct,
+			"metric_after": metric_after,  # None if no optimization succeeded
+			"time_before_ms": self.baseline_time_ms if self.baseline_time_ms else 0.0,
+			"time_after_ms": time_after_ms,  # None if no optimization succeeded
 		}
 
 		# Include optimization history in results
@@ -772,7 +751,7 @@ class memory_access(Formula_Base):
 			output_file=output_file,
 			additional_results={
 				"formula": "memoryAccess",
-				"success": self.success,
+				"success": self.optimization_tracker.is_successful(),
 				"optimization_history": self.optimization_tracker.to_dict(),
 				**metric_fields,
 			},
