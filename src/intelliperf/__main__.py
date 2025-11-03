@@ -258,6 +258,10 @@ def main():
 
 	optimizer = formula(**optimizer_args)
 
+	# Store trace path in logger for use in iteration logging
+	if hasattr(optimizer, 'get_logger'):
+		optimizer.get_logger().trace_path = args.trace_path
+
 	# Helper function to flush logs if tracing is enabled
 	def flush_logs_if_enabled():
 		if hasattr(optimizer, "get_logger") and args.trace_path:

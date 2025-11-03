@@ -540,9 +540,9 @@ class memory_access(Formula_Base):
 				},
 			)
 
-			with open(kernel_file, "w") as f:
-				f.write(optimized_file_content)
-			logging.debug(f"Optimized file content: {optimized_file_content}")
+			# Write and log optimized code immediately after LLM generation
+			self.write_and_log_optimized_code(kernel_file, optimized_file_content)
+
 			return Result(
 				success=True,
 				asset={
@@ -771,9 +771,9 @@ class memory_access(Formula_Base):
 		super().write_results(
 			output_file=output_file,
 			additional_results={
+				"optimization_history": self.optimization_tracker.to_dict(),
 				"formula": "memoryAccess",
 				"success": self.success,
-				"optimization_history": self.optimization_tracker.to_dict(),
 				**metric_fields,
 			},
 		)

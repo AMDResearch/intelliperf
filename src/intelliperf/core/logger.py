@@ -190,6 +190,32 @@ class Logger:
 			"events": self.buffer,
 		}
 
+	def save_iteration_code(self, kernel_name: str, iteration_num: int, code_content: str) -> str:
+		"""
+		Save iteration code to a file in the trace directory.
+
+		Args:
+		    kernel_name: Name of the kernel being optimized
+		    iteration_num: Iteration number
+		    code_content: The code content to save
+
+		Returns:
+		    The path to the saved file
+		"""
+		# Get output directory from trace_path if available
+		if hasattr(self, 'trace_path') and self.trace_path:
+			output_dir = os.path.abspath(self.trace_path)
+			os.makedirs(output_dir, exist_ok=True)
+		else:
+			output_dir = os.path.abspath(".")
+
+		iteration_file = os.path.join(output_dir, f"{kernel_name}_iteration_{iteration_num}.hip")
+		with open(iteration_file, "w") as f:
+			f.write(code_content)
+		logging.info(f"Saved iteration {iteration_num} code to {iteration_file}")
+
+		return iteration_file
+
 	def flush(self, output_file: Optional[str] = None) -> bool:
 		"""
 		Flush logs to output targets with error handling.

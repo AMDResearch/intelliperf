@@ -574,6 +574,30 @@ class Formula_Base:
 
 		return content
 
+	def write_and_log_optimized_code(self, kernel_file: str, optimized_code: str) -> None:
+		"""
+		Write optimized code to file and log it for future reference.
+
+		This should be called immediately after LLM generates code, regardless of whether
+		it will compile or pass validation.
+
+		Args:
+		    kernel_file: Path to the kernel file to write
+		    optimized_code: The optimized code content
+		"""
+		# Write the code to the kernel file
+		with open(kernel_file, "w") as f:
+			f.write(optimized_code)
+
+		# Automatically detect iteration number from optimization tracker
+		iteration_num = len(self.optimization_tracker.steps) if hasattr(self, 'optimization_tracker') else 0
+
+		# Log the iteration code immediately
+		kernel_name = get_kernel_name(self.current_kernel_signature if hasattr(self, 'current_kernel_signature') else "kernel")
+		self.get_logger().save_iteration_code(kernel_name, iteration_num, optimized_code)
+
+		logging.debug(f"Wrote and logged optimized code to {kernel_file} (iteration {iteration_num})")
+
 	def compute_diff(self, filepaths: list[str]) -> str:
 		diffs = []
 		for filepath in filepaths:
