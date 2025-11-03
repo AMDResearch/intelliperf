@@ -24,7 +24,6 @@
 
 import json
 import logging
-import os
 
 import dspy
 
@@ -33,7 +32,6 @@ from intelliperf.formulas.formula_base import (
 	OptimizationTracker,
 	Result,
 	filter_json_field,
-	get_kernel_name,
 )
 
 

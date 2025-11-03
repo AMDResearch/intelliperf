@@ -35,7 +35,6 @@ from intelliperf.formulas.formula_base import (
 	OptimizationTracker,
 	Result,
 	filter_json_field,
-	get_kernel_name,
 )
 from intelliperf.utils.process import capture_subprocess_output
 from intelliperf.utils.regex import generate_ecma_regex_from_list
