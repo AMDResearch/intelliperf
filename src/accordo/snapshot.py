@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Advanced Micro Devices, Inc. All rights reserved.
+
 """Snapshot: Represents captured kernel argument data from a binary execution."""
 
 from dataclasses import dataclass
