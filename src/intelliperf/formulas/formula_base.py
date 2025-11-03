@@ -26,7 +26,6 @@ import difflib
 import json
 import logging
 import os
-import subprocess
 import sys
 import time
 from abc import abstractmethod
@@ -42,7 +41,6 @@ from accordo import Accordo
 from intelliperf import __version__
 from intelliperf.core.application import Application
 from intelliperf.core.logger import Logger
-from intelliperf.utils.env import get_accordo_path
 from intelliperf.utils.process import capture_subprocess_output, exit_on_fail
 
 
@@ -469,10 +467,12 @@ class Formula_Base:
 			f.write(optimized_code)
 
 		# Automatically detect iteration number from optimization tracker
-		iteration_num = len(self.optimization_tracker.steps) if hasattr(self, 'optimization_tracker') else 0
+		iteration_num = len(self.optimization_tracker.steps) if hasattr(self, "optimization_tracker") else 0
 
 		# Log the iteration code immediately
-		kernel_name = get_kernel_name(self.current_kernel_signature if hasattr(self, 'current_kernel_signature') else "kernel")
+		kernel_name = get_kernel_name(
+			self.current_kernel_signature if hasattr(self, "current_kernel_signature") else "kernel"
+		)
 		self.get_logger().save_iteration_code(kernel_name, iteration_num, optimized_code)
 
 		logging.debug(f"Wrote and logged optimized code to {kernel_file} (iteration {iteration_num})")
@@ -641,7 +641,9 @@ class Formula_Base:
 
 		# Create validator if not already created (and cache it)
 		if self._accordo_validator is None:
-			kernel_arg_objects = [Accordo.KernelArg(name=f"arg{i}", type=arg_type) for i, arg_type in enumerate(kernel_args)]
+			kernel_arg_objects = [
+				Accordo.KernelArg(name=f"arg{i}", type=arg_type) for i, arg_type in enumerate(kernel_args)
+			]
 
 			config = Accordo.Config(
 				kernel_name=kernel,

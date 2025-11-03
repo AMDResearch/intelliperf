@@ -62,6 +62,7 @@ from .validator import Accordo as _Accordo
 # Version
 __version__ = "0.2.0"
 
+
 # Nest all classes under Accordo namespace
 class Accordo(_Accordo):
 	"""Main Accordo validator with nested classes for clean API.
@@ -78,6 +79,7 @@ class Accordo(_Accordo):
 	- Accordo.ProcessError (AccordoProcessError)
 	- Accordo.ValidationError (AccordoValidationError)
 	"""
+
 	# Configuration
 	Config = ValidationConfig
 	KernelArg = KernelArg
@@ -93,6 +95,7 @@ class Accordo(_Accordo):
 	TimeoutError = AccordoTimeoutError
 	ProcessError = AccordoProcessError
 	ValidationError = AccordoValidationError
+
 
 # Public API
 __all__ = [
