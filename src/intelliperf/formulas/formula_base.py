@@ -637,9 +637,9 @@ class Formula_Base:
 				"version": __version__,
 				"optimized": self._optimization_results,
 				"initial": self._initial_profiler_results,
+				**additional_results,
 				"report_message": self.optimization_report,
 				"bottleneck_report": self.bottleneck_report,
-				**additional_results,
 				"diff": self.compute_diff(self.current_kernel_files),
 			}
 			if self.in_place:
