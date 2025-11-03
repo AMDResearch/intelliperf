@@ -25,6 +25,16 @@ SOFTWARE.
 #include <cstdio>
 #include <hip/hip_runtime.h>
 
+#define hip_try(expr)                                             \
+  do {                                                            \
+    hipError_t err = (expr);                                      \
+    if (err != hipSuccess) {                                      \
+      const char* msg = hipGetErrorString(err);                   \
+      throw std::runtime_error(std::string("HIP error: ") + msg); \
+    }                                                             \
+  } while (0)
+
+
 #define BLOCK_SIZE 256
 
 __global__ void reduce_kernel(const float *d_in, float *d_out, int n) {
@@ -61,22 +71,22 @@ int main() {
     }
 
     float *d_in = nullptr, *d_out = nullptr;
-    hipMalloc((void **)&d_in, size);
-    hipMalloc((void **)&d_out, sizeof(float) * (numElements / BLOCK_SIZE));
+    hip_try(hipMalloc((void **)&d_in, size));
+    hip_try(hipMalloc((void **)&d_out, sizeof(float) * (numElements / BLOCK_SIZE)));
 
-    hipMemcpy(d_in, h_in, size, hipMemcpyHostToDevice);
+    hip_try(hipMemcpy(d_in, h_in, size, hipMemcpyHostToDevice));
 
     int gridSize = (numElements + BLOCK_SIZE - 1) / BLOCK_SIZE;
     reduce_kernel<<<gridSize, BLOCK_SIZE>>>(d_in, d_out, numElements);
-    hipDeviceSynchronize();
+    hip_try(hipDeviceSynchronize());
 
-    hipMemcpy(h_out, d_out, sizeof(float) * gridSize, hipMemcpyDeviceToHost);
+    hip_try(hipMemcpy(h_out, d_out, sizeof(float) * gridSize, hipMemcpyDeviceToHost));
 
     printf("First block sum: %f\n", h_out[0]);
 
     // Free resources.
-    hipFree(d_in);
-    hipFree(d_out);
+    hip_try(hipFree(d_in));
+    hip_try(hipFree(d_out));
     free(h_in);
     free(h_out);
 

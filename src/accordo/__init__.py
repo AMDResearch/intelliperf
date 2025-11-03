@@ -1,29 +1,83 @@
-################################################################################
-# MIT License
+"""Accordo: Automated side-by-side correctness validation for GPU kernels.
 
-# Copyright (c) 2025 Advanced Micro Devices, Inc. All Rights Reserved.
+Public API:
+    - ValidationConfig: Configuration for kernel validation
+    - KernelArg: Structured kernel argument representation
+    - Snapshot: Captured kernel argument data from binary execution
+    - ValidationResult: Result of validation with detailed metrics
+    - ArrayMismatch: Information about array validation failures
+    - AccordoValidator: Main validator class for kernel validation
+    - Exceptions: AccordoError, AccordoBuildError, AccordoTimeoutError, etc.
 
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
+Quick Example (one-off validation):
+    >>> from accordo import ValidationConfig, KernelArg, AccordoValidator
+    >>> config = ValidationConfig(
+    ...     kernel_name="my_kernel",
+    ...     kernel_args=[
+    ...         KernelArg(name="result", type="double*"),
+    ...         KernelArg(name="input", type="const double*"),
+    ...     ],
+    ...     tolerance=1e-6
+    ... )
+    >>> validator = AccordoValidator(config)
+    >>> result = validator.validate(
+    ...     reference_binary=["./app_ref"],
+    ...     optimized_binary=["./app_opt"],
+    ...     working_directory=".",
+    ...     baseline_time_ms=10.0
+    ... )
 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
+Efficient Example (multiple optimizations vs same reference):
+    >>> # Capture reference once (returns Snapshot object)
+    >>> ref_snapshot = validator.capture_snapshot(
+    ...     binary=["./app_ref"],
+    ...     working_directory=".",
+    ...     timeout_seconds=30
+    ... )
+    >>> print(ref_snapshot)  # Snapshot(binary='./app_ref', arrays=3, execution_time_ms=12.50)
+    >>>
+    >>> # Compare multiple optimizations
+    >>> for opt_binary in optimized_binaries:
+    ...     opt_snapshot = validator.capture_snapshot(
+    ...         binary=opt_binary,
+    ...         working_directory=".",
+    ...         timeout_seconds=60
+    ...     )
+    ...     result = validator.compare_snapshots(ref_snapshot, opt_snapshot)
+"""
 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-################################################################################
+# Public API exports
+from .config import KernelArg, ValidationConfig
+from .exceptions import (
+	AccordoBuildError,
+	AccordoError,
+	AccordoProcessError,
+	AccordoTimeoutError,
+	AccordoValidationError,
+)
+from .result import ArrayMismatch, ValidationResult
+from .snapshot import Snapshot
+from .validator import AccordoValidator
 
-"""Accordo package for validation and verification."""
+# Version
+__version__ = "0.2.0"
 
-from .python import code_gen, communicate, hip, utils
-
-__all__ = ["communicate", "code_gen", "utils", "hip"]
+# Public API
+__all__ = [
+	# Config
+	"ValidationConfig",
+	"KernelArg",
+	# Validator
+	"AccordoValidator",
+	# Snapshot
+	"Snapshot",
+	# Results
+	"ValidationResult",
+	"ArrayMismatch",
+	# Exceptions
+	"AccordoError",
+	"AccordoBuildError",
+	"AccordoTimeoutError",
+	"AccordoProcessError",
+	"AccordoValidationError",
+]

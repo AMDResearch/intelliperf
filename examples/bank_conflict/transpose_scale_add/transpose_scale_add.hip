@@ -27,6 +27,16 @@ SOFTWARE.
 #include <numeric>
 #include <vector>
 
+#define hip_try(expr)                                             \
+  do {                                                            \
+    hipError_t err = (expr);                                      \
+    if (err != hipSuccess) {                                      \
+      const char* msg = hipGetErrorString(err);                   \
+      throw std::runtime_error(std::string("HIP error: ") + msg); \
+    }                                                             \
+  } while (0)
+
+
 #define TILE_DIM 16
 
 __global__ void matrixTransposeShared(float* out,
@@ -75,9 +85,9 @@ void runKernels(int width, int height) {
   std::iota(h_data.begin(), h_data.end(), 0.0f);
 
   float *d_data, *d_out;
-  hipMalloc(&d_data, num_elements * sizeof(float));
-  hipMalloc(&d_out, num_elements * sizeof(float));
-  hipMemcpy(d_data, h_data.data(), num_elements * sizeof(float), hipMemcpyHostToDevice);
+  hip_try(hipMalloc(&d_data, num_elements * sizeof(float)));
+  hip_try(hipMalloc(&d_out, num_elements * sizeof(float)));
+  hip_try(hipMemcpy(d_data, h_data.data(), num_elements * sizeof(float), hipMemcpyHostToDevice));
 
   // --- 1. Scale all elements by 2.0
   int blockSize = 256;
@@ -93,11 +103,11 @@ void runKernels(int width, int height) {
   matrixTransposeShared<<<gridDim, blockDim>>>(d_out, d_data, width, height);
 
   // --- Copy result back
-  hipDeviceSynchronize();
-  hipMemcpy(h_out.data(), d_out, num_elements * sizeof(float), hipMemcpyDeviceToHost);
+  hip_try(hipDeviceSynchronize());
+  hip_try(hipMemcpy(h_out.data(), d_out, num_elements * sizeof(float), hipMemcpyDeviceToHost));
 
-  hipFree(d_data);
-  hipFree(d_out);
+  hip_try(hipFree(d_data));
+  hip_try(hipFree(d_out));
 
   // Print a few values
   std::cout << "Result (first 10 elements):\n";

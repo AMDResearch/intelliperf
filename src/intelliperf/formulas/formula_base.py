@@ -38,9 +38,7 @@ import ml_dtypes
 import numpy as np
 import pandas as pd
 
-from accordo.python.code_gen import generate_header
-from accordo.python.communicate import get_kern_arg_data, send_response
-from accordo.python.utils import run_subprocess
+from accordo import AccordoValidator, KernelArg, ValidationConfig, Snapshot
 from intelliperf import __version__
 from intelliperf.core.application import Application
 from intelliperf.core.logger import Logger
@@ -349,6 +347,10 @@ class Formula_Base:
 		self._llm = None
 		self._dspy_configured = False
 
+		# Accordo caching: validator and reference snapshot are created once and reused
+		self._accordo_validator = None
+		self._reference_snapshot = None
+
 		self.build()
 
 	def get_logger(self) -> Logger:
@@ -450,6 +452,30 @@ class Formula_Base:
 			sys.exit(1)
 
 		return kernel_file, unoptimized_file_content
+
+	def write_and_log_optimized_code(self, kernel_file: str, optimized_code: str) -> None:
+		"""
+		Write optimized code to file and log it for future reference.
+
+		This should be called immediately after LLM generates code, regardless of whether
+		it will compile or pass validation.
+
+		Args:
+			kernel_file: Path to the kernel file to write
+			optimized_code: The optimized code content
+		"""
+		# Write the code to the kernel file
+		with open(kernel_file, "w") as f:
+			f.write(optimized_code)
+
+		# Automatically detect iteration number from optimization tracker
+		iteration_num = len(self.optimization_tracker.steps) if hasattr(self, 'optimization_tracker') else 0
+
+		# Log the iteration code immediately
+		kernel_name = get_kernel_name(self.current_kernel_signature if hasattr(self, 'current_kernel_signature') else "kernel")
+		self.get_logger().save_iteration_code(kernel_name, iteration_num, optimized_code)
+
+		logging.debug(f"Wrote and logged optimized code to {kernel_file} (iteration {iteration_num})")
 
 	def _parse_kernel_signature(self, kernel_signature: str):
 		"""
@@ -596,7 +622,10 @@ class Formula_Base:
 	@abstractmethod
 	def correctness_validation_pass(self, kernel, kernel_args, accordo_absolute_tolerance: float = 1e-6):
 		"""
-		Validates the the application.
+		Validates the application using Accordo.
+
+		Uses snapshot caching: reference app is captured once on first call,
+		then each optimized version is captured and compared to the cached reference.
 		"""
 		if self.unittest_command:
 			success, output = self._application.run_unit_test()
@@ -607,125 +636,68 @@ class Formula_Base:
 				)
 			return Result(success=True, asset={"log": output})
 
+		# Build the optimized application first (Accordo doesn't build)
 		self._application.build()
 
-		unoptimized_binary = self._application.get_app_cmd()[0]
-		optimized_binary = self._reference_app.get_app_cmd()[0]
+		# Create validator if not already created (and cache it)
+		if self._accordo_validator is None:
+			kernel_arg_objects = [KernelArg(name=f"arg{i}", type=arg_type) for i, arg_type in enumerate(kernel_args)]
 
-		logging.debug(f"unoptimized_binary: {unoptimized_binary}")
-		logging.debug(f"optimized_binary: {optimized_binary}")
-
-		accordo_directory = get_accordo_path()
-
-		# Get baseline time if available (for dynamic timeout calculation)
-		baseline_time_ms = getattr(self, "baseline_time_ms", None)
-		if baseline_time_ms is not None:
-			logging.debug(f"Using baseline time for dynamic timeout: {baseline_time_ms}ms")
-
-		results = {}
-		for app, label in zip([self._reference_app, self._application], ["unoptimized", "optimized"]):
-			logging.debug(f"Running accordo for {label}")
-			timestamp = int(time.time())
-			pipe_name = f"/tmp/kernel_pipe_{timestamp}"
-			ipc_file_name = f"/tmp/ipc_handle_{timestamp}.bin"
-
-			for file in [ipc_file_name, ipc_file_name]:
-				if os.path.exists(file):
-					os.remove(file)
-			generate_header(kernel_args)
-
-			run_subprocess(["cmake", "-B", "build"], accordo_directory)
-			run_subprocess(["cmake", "--build", "build", "--parallel", "16"], accordo_directory)
-			lib = os.path.join(accordo_directory, "build", "lib", "libaccordo.so")
-			env = os.environ.copy()
-			env["HSA_TOOLS_LIB"] = lib
-			env["KERNEL_TO_TRACE"] = kernel
-
-			# Get the debug level from logger and convert it
-			debug_level = logging.getLogger().getEffectiveLevel()
-			level_map = {
-				logging.WARNING: 0,  # Warning
-				logging.INFO: 1,  # Info
-				logging.DEBUG: 2,  # Debug
-				logging.NOTSET: 3,  # NOTEST
-			}
-			env["ACCORDO_LOG_LEVEL"] = str(level_map.get(debug_level, 0))  # Default to 0 (Warning) if level not found
-			env["ACCORDO_PIPE_NAME"] = pipe_name
-			env["ACCORDO_IPC_OUTPUT_FILE"] = ipc_file_name
-
-			binary = app.get_app_cmd_without_args()
-			binary_with_args = app.get_app_cmd()
-			project_directory = app.get_project_directory()
-			logging.debug(f"binary: {binary}")
-			logging.debug(f"project_directory: {project_directory}")
-			logging.debug(f"kernel: {kernel}")
-			logging.debug(f"binary_with_args: {binary_with_args}")
-			logging.debug(f"kernel_args: {kernel_args}")
-			logging.debug(f"ipc_file_name: {ipc_file_name}")
-
-			# Launch the process with Accordo and track its PID
-			process = subprocess.Popen(
-				binary_with_args, env=env, cwd=project_directory, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+			config = ValidationConfig(
+				kernel_name=kernel,
+				kernel_args=kernel_arg_objects,
+				tolerance=accordo_absolute_tolerance,
+				timeout_multiplier=2.0,
 			)
-			process_pid = process.pid
-			logging.debug(f"Launched {label} process with PID: {process_pid}")
 
+			self._accordo_validator = AccordoValidator(config)
+			logging.debug("Created and cached Accordo validator")
+
+		# Capture reference snapshot if not already captured (and cache it)
+		if self._reference_snapshot is None:
 			try:
-				results[label] = get_kern_arg_data(
-					pipe_name, kernel_args, ipc_file_name, process_pid=process_pid, baseline_time_ms=baseline_time_ms
+				reference_binary = self._reference_app.get_app_cmd()
+				working_dir = self._reference_app.get_project_directory()
+
+				logging.debug("Capturing reference snapshot (will be cached)")
+				self._reference_snapshot = self._accordo_validator.capture_snapshot(
+					binary=reference_binary, working_directory=working_dir, timeout_seconds=30
 				)
-			except TimeoutError as e:
-				logging.error(f"Timeout while getting kernel argument data for {label}: {str(e)}")
-				process.kill()  # Kill the hung process
+				logging.debug(f"Reference snapshot captured in {self._reference_snapshot.execution_time_ms:.2f}ms")
+			except Exception as e:
+				logging.error(f"Failed to capture reference snapshot: {str(e)}")
+				return Result(success=False, error_report=f"Failed to capture reference snapshot: {str(e)}")
 
-				# Provide context-specific error message
-				if baseline_time_ms is not None:
-					error_msg = f"Optimization exceeded 2x baseline execution time for {label}: {str(e)}. Code may be correct but too slow to be worth profiling."
-				else:
-					error_msg = (
-						f"Timeout while getting kernel argument data for {label}: {str(e)}. The code may have crashed."
-					)
+		# Capture optimized snapshot and compare with cached reference
+		try:
+			baseline_time = getattr(self, "baseline_time_ms", None)
+			optimized_binary = self._application.get_app_cmd()
+			working_dir = self._application.get_project_directory()
 
-				return Result(
-					success=False,
-					error_report=error_msg,
-				)
-			except RuntimeError as e:
-				logging.error(f"Accordo process crashed for {label}: {str(e)}")
-				return Result(
-					success=False,
-					error_report=f"Accordo process crashed for {label}: {str(e)}. This usually indicates a segfault or GPU memory access error in the kernel code.",
-				)
-			send_response(pipe_name)
-
-			# Wait for the process to finish
-			process.wait(timeout=5)
-		logging.debug(f"results unoptimized: {results['unoptimized']}")
-		logging.debug(f"results optimized: {results['optimized']}")
-		key0, key1 = results.keys()
-		for i in range(len(results[key0])):
-			if not validate_arrays(results[key0][i], results[key1][i], accordo_absolute_tolerance):
-				diff = np.abs(results[key0][i] - results[key1][i])
-				logging.debug(f"Arrays at index {i} for '{key0}' and '{key1}' are NOT close.")
-				logging.debug(f"  {key0}[{i}]: {results[key0][i]}")
-				logging.debug(f"  {key1}[{i}]: {results[key1][i]}")
-				logging.debug(f"  Difference: {diff}")
-				logging.debug(f"  Max difference: {np.max(diff)}")
-
+			# Calculate timeout for optimized
+			if baseline_time:
+				opt_timeout = int((baseline_time * 2.0 / 1000.0) + 30.0)
 			else:
-				argument_name = kernel_args[i]
-				logging.debug(
-					f"Arrays at index {i} for '{key0}' and '{key1}' are close. The argument type is '{argument_name}'."
-				)
-		for i in range(len(results[key0])):
-			if not validate_arrays(results[key0][i], results[key1][i], accordo_absolute_tolerance):
-				argument_name = kernel_args[i]
-				return Result(
-					success=False,
-					error_report=f"The optimized code output does not match the unoptimized code output. Values at index {i} for the '{argument_name}' pointer are NOT close.",
-				)
-		logging.debug("Validation succeeded.")
-		return Result(success=True)
+				opt_timeout = 30
+
+			logging.debug("Capturing optimized snapshot")
+			optimized_snapshot = self._accordo_validator.capture_snapshot(
+				binary=optimized_binary, working_directory=working_dir, timeout_seconds=opt_timeout
+			)
+			logging.debug(f"Optimized snapshot captured in {optimized_snapshot.execution_time_ms:.2f}ms")
+
+			# Compare snapshots
+			validation_result = self._accordo_validator.compare_snapshots(self._reference_snapshot, optimized_snapshot)
+
+			if validation_result.is_valid:
+				logging.debug("Validation succeeded.")
+				return Result(success=True)
+			else:
+				return Result(success=False, error_report=validation_result.error_message)
+
+		except Exception as e:
+			logging.error(f"Accordo validation error: {str(e)}")
+			return Result(success=False, error_report=f"Accordo validation error: {str(e)}")
 
 	@abstractmethod
 	def performance_validation_pass(self):
