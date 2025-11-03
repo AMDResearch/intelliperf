@@ -742,7 +742,9 @@ class bank_conflict(Formula_Base):
 
 		# Calculate percentage improvement for readability
 		conflict_improvement_percentage = (
-			(unoptimized_conflicts - optimized_conflicts) / unoptimized_conflicts * 100 if unoptimized_conflicts > 0 else 0
+			(unoptimized_conflicts - optimized_conflicts) / unoptimized_conflicts * 100
+			if unoptimized_conflicts > 0
+			else 0
 		)
 
 		# Build report using tracker's calculated values
