@@ -92,7 +92,7 @@ def _validate_arrays(arr1: np.ndarray, arr2: np.ndarray, tolerance: float) -> bo
 	return np.allclose(arr1, arr2, atol=tolerance, rtol=0)
 
 
-class AccordoValidator:
+class Accordo:
 	"""Validator for GPU kernel correctness using Accordo.
 
 	This class manages the entire validation pipeline:
