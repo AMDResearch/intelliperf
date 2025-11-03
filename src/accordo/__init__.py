@@ -1,29 +1,53 @@
-################################################################################
-# MIT License
+"""Accordo: Automated side-by-side correctness validation for GPU kernels.
 
-# Copyright (c) 2025 Advanced Micro Devices, Inc. All Rights Reserved.
+Public API:
+    - ValidationConfig: Configuration for kernel validation
+    - KernelArg: Structured kernel argument representation
+    - ValidationResult: Result of validation with detailed metrics
+    - ArrayMismatch: Information about array validation failures
+    - AccordoValidator: Main validator class (TODO: implement)
+    - Exceptions: AccordoError, AccordoBuildError, AccordoTimeoutError, etc.
 
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
+Example:
+    >>> from accordo import ValidationConfig, KernelArg
+    >>> config = ValidationConfig(
+    ...     kernel_name="my_kernel",
+    ...     kernel_args=[
+    ...         KernelArg(name="result", type="double*", direction="out"),
+    ...         KernelArg(name="input", type="const double*", direction="in"),
+    ...     ],
+    ...     tolerance=1e-6
+    ... )
+"""
 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
+# Public API exports
+from .config import KernelArg, ValidationConfig
+from .exceptions import (
+	AccordoBuildError,
+	AccordoError,
+	AccordoProcessError,
+	AccordoTimeoutError,
+	AccordoValidationError,
+)
+from .result import ArrayMismatch, ValidationResult
 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-################################################################################
+# Version
+__version__ = "0.2.0-dev"
 
-"""Accordo package for validation and verification."""
-
-from .python import code_gen, communicate, hip, utils
-
-__all__ = ["communicate", "code_gen", "utils", "hip"]
+# Public API
+__all__ = [
+	# Config
+	"ValidationConfig",
+	"KernelArg",
+	# Results
+	"ValidationResult",
+	"ArrayMismatch",
+	# Exceptions
+	"AccordoError",
+	"AccordoBuildError",
+	"AccordoTimeoutError",
+	"AccordoProcessError",
+	"AccordoValidationError",
+	# TODO: Add AccordoValidator when implemented
+	# "AccordoValidator",
+]
