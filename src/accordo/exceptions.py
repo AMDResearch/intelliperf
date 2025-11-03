@@ -33,4 +33,3 @@ class AccordoValidationError(AccordoError):
 	"""Raised when array validation fails."""
 
 	pass
-

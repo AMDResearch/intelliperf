@@ -41,7 +41,6 @@ from accordo import AccordoValidator, KernelArg, ValidationConfig
 from intelliperf import __version__
 from intelliperf.core.application import Application
 from intelliperf.core.logger import Logger
-from intelliperf.utils.env import get_accordo_path
 from intelliperf.utils.process import capture_subprocess_output, exit_on_fail
 
 
@@ -461,9 +460,7 @@ class Formula_Base:
 
 				logging.debug("Capturing reference snapshot (will be cached)")
 				self._reference_snapshot = self._accordo_validator.capture_snapshot(
-					binary=reference_binary,
-					working_directory=working_dir,
-					timeout_seconds=30
+					binary=reference_binary, working_directory=working_dir, timeout_seconds=30
 				)
 				logging.debug(f"Reference snapshot captured in {self._reference_snapshot.execution_time_ms:.2f}ms")
 			except Exception as e:
@@ -484,17 +481,12 @@ class Formula_Base:
 
 			logging.debug("Capturing optimized snapshot")
 			optimized_snapshot = self._accordo_validator.capture_snapshot(
-				binary=optimized_binary,
-				working_directory=working_dir,
-				timeout_seconds=opt_timeout
+				binary=optimized_binary, working_directory=working_dir, timeout_seconds=opt_timeout
 			)
 			logging.debug(f"Optimized snapshot captured in {optimized_snapshot.execution_time_ms:.2f}ms")
 
 			# Compare snapshots
-			validation_result = self._accordo_validator.compare_snapshots(
-				self._reference_snapshot,
-				optimized_snapshot
-			)
+			validation_result = self._accordo_validator.compare_snapshots(self._reference_snapshot, optimized_snapshot)
 
 			if validation_result.is_valid:
 				logging.debug("Validation succeeded.")

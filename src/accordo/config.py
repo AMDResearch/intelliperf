@@ -104,4 +104,3 @@ class ValidationConfig:
 	def get_arg_names(self) -> list[str]:
 		"""Get list of argument names."""
 		return [arg.name for arg in self.kernel_args]
-

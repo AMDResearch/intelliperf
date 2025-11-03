@@ -98,4 +98,3 @@ class ValidationResult:
 	def __str__(self) -> str:
 		"""String representation."""
 		return self.summary()
-

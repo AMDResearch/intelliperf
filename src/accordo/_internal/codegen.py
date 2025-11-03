@@ -48,4 +48,3 @@ struct KernelArguments {{
 	logging.debug(f"Generated header file: {header_path}")
 	logging.debug(f"Header content: {header_content}")
 	return header_path
-

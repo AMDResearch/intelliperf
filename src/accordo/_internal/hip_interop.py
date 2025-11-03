@@ -104,4 +104,3 @@ def memcpy_d2h(ptr, num_elements_to_copy, dtype):
 		)
 	)
 	return host_array
-

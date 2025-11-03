@@ -55,4 +55,3 @@ class Snapshot:
 			lines.append(f"  Array {i}: shape={arr.shape}, dtype={arr.dtype}")
 
 		return "\n".join(lines)
-

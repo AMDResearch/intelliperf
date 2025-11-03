@@ -163,4 +163,3 @@ def get_kern_arg_data(pipe_name, args, ipc_file_name, ipc_timeout_seconds=30, pr
 		results.append(host_array)
 
 	return results
-

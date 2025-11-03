@@ -20,6 +20,7 @@ from .snapshot import Snapshot
 
 class _TimeoutException(Exception):
 	"""Internal exception for timeout handling."""
+
 	pass
 
 
@@ -196,10 +197,7 @@ class AccordoValidator:
 		try:
 			start_time = time.time()
 			result_arrays = self._run_instrumented_app(
-				binary,
-				working_directory,
-				label="snapshot",
-				baseline_time_ms=None
+				binary, working_directory, label="snapshot", baseline_time_ms=None
 			)
 			signal.alarm(0)  # Cancel alarm on success
 			execution_time_ms = (time.time() - start_time) * 1000
@@ -214,9 +212,8 @@ class AccordoValidator:
 			signal.alarm(0)
 			logging.error(f"Snapshot capture timed out after {timeout_seconds}s")
 			raise AccordoTimeoutError(
-				f"Snapshot capture timed out after {timeout_seconds}s. "
-				"This may indicate a GPU crash or hung process.",
-				timeout_seconds=timeout_seconds
+				f"Snapshot capture timed out after {timeout_seconds}s. This may indicate a GPU crash or hung process.",
+				timeout_seconds=timeout_seconds,
 			)
 		except TimeoutError as e:
 			signal.alarm(0)
@@ -451,4 +448,3 @@ class AccordoValidator:
 				matched_arrays=matched_arrays,
 				execution_time_ms=execution_times,
 			)
-
