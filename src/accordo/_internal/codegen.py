@@ -1,7 +1,6 @@
 """Code generation for Accordo C++ header files."""
 
 import logging
-from pathlib import Path
 
 
 def generate_kernel_header(args: list[str], additional_includes: list[str] = None) -> str:

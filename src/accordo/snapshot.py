@@ -44,7 +44,7 @@ class Snapshot:
 		"""Get a detailed summary of the snapshot."""
 		binary_str = " ".join(self.binary)
 		lines = [
-			f"Snapshot Summary:",
+			"Snapshot Summary:",
 			f"  Binary: {binary_str}",
 			f"  Working Directory: {self.working_directory}",
 			f"  Execution Time: {self.execution_time_ms:.2f}ms",

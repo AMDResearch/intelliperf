@@ -10,12 +10,12 @@ from typing import Optional
 
 import numpy as np
 
-from .config import ValidationConfig
-from .exceptions import AccordoBuildError, AccordoProcessError, AccordoTimeoutError, AccordoValidationError
-from .result import ArrayMismatch, ValidationResult
-from .snapshot import Snapshot
 from ._internal.codegen import generate_kernel_header
 from ._internal.ipc.communication import get_kern_arg_data, send_response
+from .config import ValidationConfig
+from .exceptions import AccordoBuildError, AccordoProcessError, AccordoTimeoutError
+from .result import ArrayMismatch, ValidationResult
+from .snapshot import Snapshot
 
 
 class _TimeoutException(Exception):
@@ -361,12 +361,12 @@ class AccordoValidator:
 				process_pid=process_pid,
 				baseline_time_ms=baseline_time_ms,
 			)
-		except TimeoutError as e:
+		except TimeoutError:
 			# Kill the process if it timed out
 			try:
 				os.kill(process_pid, 9)
-			except:
-				pass
+			except (OSError, ProcessLookupError):
+				pass  # Process already dead
 			raise
 
 		# Send completion response

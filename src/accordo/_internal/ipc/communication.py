@@ -9,7 +9,7 @@ import time
 import ml_dtypes
 import numpy as np
 
-from ..hip import memcpy_d2h, open_ipc_handle
+from ..hip_interop import memcpy_d2h, open_ipc_handle
 
 
 def read_ipc_handles(args, ipc_file_name):

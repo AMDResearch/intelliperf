@@ -27,6 +27,16 @@ SOFTWARE.
 #include <cstdint>
 #include <iostream>
 
+#define hip_try(expr)                                             \
+  do {                                                            \
+    hipError_t err = (expr);                                      \
+    if (err != hipSuccess) {                                      \
+      const char* msg = hipGetErrorString(err);                   \
+      throw std::runtime_error(std::string("HIP error: ") + msg); \
+    }                                                             \
+  } while (0)
+
+
 __global__ void reduction_kernel(const float* input, float* result, std::size_t count) {
   extern __shared__ float shared_data[];
   const auto thread_id = threadIdx.x + blockIdx.x * blockDim.x;
