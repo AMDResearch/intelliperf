@@ -270,12 +270,12 @@ class bank_conflict(Formula_Base):
 		self.success = False
 
 		# Initialize optimization tracker
-		# Bank conflict optimization maximizes conflict reduction (minimize bank conflicts)
+		# Bank conflict optimization minimizes conflicts (lower is better)
 		# Automatically calculates conflict_improvement from unoptimized_conflicts / optimized_conflicts
 		self.optimization_tracker = OptimizationTracker(
 			max_iterations=self.num_attempts,
 			primary_metric="conflict_improvement",
-			maximize=True,
+			maximize=False,  # False = minimize raw metric (conflicts)
 			before_metric="unoptimized_conflicts",
 			after_metric="optimized_conflicts",
 		)

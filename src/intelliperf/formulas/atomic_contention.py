@@ -263,7 +263,7 @@ class atomic_contention(Formula_Base):
 		self.optimization_tracker = OptimizationTracker(
 			max_iterations=self.num_attempts,
 			primary_metric="latency_improvement",
-			maximize=True,
+			maximize=False,  # False = minimize raw metric (latency)
 			before_metric="unoptimized_lat",
 			after_metric="optimized_lat",
 		)

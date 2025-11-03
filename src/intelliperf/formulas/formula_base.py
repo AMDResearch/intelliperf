@@ -99,9 +99,17 @@ class OptimizationTracker:
 		if self.before_metric and self.after_metric:
 			before = metrics.get(self.before_metric, 0)
 			after = metrics.get(self.after_metric, 0)
-			if before != 0:
-				improvement = after / before if after != 0 else 1.0
+			if before != 0 and after != 0:
+				# Calculate improvement ratio based on whether we're maximizing or minimizing the raw metric
+				# For conflicts/latency (maximize=False, lower is better): improvement = before / after
+				#   Example: 3.5 conflicts → 1.0 conflicts = 3.5 / 1.0 = 3.5x improvement
+				# For coalescing (maximize=True, higher is better): improvement = after / before
+				#   Example: 50% → 75% = 75 / 50 = 1.5x improvement
+				improvement = before / after if not self.maximize else after / before
 				metrics[self.primary_metric] = improvement
+			elif before != 0:
+				# If after is 0, set improvement to 1.0 (no change)
+				metrics[self.primary_metric] = 1.0
 
 		step = OptimizationStep(
 			iteration=self.current_iteration,
