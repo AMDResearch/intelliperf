@@ -516,7 +516,8 @@ class swizzling(Formula_Base):
 		if self.current_iteration < self.max_iterations:
 			self.current_summary = self.optimization_report
 			# Always return success=False to continue iterating
-			return Result(success=False, error_report=self.best_iteration_report)
+			error_msg = self.best_iteration_report if self.best_iteration_report else "Continuing optimization iterations..."
+			return Result(success=False, error_report=error_msg)
 
 		return Result(success=True, asset={"log": self.best_iteration_report})
 
