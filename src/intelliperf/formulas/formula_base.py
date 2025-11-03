@@ -26,6 +26,7 @@ import difflib
 import json
 import logging
 import os
+import subprocess
 import sys
 import time
 from abc import abstractmethod
@@ -57,6 +58,7 @@ class OptimizationStep:
 	metrics: dict
 	success: bool
 	timestamp: float = field(default_factory=time.time)
+	optimized_code: str = ""  # Store the optimized code for this step
 
 	def get_metric(self, key: str, default=0.0):
 		"""Helper to safely get metrics"""
@@ -88,23 +90,67 @@ class OptimizationTracker:
 		# History messages for DSPy (stored as list of dicts)
 		self.history_messages = []
 
+	def is_successful(self) -> bool:
+		"""Check if optimization was successful (any improvement over baseline)"""
+		if not self.best_step or not self.best_step.success:
+			return False
+		improvement = self.best_step.get_metric(self.primary_metric, 1.0)
+		speedup = self.best_step.get_metric("speedup", 1.0)
+		return improvement > 1.0 or speedup > 1.0
+
+	def get_best_code(self) -> str:
+		"""Get the optimized code from the best step"""
+		if self.best_step:
+			return self.best_step.optimized_code
+		return ""
+
+	def get_best_report(self) -> str:
+		"""Get the optimization report from the best step"""
+		if self.best_step:
+			return self.best_step.report
+		return ""
+
+	def get_best_metrics(self) -> dict:
+		"""Get the metrics from the best step"""
+		if self.best_step:
+			return self.best_step.metrics
+		return {}
+
 	def add_step(
 		self,
 		diff: str,
 		report: str,
 		metrics: dict,
-		success: bool,
+		success: bool = None,
 		request: str = "",
 		optimized_code: str = "",
 	) -> OptimizationStep:
-		"""Add step and auto-update best based on primary metric"""
+		"""Add step and auto-calculate improvement, speedup, and success"""
+		# Auto-calculate speedup if time metrics are available
+		unopt_time = metrics.get("unoptimized_time", 0)
+		opt_time = metrics.get("optimized_time", 0)
+		if unopt_time > 0 and opt_time > 0:
+			metrics["speedup"] = unopt_time / opt_time
+
 		# Auto-calculate improvement if before/after metrics are configured
 		if self.before_metric and self.after_metric:
 			before = metrics.get(self.before_metric, 0)
 			after = metrics.get(self.after_metric, 0)
 			if before != 0:
-				improvement = after / before if after != 0 else 1.0
+				# If maximize=False: we want to minimize raw metric (conflicts, latency), so improvement = before / after
+				# If maximize=True: we want to maximize raw metric (coalescing %, hit rate), so improvement = after / before
+				if not self.maximize:
+					improvement = before / after if after != 0 else 1.0
+				else:
+					improvement = after / before if after != 0 else 1.0
 				metrics[self.primary_metric] = improvement
+
+		# Auto-determine success if not explicitly provided
+		if success is None:
+			improvement = metrics.get(self.primary_metric, 1.0)
+			speedup = metrics.get("speedup", 1.0)
+			# Success = metric improved (> 1.0) AND runtime didn't regress (>= 1.0)
+			success = (improvement > 1.0) and (speedup >= 1.0)
 
 		step = OptimizationStep(
 			iteration=self.current_iteration,
@@ -112,6 +158,7 @@ class OptimizationTracker:
 			report=report,
 			metrics=metrics,
 			success=success,
+			optimized_code=optimized_code,
 		)
 		self.steps.append(step)
 		self.current_iteration += 1
@@ -146,15 +193,24 @@ class OptimizationTracker:
 
 		self.history_messages.append(history_entry)
 
-		# Auto-update best
-		if self.best_step is None:
-			self.best_step = step
-		else:
-			new_val = step.get_metric(self.primary_metric)
-			cur_val = self.best_step.get_metric(self.primary_metric)
-
-			if (self.maximize and new_val > cur_val) or (not self.maximize and new_val < cur_val):
+		# Auto-update best based on primary metric (only for successful steps)
+		if success:
+			if self.best_step is None or not self.best_step.success:
+				# First successful step, or replacing a failed step
 				self.best_step = step
+			else:
+				new_val = step.get_metric(self.primary_metric)
+				cur_val = self.best_step.get_metric(self.primary_metric)
+
+				# With proper improvement calculation, we always want higher improvement values
+				if new_val > cur_val:
+					self.best_step = step
+				elif new_val == cur_val:
+					# Tie-breaker: prefer higher speedup (better runtime performance)
+					new_speedup = step.get_metric("speedup")
+					cur_speedup = self.best_step.get_metric("speedup")
+					if new_speedup > cur_speedup:
+						self.best_step = step
 
 		return step
 
@@ -331,6 +387,70 @@ class Formula_Base:
 			logging.debug(f"Initialized LLM once for formula: {self.model} via {self.provider}")
 		return self._llm
 
+	def find_kernel_file(self, files: list, kernel: str) -> tuple:
+		"""
+		Find the kernel file containing the given kernel name from a list of files.
+
+		Args:
+		        files: List of file paths to search
+		        kernel: Kernel signature to find
+
+		Returns:
+		        tuple: (kernel_file_path, file_content) or (None, None) if not found
+
+		Note:
+		        - Validates files exist and are within the project directory
+		        - Logs warnings for invalid files
+		        - Exits with sys.exit(1) if kernel file not found after checking all files
+		"""
+		kernel_name = get_kernel_name(kernel)
+		logging.debug(f"Searching for kernel: {kernel_name}")
+
+		kernel_file = None
+		unoptimized_file_content = None
+		project_dir = os.path.abspath(self._application.get_project_directory())
+
+		for file in files:
+			file_path = os.path.abspath(file)
+
+			# Check if file exists
+			if not os.path.exists(file):
+				logging.warning(f"File {file} does not exist")
+				continue
+
+			# Check if file is in project directory
+			try:
+				isfile_in_project = os.path.commonpath([project_dir, file_path]) == project_dir
+			except ValueError:
+				# Happens when paths are on different drives (Windows)
+				isfile_in_project = False
+
+			if not isfile_in_project:
+				logging.warning(f"File {file} is not in the project")
+				continue
+
+			# Try to read file and find kernel
+			try:
+				with open(file, "r") as f:
+					unoptimized_file_content = f.read()
+					if kernel_name in unoptimized_file_content:
+						kernel_file = file
+						break
+			except Exception as e:
+				logging.error(f"Error reading file {file}: {e}")
+				continue
+
+		# If kernel file not found, log error and exit
+		if kernel_file is None:
+			logging.error(f"Kernel file not found for kernel {kernel}")
+			logging.error(f"Kernel name: {kernel_name}")
+			logging.error(f"Files searched: {files}")
+			if unoptimized_file_content:
+				logging.error(f"Last file content (first 200 chars): {unoptimized_file_content[:200]}")
+			sys.exit(1)
+
+		return kernel_file, unoptimized_file_content
+
 	def _parse_kernel_signature(self, kernel_signature: str):
 		"""
 		Parses a kernel signature to extract the kernel name and its arguments.
@@ -386,10 +506,66 @@ class Formula_Base:
 		if success:
 			return Result(success=success, asset={"log": result})
 		else:
+			# Filter compiler log to remove noise and keep only errors
+			filtered_log = self._filter_compiler_errors(result)
 			return Result(
 				success=success,
-				error_report="The application contains compiler errors. Here is the compiler log: " + result,
+				error_report="The application contains compiler errors. Here is the compiler log:\n" + filtered_log,
 			)
+
+	@staticmethod
+	def _filter_compiler_errors(compiler_log: str, max_lines: int = 50) -> str:
+		"""Filter compiler log to show only errors and a summary, not all warnings."""
+		lines = compiler_log.split("\n")
+
+		errors = []
+		notes = []
+		gmake_errors = []
+		warning_count = 0
+
+		for line in lines:
+			if ": error:" in line:
+				errors.append(line)
+			elif ": note:" in line:
+				notes.append(line)
+			elif line.strip().startswith("gmake") and ("***" in line or "Error" in line):
+				gmake_errors.append(line)
+			elif ": warning:" in line:
+				warning_count += 1
+
+		# Build filtered output
+		filtered = []
+
+		if warning_count > 0:
+			filtered.append(f"[{warning_count} warnings omitted - only showing errors]\n")
+
+		if errors:
+			filtered.append("=== COMPILATION ERRORS ===")
+			for error in errors[:max_lines]:  # Limit errors too
+				filtered.append(error)
+			if len(errors) > max_lines:
+				filtered.append(f"... and {len(errors) - max_lines} more errors")
+
+		if notes:
+			filtered.append("\n=== NOTES ===")
+			for note in notes[:max_lines]:  # Limit notes too
+				filtered.append(note)
+
+		if gmake_errors:
+			filtered.append("\n=== BUILD FAILED ===")
+			for gmake_error in gmake_errors[-5:]:  # Last 5 gmake errors
+				filtered.append(gmake_error)
+
+		if not filtered:
+			# No errors found, maybe it's a different kind of failure
+			# Return first and last few lines
+			filtered.append("=== BUILD OUTPUT (TRUNCATED) ===")
+			filtered.extend(lines[:10])
+			if len(lines) > 20:
+				filtered.append(f"\n... {len(lines) - 20} lines omitted ...\n")
+			filtered.extend(lines[-10:])
+
+		return "\n".join(filtered)
 
 	# ----------------------------------------------------
 	# Required methods to be implemented by child classes
@@ -441,6 +617,11 @@ class Formula_Base:
 
 		accordo_directory = get_accordo_path()
 
+		# Get baseline time if available (for dynamic timeout calculation)
+		baseline_time_ms = getattr(self, "baseline_time_ms", None)
+		if baseline_time_ms is not None:
+			logging.debug(f"Using baseline time for dynamic timeout: {baseline_time_ms}ms")
+
 		results = {}
 		for app, label in zip([self._reference_app, self._application], ["unoptimized", "optimized"]):
 			logging.debug(f"Running accordo for {label}")
@@ -482,19 +663,43 @@ class Formula_Base:
 			logging.debug(f"kernel_args: {kernel_args}")
 			logging.debug(f"ipc_file_name: {ipc_file_name}")
 
-			original_dir = os.getcwd()
-			os.chdir(project_directory)
-			os.posix_spawn(binary, binary_with_args, env)
-			os.chdir(original_dir)
+			# Launch the process with Accordo and track its PID
+			process = subprocess.Popen(
+				binary_with_args, env=env, cwd=project_directory, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+			)
+			process_pid = process.pid
+			logging.debug(f"Launched {label} process with PID: {process_pid}")
+
 			try:
-				results[label] = get_kern_arg_data(pipe_name, kernel_args, ipc_file_name)
+				results[label] = get_kern_arg_data(
+					pipe_name, kernel_args, ipc_file_name, process_pid=process_pid, baseline_time_ms=baseline_time_ms
+				)
 			except TimeoutError as e:
 				logging.error(f"Timeout while getting kernel argument data for {label}: {str(e)}")
+				process.kill()  # Kill the hung process
+
+				# Provide context-specific error message
+				if baseline_time_ms is not None:
+					error_msg = f"Optimization exceeded 2x baseline execution time for {label}: {str(e)}. Code may be correct but too slow to be worth profiling."
+				else:
+					error_msg = (
+						f"Timeout while getting kernel argument data for {label}: {str(e)}. The code may have crashed."
+					)
+
 				return Result(
 					success=False,
-					error_report=f"Timeout while getting kernel argument data for {label}: {str(e)}. The code may have crashed.",
+					error_report=error_msg,
+				)
+			except RuntimeError as e:
+				logging.error(f"Accordo process crashed for {label}: {str(e)}")
+				return Result(
+					success=False,
+					error_report=f"Accordo process crashed for {label}: {str(e)}. This usually indicates a segfault or GPU memory access error in the kernel code.",
 				)
 			send_response(pipe_name)
+
+			# Wait for the process to finish
+			process.wait(timeout=5)
 		logging.debug(f"results unoptimized: {results['unoptimized']}")
 		logging.debug(f"results optimized: {results['optimized']}")
 		key0, key1 = results.keys()
