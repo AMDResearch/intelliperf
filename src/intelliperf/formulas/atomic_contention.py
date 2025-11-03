@@ -584,15 +584,18 @@ class atomic_contention(Formula_Base):
 					failed_code = f.read()
 
 				error_report = f"Correctness Validation Failed: {result.error_report}"
+				# For correctness failures, we don't have valid metrics since the code didn't run correctly
+				# Set latency_improvement to 1.0 (no change) to indicate no progress
 				self.optimization_tracker.add_step(
 					diff=diff,
 					report=error_report,
 					metrics={
-						"speedup": 0.0,
-						"unoptimized_time": 0,
-						"optimized_time": 0,
+						"speedup": 1.0,  # No change
+						"unoptimized_time": self.baseline_time_ms * 1e6 if self.baseline_time_ms else 0,
+						"optimized_time": self.baseline_time_ms * 1e6 if self.baseline_time_ms else 0,
 						"unoptimized_lat": self.baseline_atomic_latency or 0,
-						"optimized_lat": self.baseline_atomic_latency or 0,
+						"optimized_lat": self.baseline_atomic_latency or 0,  # Same as baseline (no improvement)
+						"latency_improvement": 1.0,  # Explicitly set to 1.0 (no change)
 					},
 					success=False,
 					request=f"Optimize atomic contention in kernel {getattr(self, 'current_kernel_signature', 'unknown')}",
@@ -743,15 +746,24 @@ class atomic_contention(Formula_Base):
 		# Extract metrics from best optimization step
 		metrics = self.optimization_tracker.get_best_metrics()
 
+		# Determine metric_after: use best if available, otherwise null to indicate no improvement
+		metric_after = None
+		time_after_ms = None
+		if metrics and "optimized_lat" in metrics:
+			# Only use the measured value if it actually improved
+			if metrics["optimized_lat"] < self.baseline_atomic_latency:
+				metric_after = metrics["optimized_lat"]
+				time_after_ms = metrics.get("optimized_time", 0) / 1e6
+
 		# Build structured metric fields
 		metric_fields = {
 			"kernel_name": self.current_kernel,
 			"metric": "atomic_lat_cycles",  # The counter we're optimizing
 			"metric_name": "Atomic Latency",  # Human-readable name
-			"metric_before": metrics.get("unoptimized_lat", self.baseline_atomic_latency),
-			"metric_after": metrics.get("optimized_lat", self.baseline_atomic_latency),
-			"time_before_ms": metrics.get("unoptimized_time", 0) / 1e6,  # Convert ns to ms
-			"time_after_ms": metrics.get("optimized_time", 0) / 1e6,  # Convert ns to ms
+			"metric_before": self.baseline_atomic_latency,
+			"metric_after": metric_after,  # None if no optimization succeeded
+			"time_before_ms": self.baseline_time_ms if self.baseline_time_ms else 0.0,
+			"time_after_ms": time_after_ms,  # None if no optimization succeeded
 		}
 
 		# Include optimization history in results
