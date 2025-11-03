@@ -85,31 +85,67 @@ class OptimizationTracker:
 		# History messages for DSPy (stored as list of dicts)
 		self.history_messages = []
 
+	def is_successful(self) -> bool:
+		"""Check if optimization was successful (any improvement over baseline)"""
+		if not self.best_step or not self.best_step.success:
+			return False
+		improvement = self.best_step.get_metric(self.primary_metric, 1.0)
+		speedup = self.best_step.get_metric("speedup", 1.0)
+		return improvement > 1.0 or speedup > 1.0
+
+	def get_best_code(self) -> str:
+		"""Get the optimized code from the best step"""
+		if self.best_step:
+			return self.best_step.optimized_code
+		return ""
+
+	def get_best_report(self) -> str:
+		"""Get the optimization report from the best step"""
+		if self.best_step:
+			return self.best_step.report
+		return ""
+
+	def get_best_metrics(self) -> dict:
+		"""Get the metrics from the best step"""
+		if self.best_step:
+			return self.best_step.metrics
+		return {}
+
 	def add_step(
 		self,
 		diff: str,
 		report: str,
 		metrics: dict,
-		success: bool,
+		success: bool = None,
 		request: str = "",
 		optimized_code: str = "",
 	) -> OptimizationStep:
-		"""Add step and auto-update best based on primary metric"""
+		"""Add step and auto-calculate improvement, speedup, and success"""
+		# Auto-calculate speedup if time metrics are available
+		unopt_time = metrics.get("unoptimized_time", 0)
+		opt_time = metrics.get("optimized_time", 0)
+		if unopt_time > 0 and opt_time > 0:
+			metrics["speedup"] = unopt_time / opt_time
+
 		# Auto-calculate improvement if before/after metrics are configured
 		if self.before_metric and self.after_metric:
 			before = metrics.get(self.before_metric, 0)
 			after = metrics.get(self.after_metric, 0)
-			if before != 0 and after != 0:
-				# Calculate improvement ratio based on whether we're maximizing or minimizing the raw metric
-				# For conflicts/latency (maximize=False, lower is better): improvement = before / after
-				#   Example: 3.5 conflicts → 1.0 conflicts = 3.5 / 1.0 = 3.5x improvement
-				# For coalescing (maximize=True, higher is better): improvement = after / before
-				#   Example: 50% → 75% = 75 / 50 = 1.5x improvement
-				improvement = before / after if not self.maximize else after / before
+			if before != 0:
+				# If maximize=False: we want to minimize raw metric (conflicts, latency), so improvement = before / after
+				# If maximize=True: we want to maximize raw metric (coalescing %, hit rate), so improvement = after / before
+				if not self.maximize:
+					improvement = before / after if after != 0 else 1.0
+				else:
+					improvement = after / before if after != 0 else 1.0
 				metrics[self.primary_metric] = improvement
-			elif before != 0:
-				# If after is 0, set improvement to 1.0 (no change)
-				metrics[self.primary_metric] = 1.0
+
+		# Auto-determine success if not explicitly provided
+		if success is None:
+			improvement = metrics.get(self.primary_metric, 1.0)
+			speedup = metrics.get("speedup", 1.0)
+			# Success = metric improved (> 1.0) AND runtime didn't regress (>= 1.0)
+			success = (improvement > 1.0) and (speedup >= 1.0)
 
 		step = OptimizationStep(
 			iteration=self.current_iteration,
@@ -117,6 +153,7 @@ class OptimizationTracker:
 			report=report,
 			metrics=metrics,
 			success=success,
+			optimized_code=optimized_code,
 		)
 		self.steps.append(step)
 		self.current_iteration += 1
@@ -151,15 +188,24 @@ class OptimizationTracker:
 
 		self.history_messages.append(history_entry)
 
-		# Auto-update best
-		if self.best_step is None:
-			self.best_step = step
-		else:
-			new_val = step.get_metric(self.primary_metric)
-			cur_val = self.best_step.get_metric(self.primary_metric)
-
-			if (self.maximize and new_val > cur_val) or (not self.maximize and new_val < cur_val):
+		# Auto-update best based on primary metric (only for successful steps)
+		if success:
+			if self.best_step is None or not self.best_step.success:
+				# First successful step, or replacing a failed step
 				self.best_step = step
+			else:
+				new_val = step.get_metric(self.primary_metric)
+				cur_val = self.best_step.get_metric(self.primary_metric)
+
+				# With proper improvement calculation, we always want higher improvement values
+				if new_val > cur_val:
+					self.best_step = step
+				elif new_val == cur_val:
+					# Tie-breaker: prefer higher speedup (better runtime performance)
+					new_speedup = step.get_metric("speedup")
+					cur_speedup = self.best_step.get_metric("speedup")
+					if new_speedup > cur_speedup:
+						self.best_step = step
 
 		return step
 
@@ -395,10 +441,66 @@ class Formula_Base:
 		if success:
 			return Result(success=success, asset={"log": result})
 		else:
+			# Filter compiler log to remove noise and keep only errors
+			filtered_log = self._filter_compiler_errors(result)
 			return Result(
 				success=success,
-				error_report="The application contains compiler errors. Here is the compiler log: " + result,
+				error_report="The application contains compiler errors. Here is the compiler log:\n" + filtered_log,
 			)
+
+	@staticmethod
+	def _filter_compiler_errors(compiler_log: str, max_lines: int = 50) -> str:
+		"""Filter compiler log to show only errors and a summary, not all warnings."""
+		lines = compiler_log.split("\n")
+
+		errors = []
+		notes = []
+		gmake_errors = []
+		warning_count = 0
+
+		for line in lines:
+			if ": error:" in line:
+				errors.append(line)
+			elif ": note:" in line:
+				notes.append(line)
+			elif line.strip().startswith("gmake") and ("***" in line or "Error" in line):
+				gmake_errors.append(line)
+			elif ": warning:" in line:
+				warning_count += 1
+
+		# Build filtered output
+		filtered = []
+
+		if warning_count > 0:
+			filtered.append(f"[{warning_count} warnings omitted - only showing errors]\n")
+
+		if errors:
+			filtered.append("=== COMPILATION ERRORS ===")
+			for error in errors[:max_lines]:  # Limit errors too
+				filtered.append(error)
+			if len(errors) > max_lines:
+				filtered.append(f"... and {len(errors) - max_lines} more errors")
+
+		if notes:
+			filtered.append("\n=== NOTES ===")
+			for note in notes[:max_lines]:  # Limit notes too
+				filtered.append(note)
+
+		if gmake_errors:
+			filtered.append("\n=== BUILD FAILED ===")
+			for gmake_error in gmake_errors[-5:]:  # Last 5 gmake errors
+				filtered.append(gmake_error)
+
+		if not filtered:
+			# No errors found, maybe it's a different kind of failure
+			# Return first and last few lines
+			filtered.append("=== BUILD OUTPUT (TRUNCATED) ===")
+			filtered.extend(lines[:10])
+			if len(lines) > 20:
+				filtered.append(f"\n... {len(lines) - 20} lines omitted ...\n")
+			filtered.extend(lines[-10:])
+
+		return "\n".join(filtered)
 
 	# ----------------------------------------------------
 	# Required methods to be implemented by child classes

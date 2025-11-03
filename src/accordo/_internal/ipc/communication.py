@@ -115,15 +115,31 @@ def get_kern_arg_data(pipe_name, args, ipc_file_name, ipc_timeout_seconds=30, pr
 	start_time = time.time()
 	with open(pipe_name, "rb") as fifo:  # noqa: F841
 		while True:
+			# Check if the process is still alive (crash detection, not timeout)
+			if process_pid is not None:
+				try:
+					os.kill(process_pid, 0)  # Signal 0 just checks if process exists
+				except OSError:
+					raise RuntimeError(
+						f"Accordo process (PID {process_pid}) crashed or terminated during execution. "
+						"Check for segfaults or GPU memory access errors."
+					)
+
 			if time.time() - start_time > ipc_timeout_seconds:
-				raise TimeoutError(f"Timeout after {ipc_timeout_seconds} seconds waiting for IPC data")
+				timeout_msg = f"Timeout after {ipc_timeout_seconds} seconds during IPC communication"
+				if baseline_time_ms is not None:
+					timeout_msg += f" (baseline: {baseline_time_ms}ms, 2x timeout: {ipc_timeout_seconds}s). Code may be correct but too slow to be worth profiling."
+				raise TimeoutError(timeout_msg)
 
 			try:
 				ipc_handles, ptr_sizes = read_ipc_handles(args, ipc_file_name)
 				break
 			except Exception as e:
 				if time.time() - start_time > ipc_timeout_seconds:
-					raise TimeoutError(f"Timeout after {ipc_timeout_seconds} seconds waiting for IPC data: {str(e)}")
+					timeout_msg = f"Timeout after {ipc_timeout_seconds} seconds waiting for IPC data: {str(e)}"
+					if baseline_time_ms is not None:
+						timeout_msg += f" (baseline: {baseline_time_ms}ms, 2x timeout: {ipc_timeout_seconds}s). Code may be correct but too slow to be worth profiling."
+					raise TimeoutError(timeout_msg)
 				time.sleep(0.1)
 
 	type_map = {
