@@ -203,7 +203,7 @@ class Logger:
 		    The path to the saved file
 		"""
 		# Get output directory from trace_path if available
-		if hasattr(self, 'trace_path') and self.trace_path:
+		if hasattr(self, "trace_path") and self.trace_path:
 			output_dir = os.path.abspath(self.trace_path)
 			os.makedirs(output_dir, exist_ok=True)
 		else:

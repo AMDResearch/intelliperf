@@ -590,10 +590,12 @@ class Formula_Base:
 			f.write(optimized_code)
 
 		# Automatically detect iteration number from optimization tracker
-		iteration_num = len(self.optimization_tracker.steps) if hasattr(self, 'optimization_tracker') else 0
+		iteration_num = len(self.optimization_tracker.steps) if hasattr(self, "optimization_tracker") else 0
 
 		# Log the iteration code immediately
-		kernel_name = get_kernel_name(self.current_kernel_signature if hasattr(self, 'current_kernel_signature') else "kernel")
+		kernel_name = get_kernel_name(
+			self.current_kernel_signature if hasattr(self, "current_kernel_signature") else "kernel"
+		)
 		self.get_logger().save_iteration_code(kernel_name, iteration_num, optimized_code)
 
 		logging.debug(f"Wrote and logged optimized code to {kernel_file} (iteration {iteration_num})")
