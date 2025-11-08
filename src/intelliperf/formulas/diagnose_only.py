@@ -73,7 +73,7 @@ class diagnose_only(Formula_Base):
 	def correctness_validation_pass(self, accordo_absolute_tolerance: float = 1e-6):
 		"""
 		Validate the optimized kernel by comparing the output with the reference kernel.
-		
+
 		Note: diagnose_only doesn't actually optimize, so this always returns success.
 		The method signature matches other formulas for API consistency.
 
@@ -85,6 +85,7 @@ class diagnose_only(Formula_Base):
 		"""
 		# diagnose_only doesn't optimize, so validation always succeeds
 		from intelliperf.formulas.formula_base import Result
+
 		return Result(success=True, asset={"log": "diagnose_only: No optimization performed, validation skipped."})
 
 	def performance_validation_pass(self):
