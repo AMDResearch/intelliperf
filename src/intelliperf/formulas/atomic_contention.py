@@ -770,9 +770,9 @@ class atomic_contention(Formula_Base):
 		super().write_results(
 			output_file=output_file,
 			additional_results={
+				"optimization_history": self.optimization_tracker.to_dict(),
 				"formula": "atomicContention",
 				"success": self.optimization_tracker.is_successful(),
-				"optimization_history": self.optimization_tracker.to_dict(),
 				**metric_fields,
 			},
 		)

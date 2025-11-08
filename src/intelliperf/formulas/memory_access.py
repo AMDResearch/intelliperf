@@ -750,9 +750,9 @@ class memory_access(Formula_Base):
 		super().write_results(
 			output_file=output_file,
 			additional_results={
+				"optimization_history": self.optimization_tracker.to_dict(),
 				"formula": "memoryAccess",
 				"success": self.optimization_tracker.is_successful(),
-				"optimization_history": self.optimization_tracker.to_dict(),
 				**metric_fields,
 			},
 		)
