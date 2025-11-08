@@ -70,7 +70,7 @@ class diagnose_only(Formula_Base):
 	def compile_pass(self):
 		return super().compile_pass()
 
-	def correctness_validation_pass(self, accordo_absolute_tolerance: float = 1e-6):
+	def correctness_validation_pass(self, kernel, kernel_args, accordo_absolute_tolerance: float = 1e-6):
 		"""
 		Validate the optimized kernel by comparing the output with the reference kernel.
 
@@ -78,6 +78,8 @@ class diagnose_only(Formula_Base):
 		The method signature matches other formulas for API consistency.
 
 		Args:
+		    kernel: Kernel name (unused for diagnose_only)
+		    kernel_args: Kernel arguments (unused for diagnose_only)
 		    accordo_absolute_tolerance: Tolerance parameter (unused for diagnose_only)
 
 		Returns:
