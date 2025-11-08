@@ -34,16 +34,8 @@ def get_guided_tuning_path():
 	return (Path(__file__).resolve().parent / "../../../external/guided-tuning").resolve()
 
 
-def get_accordo_path():
-	return (Path(__file__).resolve().parent / "../../accordo").resolve()
-
-
 def get_rocprofiler_path():
 	return (Path(__file__).resolve().parent / "../../../external/rocprofiler-compute/src").resolve()
-
-
-def get_nexus_path():
-	return (Path(__file__).resolve().parent / "../../../external/nexus").resolve()
 
 
 def get_llm_api_key():

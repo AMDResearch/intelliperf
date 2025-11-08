@@ -34,7 +34,6 @@ import pandas as pd
 from intelliperf.utils import process
 from intelliperf.utils.env import (
 	get_guided_tuning_path,
-	get_nexus_path,
 	get_rocprofiler_path,
 )
 from intelliperf.utils.process import capture_subprocess_output, exit_on_fail
@@ -224,25 +223,64 @@ class Application:
 		)
 
 	def collect_source_code(self):
-		nexus_directory = get_nexus_path()
-		lib = os.path.join(nexus_directory, "build", "lib", "libnexus.so")
-		env = os.environ.copy()
+		"""
+		Collect source code for GPU kernels using Nexus.
 
-		with tempfile.TemporaryDirectory() as tmp:
-			json_result_file = os.path.join(tmp, "nexus_output.json")
+		Returns:
+			dict: Dictionary containing kernel information with assembly, HIP source, files, and line numbers
+		"""
+		try:
+			from nexus import Nexus
+		except ImportError:
+			logging.error("Nexus Python API not found. Please install it: pip install git+https://github.com/AMDResearch/nexus.git@main")
+			return {"kernels": {}}
 
-			env["HSA_TOOLS_LIB"] = lib
-			env["NEXUS_LOG_LEVEL"] = "2"
-			env["NEXUS_OUTPUT_FILE"] = json_result_file
-			env["TRITON_ALWAYS_COMPILE"] = "1"
-			env["TRITON_DISABLE_LINE_INFO"] = "0"
-			capture_subprocess_output(self.get_app_cmd(), new_env=env, working_directory=self.get_project_directory())
-
-			if os.path.exists(json_result_file):
-				df_results = json.loads(open(json_result_file).read())
+		try:
+			# Map Python logging level to Nexus log level
+			# Python: NOTSET=0, DEBUG=10, INFO=20, WARNING=30, ERROR=40, CRITICAL=50
+			# Nexus: 0=none, 1=info, 2=warning, 3=error, 4=detail
+			current_level = logging.getLogger().getEffectiveLevel()
+			if current_level <= logging.DEBUG:
+				nexus_log_level = 4  # detail (most verbose)
+			elif current_level <= logging.INFO:
+				nexus_log_level = 1  # info
+			elif current_level <= logging.WARNING:
+				nexus_log_level = 2  # warning
 			else:
-				df_results = {"kernels": {}}
+				nexus_log_level = 0  # none
+
+			# Create Nexus tracer with inherited log level
+			nexus = Nexus(log_level=nexus_log_level)
+
+			# Additional environment for Triton kernels
+			triton_env = {
+				"TRITON_ALWAYS_COMPILE": "1",
+				"TRITON_DISABLE_LINE_INFO": "0",
+			}
+
+			# Run the application and capture kernel trace
+			trace = nexus.run(
+				command=self.get_app_cmd(),
+				env=triton_env,
+				cwd=self.get_project_directory(),
+			)
+
+			# Convert trace to the expected format
+			df_results = {"kernels": {}}
+			for kernel in trace:
+				df_results["kernels"][kernel.name] = {
+					"assembly": kernel.assembly,
+					"hip": kernel.hip,
+					"files": kernel.files,
+					"lines": kernel.lines,
+					"signature": kernel.signature,
+				}
+
 			return df_results
+
+		except Exception as e:
+			logging.error(f"Failed to collect source code with Nexus: {e}")
+			return {"kernels": {}}
 
 	def get_binary_absolute_path(self):
 		if self.get_project_directory() != "":
