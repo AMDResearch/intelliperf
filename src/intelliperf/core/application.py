@@ -236,8 +236,21 @@ class Application:
 			return {"kernels": {}}
 
 		try:
-			# Create Nexus tracer with warning log level
-			nexus = Nexus(log_level=2)
+			# Map Python logging level to Nexus log level
+			# Python: NOTSET=0, DEBUG=10, INFO=20, WARNING=30, ERROR=40, CRITICAL=50
+			# Nexus: 0=none, 1=info, 2=warning, 3=error, 4=detail
+			current_level = logging.getLogger().getEffectiveLevel()
+			if current_level <= logging.DEBUG:
+				nexus_log_level = 4  # detail (most verbose)
+			elif current_level <= logging.INFO:
+				nexus_log_level = 1  # info
+			elif current_level <= logging.WARNING:
+				nexus_log_level = 2  # warning
+			else:
+				nexus_log_level = 0  # none
+
+			# Create Nexus tracer with inherited log level
+			nexus = Nexus(log_level=nexus_log_level)
 
 			# Additional environment for Triton kernels
 			triton_env = {
