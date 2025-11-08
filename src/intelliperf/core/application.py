@@ -232,7 +232,9 @@ class Application:
 		try:
 			from nexus import Nexus
 		except ImportError:
-			logging.error("Nexus Python API not found. Please install it: pip install git+https://github.com/AMDResearch/nexus.git@main")
+			logging.error(
+				"Nexus Python API not found. Please install it: pip install git+https://github.com/AMDResearch/nexus.git@main"
+			)
 			return {"kernels": {}}
 
 		try:
