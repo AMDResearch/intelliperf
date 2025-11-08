@@ -25,6 +25,16 @@ SOFTWARE.
 #include <hip/hip_runtime.h>
 #include <vector>
 
+#define hip_try(expr)                                             \
+  do {                                                            \
+    hipError_t err = (expr);                                      \
+    if (err != hipSuccess) {                                      \
+      const char* msg = hipGetErrorString(err);                   \
+      throw std::runtime_error(std::string("HIP error: ") + msg); \
+    }                                                             \
+  } while (0)
+
+
 #define TILE_DIM 16
 
 __global__ void matrixTransposeShared_0(float* out,
@@ -106,9 +116,9 @@ void runTranspose(int width, int height) {
 
   float* d_in;
   float* d_out;
-  hipMalloc(&d_in, width * height * sizeof(float));
-  hipMalloc(&d_out, width * height * sizeof(float));
-  hipMemcpy(d_in, h_in.data(), width * height * sizeof(float), hipMemcpyHostToDevice);
+  hip_try(hipMalloc(&d_in, width * height * sizeof(float)));
+  hip_try(hipMalloc(&d_out, width * height * sizeof(float)));
+  hip_try(hipMemcpy(d_in, h_in.data(), width * height * sizeof(float), hipMemcpyHostToDevice));
   dim3 blockSize(TILE_DIM, TILE_DIM);
   dim3 gridSize((width + TILE_DIM - 1) / TILE_DIM, (height + TILE_DIM - 1) / TILE_DIM);
 
@@ -120,10 +130,10 @@ void runTranspose(int width, int height) {
   if (status != hipSuccess) {
     std::terminate();
   }
-  hipMemcpy(h_out.data(), d_out, width * height * sizeof(float), hipMemcpyDeviceToHost);
+  hip_try(hipMemcpy(h_out.data(), d_out, width * height * sizeof(float), hipMemcpyDeviceToHost));
 
-  hipFree(d_in);
-  hipFree(d_out);
+  hip_try(hipFree(d_in));
+  hip_try(hipFree(d_out));
 }
 
 int main() {

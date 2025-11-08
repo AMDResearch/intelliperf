@@ -53,7 +53,7 @@ __global__ void matrix_transpose(const T* __restrict__ in,
 }
 int main() {
   using T = __hip_bfloat16;
-  
+
   const int width = 1024;
   const int height = 1024;
   const int size = width * height;
@@ -97,7 +97,7 @@ int main() {
 
   std::cout << (correct ? "Transpose correct ✅" : "Transpose incorrect ❌") << "\n";
 
-  hipFree(d_in);
-  hipFree(d_out);
+  hip_try(hipFree(d_in));
+  hip_try(hipFree(d_out));
   return 0;
 }
