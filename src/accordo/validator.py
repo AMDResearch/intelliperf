@@ -139,15 +139,15 @@ class Accordo:
 
 		# Auto-detect accordo_path if not provided
 		if accordo_path is None:
-			# Try to find it relative to this file
+			# Find it relative to this file (accordo package directory)
 			accordo_dir = Path(__file__).parent
 			if (accordo_dir / "build").exists() or (accordo_dir / "CMakeLists.txt").exists():
 				accordo_path = accordo_dir
 			else:
-				# Try environment variable
-				from intelliperf.utils.env import get_accordo_path
-
-				accordo_path = Path(get_accordo_path())
+				raise RuntimeError(
+					f"Could not find Accordo build directory. Expected at {accordo_dir}. "
+					"Please build Accordo first or specify accordo_path explicitly."
+				)
 
 		self.accordo_path = Path(accordo_path)
 		logging.debug(f"Accordo path: {self.accordo_path}")
