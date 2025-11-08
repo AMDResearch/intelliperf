@@ -15,7 +15,19 @@ readme = "README.md"
 requires-python = ">=3.9"
 
 # Python dependencies
-dependencies = ["tomli", "tabulate", "ml_dtypes", "dspy==2.6.27", "pandas", "duckdb", "rich", "pytest", "litellm[proxy]", "rpds-py"]
+dependencies = [
+	"tomli",
+	"tabulate",
+	"ml_dtypes",
+	"dspy==2.6.27",
+	"pandas",
+	"duckdb",
+	"rich",
+	"pytest",
+	"litellm[proxy]",
+	"rpds-py",
+	"nexus @ git+https://github.com/AMDResearch/nexus.git@main",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -37,19 +49,6 @@ branch = "a3dc98e25106f0cfb5f996acc9848274b4e6cf15"
 build_command = """
 python3 -m pip install --ignore-installed blinker &&
 python3 -m pip install -r requirements.txt
-"""
-
-
-[tool.nexus]
-git = "https://github.com/AMDResearch/nexus.git"
-branch = "main"
-build_command = """
-export CC=${ROCM_PATH}/bin/hipcc
-export CXX=${ROCM_PATH}/bin/hipcc
-cmake -B build -DCMAKE_PREFIX_PATH=/opt/rocm\
-    -DLLVM_INSTALL_DIR=/opt/rocm/llvm\
-    -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --parallel 16
 """
 
 [project.optional-dependencies]
