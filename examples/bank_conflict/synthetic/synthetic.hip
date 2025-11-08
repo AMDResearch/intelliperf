@@ -24,6 +24,16 @@ SOFTWARE.
 
 #include <hip/hip_runtime.h>
 #include <iostream>  
+
+#define hip_try(expr)                                             \
+  do {                                                            \
+    hipError_t err = (expr);                                      \
+    if (err != hipSuccess) {                                      \
+      const char* msg = hipGetErrorString(err);                   \
+      throw std::runtime_error(std::string("HIP error: ") + msg); \
+    }                                                             \
+  } while (0)
+
   
 #define BLOCK_SIZE 256  
 #define LDS_SIZE 256  
@@ -52,20 +62,20 @@ int main() {
   
     // Allocate memory on the device  
     float* d_out;  
-    hipMalloc(&d_out, BLOCK_SIZE * sizeof(float));  
+    hip_try(hipMalloc(&d_out, BLOCK_SIZE * sizeof(float)));  
   
     dim3 blockSize(BLOCK_SIZE);  
     dim3 gridSize(1);  
     hipLaunchKernelGGL(bankConflictKernel, gridSize, blockSize, 0, 0, d_out);  
   
     // Copy the result back to the host  
-    hipMemcpy(h_out, d_out, BLOCK_SIZE * sizeof(float), hipMemcpyDeviceToHost);  
+    hip_try(hipMemcpy(h_out, d_out, BLOCK_SIZE * sizeof(float), hipMemcpyDeviceToHost));  
   
     for (int i = 0; i < BLOCK_SIZE; ++i) {  
         std::cout << "h_out[" << i << "] = " << h_out[i] << std::endl;  
     }  
   
-    hipFree(d_out);  
+    hip_try(hipFree(d_out));  
   
     return 0;  
 }
