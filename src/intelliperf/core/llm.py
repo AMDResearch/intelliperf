@@ -32,6 +32,13 @@ import requests
 
 from intelliperf.core.logger import Logger
 
+# Silence DSPy and LiteLLM verbose logging
+logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)  # LiteLLM uses httpx for HTTP requests
+logging.getLogger("openai").setLevel(logging.WARNING)  # Suppress OpenAI client logs
+logging.getLogger("dspy").setLevel(logging.WARNING)
+
 
 def validate_llm_credentials(api_key: str, model: str, provider: str) -> bool:
 	"""Validate LLM credentials before doing any work.
@@ -166,11 +173,17 @@ class LLM:
 			max_output_tokens = int(max_context * 0.8) if max_context else 4096
 			# Set timeout to 10 minutes (600 seconds)
 			timeout_mins = 1
+
+			# Configure LiteLLM to disable caching and verbose logging
+			import os
+			os.environ["LITELLM_LOG"] = "ERROR"  # Only log errors
+
 			self.lm = dspy.LM(
 				f"{self.provider}/{self.model}",
 				api_key=api_key,
 				max_tokens=max_output_tokens,
 				timeout=timeout_mins * 60,
+				cache={"no-cache": True, "no-store": True},  # Disable caching to prevent API key logging
 			)
 			dspy.configure(lm=self.lm)
 
