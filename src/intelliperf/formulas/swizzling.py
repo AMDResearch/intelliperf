@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import stat
+import sys
 
 import dspy
 
@@ -35,7 +36,7 @@ from intelliperf.core.llm import LLM
 from intelliperf.formulas.formula_base import (
 	Formula_Base,
 	Result,
-	filter_json_field,
+	get_kernel_name,
 )
 from intelliperf.utils.env import get_llm_api_key
 
@@ -158,21 +159,6 @@ class swizzling(Formula_Base):
 		"""
 		return super().profile_pass()
 
-	def instrument_pass(self) -> Result:
-		"""
-		Instrument the application, targeting the kernels with the lowest l2 hit rate
-
-		Returns:
-		    Result: Instrumentation data containing the kernel name, arguments, lines, and file path as dict
-		"""
-		super().instrument_pass()
-
-		return Result(
-			success=False,
-			asset=self._instrumentation_results,
-			error_report="The instrumentation is not implemented for swizzling.",
-		)
-
 	def optimize_pass(
 		self,
 		temperature: float = 0.0,
@@ -235,27 +221,43 @@ class swizzling(Formula_Base):
 		kernel_file = None
 
 		if self._instrumentation_results is None:
-			# Get the file from the results - look for kernels with low l2 hit rate
-			field = "l2"
-			subfield = "hr"
-			min_l2_hit_rate = 95  # Look for kernels with less than 95% l2 hit rate
-			filtered_report_card = filter_json_field(
-				self._initial_profiler_results,
-				field=field,
-				subfield=subfield,
-				comparison_func=lambda x: x < min_l2_hit_rate,
-				target_kernel=target_kernel,
+			# Find kernel with low L2 hit rate using new ProfileResult API
+			min_l2_hit_rate = 95  # Look for kernels with less than 95% L2 hit rate
+
+			candidate = self._initial_profiler_results.find_optimization_candidate(
+				metric_filter=lambda k: (
+					k.l2_hit_rate is not None
+					and k.l2_hit_rate < min_l2_hit_rate
+					and (target_kernel is None or target_kernel in k.kernel_name)
+				),
+				require_source_code=True,
 			)
 
-			if len(filtered_report_card) == 0:
-				return Result(success=False, error_report="No kernels with low l2 hit rate found.")
+			if candidate is None:
+				error_msg = (
+					f"No optimization candidates found: No kernels with low L2 hit rate (<{min_l2_hit_rate}%) and available source code. "
+					"This could mean:\n"
+					"  1. All kernels have good L2 cache locality\n"
+					"  2. Source code is not available for kernels with poor L2 locality\n"
+					"  3. No kernels were profiled (check if application runs correctly)"
+				)
+				logging.error(error_msg)
+				sys.exit(1)
 
-			logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
+			logging.info(
+				f"Found optimization candidate: {candidate.kernel_name} "
+				f"(L2 hit rate: {candidate.l2_hit_rate:.1f}%, "
+				f"duration: {candidate.duration_ns / 1e6:.2f} ms)"
+			)
 
-			kernel = filtered_report_card[0]["kernel"]
-			files = filtered_report_card[0]["source"]["files"]
+			kernel = candidate.kernel_name
+			files = candidate.source_files
 			kernel_file, unoptimized_file_content = self.find_kernel_file(files, kernel)
 			logging.debug(f"Kernel file found for kernel {kernel}: {kernel_file}")
+
+			# Log the initial unoptimized code as reference
+			kernel_name = get_kernel_name(kernel)
+			self.get_logger().save_reference_code(kernel_name, unoptimized_file_content)
 
 			# Stage 1: Memory access pattern analysis (only run once)
 			if not self.memory_analysis_done:
@@ -426,27 +428,31 @@ class swizzling(Formula_Base):
 		return Result(success=True, asset={"log": output})
 
 	def performance_validation_pass(self) -> Result:
-		unoptimized_results = filter_json_field(
-			self._initial_profiler_results,
-			field="kernel",
-			comparison_func=lambda x: x == self.current_kernel_signature,
-		)
+		# Get unoptimized metrics using new ProfileResult API
+		unoptimized_kernel = self._initial_profiler_results.get_kernel(self.current_kernel_signature)
+		if not unoptimized_kernel:
+			return Result(
+				success=False,
+				error_report=f"Could not find kernel {self.current_kernel_signature} in initial profiling results",
+			)
 
-		unoptimized_time = unoptimized_results[0]["durations"]["ns"]
-		unoptimized_l2_hit_rate = unoptimized_results[0]["l2"]["hr"]
-		kernel = unoptimized_results[0]["kernel"]
+		unoptimized_time = unoptimized_kernel.duration_ns
+		unoptimized_l2_hit_rate = unoptimized_kernel.l2_hit_rate
+		kernel = unoptimized_kernel.kernel_name
 
 		# Profile the optimized application
 		self._optimization_results = self._application.profile(top_n=self.top_n)
 
-		optimized_results = filter_json_field(
-			self._optimization_results,
-			field="kernel",
-			comparison_func=lambda x: x == kernel,
-		)
+		# Get optimized metrics
+		optimized_kernel = self._optimization_results.get_kernel(kernel)
+		if not optimized_kernel:
+			return Result(
+				success=False,
+				error_report=f"Could not find kernel {kernel} in optimized profiling results",
+			)
 
-		optimized_time = optimized_results[0]["durations"]["ns"]
-		optimized_l2_hit_rate = optimized_results[0]["l2"]["hr"]
+		optimized_time = optimized_kernel.duration_ns
+		optimized_l2_hit_rate = optimized_kernel.l2_hit_rate
 
 		success = optimized_l2_hit_rate > unoptimized_l2_hit_rate
 		speedup = unoptimized_time / optimized_time

@@ -34,7 +34,7 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["intelliperf", "accordo"]
+include = ["intelliperf", "accordo", "metrix"]
 
 [project.scripts]
 intelliperf = "intelliperf.__main__:main"

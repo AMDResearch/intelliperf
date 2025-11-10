@@ -62,6 +62,7 @@ def capture_subprocess_output(
 
 	# Run the process and wait for completion
 	try:
+		logging.debug("About to call subprocess.run in capture_subprocess_output")
 		result = subprocess.run(
 			subprocess_args,
 			cwd=working_directory,
@@ -71,12 +72,13 @@ def capture_subprocess_output(
 			encoding="utf-8",
 			errors="replace",
 		)
+		logging.debug(f"subprocess.run completed with returncode {result.returncode}")
 
 		success = result.returncode == 0
 		output = result.stdout + result.stderr
 
 		if verbose:
-			print(output)
+			logging.debug(f"Output: {output}")
 
 		return (success, output)
 

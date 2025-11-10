@@ -467,6 +467,7 @@ class Formula_Base:
 			f.write(optimized_code)
 
 		# Automatically detect iteration number from optimization tracker
+		# This starts at 0 for the first LLM attempt, 1 for the second, etc.
 		iteration_num = len(self.optimization_tracker.steps) if hasattr(self, "optimization_tracker") else 0
 
 		# Log the iteration code immediately
@@ -603,19 +604,12 @@ class Formula_Base:
 		"""
 		self._initial_profiler_results = self._application.profile(top_n=self.top_n)
 
-		logging.debug(f"Initial profiler results: {json.dumps(self._initial_profiler_results, indent=2)}")
-
-	@abstractmethod
-	def instrument_pass(self):
-		"""
-		Instrument elements of the application to pinpoint source of bottleneck.
-		"""
-		self._application.build(instrumented=True)
+		logging.debug(f"Initial profiler results:\n{self._initial_profiler_results}")
 
 	@abstractmethod
 	def optimize_pass(self, target_kernel: str = None):
 		"""
-		Optimize the application based on the data collected from the instrumentation pass.
+		Optimize the application based on the data collected from profiling.
 		"""
 		pass
 
@@ -711,28 +705,36 @@ class Formula_Base:
 	@abstractmethod
 	def source_code_pass(self):
 		"""
-		Finds the source code.
+		Finds the source code and updates ProfileResult with source availability.
 		"""
 		df_results = self._application.collect_source_code()
 
-		# In-place append of source info
-		for entry in self._initial_profiler_results:
-			kernel_name = entry["kernel"]
-			empty = {
-				"assembly": [],
-				"files": [],
-				"hip": [],
-				"lines": [],
-				"signature": "",
-			}
+		# Update each kernel with source code availability
+		for kernel in self._initial_profiler_results.kernels:
+			kernel_name = kernel.kernel_name
 
-			# Try adding the kd suffix
-			if kernel_name not in df_results["kernels"]:
-				kernel_name = kernel_name + ".kd"
-			entry["source"] = df_results["kernels"].get(kernel_name, empty)
+			# Direct lookup - kernel names are already normalized (no .kd suffix)
+			source_info = df_results["kernels"].get(kernel_name)
 
-		logging.debug(f"results with source code info: {json.dumps(self._initial_profiler_results, indent=2)}")
+			if source_info and source_info.get("files"):
+				kernel.has_source_code = True
+				kernel.source_files = source_info["files"]
 
+				# Find the actual file containing this kernel
+				try:
+					kernel_file, _ = self.find_kernel_file(source_info["files"], kernel_name)
+					kernel.source_file = kernel_file
+					logging.debug(f"Kernel {kernel_name}: source code found at {kernel.source_file}")
+				except Exception as e:
+					# If find_kernel_file fails, fall back to first file
+					kernel.source_file = source_info["files"][0] if source_info["files"] else None
+					logging.debug(f"Kernel {kernel_name}: could not determine specific file ({e}), using {kernel.source_file}")
+			else:
+				kernel.has_source_code = False
+				kernel.source_files = []
+				logging.debug(f"Kernel {kernel_name}: no source code found")
+
+		logging.debug(f"Updated ProfileResult with source code info: {self._initial_profiler_results}")
 		return Result(success=True, asset=self._initial_profiler_results)
 
 	@abstractmethod
@@ -824,14 +826,14 @@ class Formula_Base:
 		if diagnose_only:
 			results = {
 				"version": __version__,
-				"initial": self._initial_profiler_results,
+				"initial": self._initial_profiler_results.to_dict() if self._initial_profiler_results else None,
 				**additional_results,
 			}
 		else:
 			results = {
 				"version": __version__,
-				"optimized": self._optimization_results,
-				"initial": self._initial_profiler_results,
+				"optimized": self._optimization_results.to_dict() if self._optimization_results else None,
+				"initial": self._initial_profiler_results.to_dict() if self._initial_profiler_results else None,
 				"report_message": self.optimization_report,
 				"bottleneck_report": self.bottleneck_report,
 				**additional_results,
@@ -909,35 +911,6 @@ def flatten_dict(d, parent_key="", sep="_"):
 		else:
 			items.append((new_key, v))
 	return dict(items)
-
-
-def filter_json_field(d, field, subfield=None, comparison_func=lambda x: True, target_kernel=None):
-	"""
-	Filters a list of dictionaries based on a comparison function applied to a specified field or subfield.
-
-	Args:
-	    d (list): List of dictionaries to filter.
-	    field (str): The field in each dictionary to look into.
-	    subfield (str, optional): The subfield within the field to apply the comparison. Defaults to None.
-	    comparison_func (function): A lambda function that takes a value and returns a boolean. Defaults to a function that always returns True.
-
-	Returns:
-	    list: A list of dictionaries that satisfy the comparison function.
-	"""
-	if subfield is not None:
-		return [
-			entry
-			for entry in d
-			if comparison_func(entry.get(field, {}).get(subfield, 0))
-			and (target_kernel is None or get_kernel_name(entry["kernel"]) == target_kernel)
-		]
-	else:
-		return [
-			entry
-			for entry in d
-			if comparison_func(entry.get(field, 0))
-			and (target_kernel is None or get_kernel_name(entry["kernel"]) == target_kernel)
-		]
 
 
 def validate_arrays(arr1, arr2, tolerance):

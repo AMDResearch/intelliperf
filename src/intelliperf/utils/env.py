@@ -28,16 +28,6 @@ from pathlib import Path
 from intelliperf.utils.process import exit_on_fail
 
 
-def get_guided_tuning_path():
-	if os.environ.get("GT_TUNING"):
-		return Path(os.environ["GT_TUNING"]).resolve()
-	return (Path(__file__).resolve().parent / "../../../external/guided-tuning").resolve()
-
-
-def get_rocprofiler_path():
-	return (Path(__file__).resolve().parent / "../../../external/rocprofiler-compute/src").resolve()
-
-
 def get_llm_api_key():
 	llm_key = os.environ.get("LLM_GATEWAY_KEY")
 	if not llm_key:

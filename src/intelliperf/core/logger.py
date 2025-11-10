@@ -190,6 +190,31 @@ class Logger:
 			"events": self.buffer,
 		}
 
+	def save_reference_code(self, kernel_name: str, code_content: str) -> str:
+		"""
+		Save the initial reference (unoptimized) code to a file in the trace directory.
+
+		Args:
+		    kernel_name: Name of the kernel being optimized
+		    code_content: The code content to save
+
+		Returns:
+		    The path to the saved file
+		"""
+		# Get output directory from trace_path if available
+		if hasattr(self, "trace_path") and self.trace_path:
+			output_dir = os.path.abspath(self.trace_path)
+			os.makedirs(output_dir, exist_ok=True)
+		else:
+			output_dir = os.path.abspath(".")
+
+		reference_file = os.path.join(output_dir, f"{kernel_name}_iteration_ref.hip")
+		with open(reference_file, "w") as f:
+			f.write(code_content)
+		logging.info(f"Saved reference code to {reference_file}")
+
+		return reference_file
+
 	def save_iteration_code(self, kernel_name: str, iteration_num: int, code_content: str) -> str:
 		"""
 		Save iteration code to a file in the trace directory.

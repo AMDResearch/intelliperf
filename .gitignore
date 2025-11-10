@@ -16,3 +16,13 @@ trace/
 .build/
 
 .rocprofv3/
+
+*.txt
+*.json
+resources/
+
+# Test outputs
+test_*.log
+test_*.py
+*.log
+intelliperf_test_results/

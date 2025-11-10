@@ -24,6 +24,7 @@
 
 import json
 import logging
+import sys
 
 import dspy
 
@@ -31,7 +32,7 @@ from intelliperf.formulas.formula_base import (
 	Formula_Base,
 	OptimizationTracker,
 	Result,
-	filter_json_field,
+	get_kernel_name,
 )
 
 
@@ -250,13 +251,16 @@ class atomic_contention(Formula_Base):
 			**kwargs,
 		)
 
-		self._instrumentation_results = None
 		self.current_kernel = None
 		self.current_args = None
 		self.current_kernel_signature = None
-		self.kernel_to_optimize = None
 		self.optimization_report = None
 		self.bottleneck_report = None
+
+		# Cached optimization candidate (set on first optimize_pass call)
+		self._optimization_candidate = None
+		self._kernel_file = None
+		self._unoptimized_file_content = None
 		self.current_summary = None
 		self.previous_source_code = None
 
@@ -294,30 +298,6 @@ class atomic_contention(Formula_Base):
 					"top_n": self.top_n,
 				},
 			)
-
-	def instrument_pass(self) -> Result:
-		"""
-		Instrument the application, targeting the kernels with the highest atomic contention data
-
-		Returns:
-		    Result: Instrumentation data containing the kernel name, arguments, lines, and file path as dict
-		"""
-		super().instrument_pass()
-
-		# Log instrumentation completion
-		self.get_logger().record(
-			"instrument_pass_complete",
-			{
-				"success": True,
-				"note": "Instrumentation pass completed via parent class",
-			},
-		)
-
-		return Result(
-			success=False,
-			asset=self._instrumentation_results,
-			error_report="Instrumentation pass not implemented for atomic contention.",
-		)
 
 	def build_pass(self, validate_build_result=True) -> Result:
 		"""
@@ -404,64 +384,81 @@ class atomic_contention(Formula_Base):
 		kernel = None
 		kernel_file = None
 
-		if self._instrumentation_results is None:
-			# Get the file from the results
-			field = "atomics"
-			subfield = "atomic_lat"
-			# Average atomic latency in cycles measured experimentally
+		# Find and cache candidate on first call
+		if self._optimization_candidate is None:
+			# Average atomic latency threshold in cycles (measured experimentally)
 			average_atomic_lat = 1000
-			filtered_report_card = filter_json_field(
-				self._initial_profiler_results,
-				field=field,
-				subfield=subfield,
-				comparison_func=lambda x: x > average_atomic_lat,
-				target_kernel=target_kernel,
+
+			self._optimization_candidate = self._initial_profiler_results.find_optimization_candidate(
+				metric_filter=lambda k: (
+					k.atomic_latency_cycles is not None
+					and k.atomic_latency_cycles > average_atomic_lat
+					and (target_kernel is None or target_kernel in k.kernel_name)
+				),
+				require_source_code=True,
 			)
 
-			if len(filtered_report_card) == 0:
-				return Result(success=False, error_report="No atomic contention found.")
+			if self._optimization_candidate is None:
+				error_msg = (
+					f"No optimization candidates found: No kernels with high atomic latency (>{average_atomic_lat} cycles) and available source code. "
+					"This could mean:\n"
+					"  1. All kernels have low atomic contention\n"
+					"  2. Source code is not available for kernels with atomic contention\n"
+					"  3. No kernels were profiled (check if application runs correctly)"
+				)
+				logging.error(error_msg)
+				sys.exit(1)
 
-			logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
+			logging.info(
+				f"Found optimization candidate: {self._optimization_candidate.kernel_name} "
+				f"(atomic latency: {self._optimization_candidate.atomic_latency_cycles:.2f} cycles, "
+				f"duration: {self._optimization_candidate.duration_ns / 1e6:.2f} ms)"
+			)
 
-			kernel = filtered_report_card[0]["kernel"]
+			# Store baseline metrics
+			self.baseline_atomic_latency = self._optimization_candidate.atomic_latency_cycles
+			self.baseline_time_ms = self._optimization_candidate.duration_ns / 1e6
+
+			# Parse kernel signature
+			kernel = self._optimization_candidate.kernel_name
 			self._parse_kernel_signature(kernel)
 
-			# Store baseline metrics on first run
-			if self.baseline_atomic_latency is None:
-				self.baseline_atomic_latency = filtered_report_card[0]["atomics"]["atomic_lat"]
-				self.baseline_time_ms = filtered_report_card[0]["durations"]["ns"] / 1e6
+			# Get source files and cache them
+			files = self._optimization_candidate.source_files
+			self._kernel_file, self._unoptimized_file_content = self.find_kernel_file(files, kernel)
 
-			files = filtered_report_card[0]["source"]["files"]
-			kernel_file, unoptimized_file_content = self.find_kernel_file(files, kernel)
+			# Save reference code once
+			kernel_name = get_kernel_name(kernel)
+			self.get_logger().save_reference_code(kernel_name, self._unoptimized_file_content)
 
-			# Build problem description
-			problem_description = (
-				f"High atomic contention detected in kernel {kernel}. "
-				f"Please optimize to reduce atomic contention but do not change the semantics."
-			)
+		# Use cached values
+		kernel = self._optimization_candidate.kernel_name
+		kernel_file = self._kernel_file
+		unoptimized_file_content = self._unoptimized_file_content
 
+		# Build problem description
+		problem_description = (
+			f"High atomic contention detected in kernel {kernel}. "
+			f"Please optimize to reduce atomic contention but do not change the semantics."
+		)
+
+		# Set up previous source code for diff tracking
+		if self.previous_source_code is None:
 			self.previous_source_code = unoptimized_file_content
 
-			if self.current_args:
-				self.bottleneck_report = (
-					f"Atomic Contention Detection: IntelliPerf identified high atomic contention in kernel "
-					f"`{self.current_kernel}` with arguments `{self.current_args}`. Atomic contention occurs when multiple threads "
-					f"compete for the same atomic operations, causing serialization and increased latency."
-				)
-			else:
-				self.bottleneck_report = (
-					f"Atomic Contention Detection: IntelliPerf identified high atomic contention in kernel "
-					f"`{self.current_kernel}`. Atomic contention occurs when multiple threads "
-					f"compete for the same atomic operations, causing serialization and increased latency."
-				)
-
+		# Build bottleneck report
+		if self.current_args:
+			self.bottleneck_report = (
+				f"Atomic Contention Detection: IntelliPerf identified high atomic contention in kernel "
+				f"`{self.current_kernel}` with arguments `{self.current_args}`. Atomic contention occurs when multiple threads "
+				f"compete for the same atomic operations, causing serialization and increased latency."
+			)
 		else:
-			pass
-
-		if kernel is None:
-			return Result(success=False, error_report="Failed to extract the kernel name.")
-		if kernel_file is None:
-			return Result(success=False, error_report="Failed to extract the kernel file path.")
+			self.bottleneck_report = (
+				f"Atomic Contention Detection: IntelliPerf identified high atomic contention in kernel "
+				f"`{self.current_kernel}`. Atomic contention occurs when multiple threads "
+				f"compete for the same atomic operations, causing serialization and increased latency."
+			)
 
 		self.current_kernel_files = [kernel_file]
 
@@ -619,29 +616,27 @@ class atomic_contention(Formula_Base):
 		Returns:
 		    Result: Validation status
 		"""
-		unoptimized_results = filter_json_field(
-			self._initial_profiler_results,
-			field="kernel",
-			comparison_func=lambda x: x == self.current_kernel_signature,
-		)
+		# Get unoptimized metrics using new ProfileResult API
+		# Use the cached candidate kernel name
+		kernel_name = self._optimization_candidate.kernel_name
+		unoptimized_kernel = self._optimization_candidate
 
-		unoptimized_time = unoptimized_results[0]["durations"]["ns"]
-
-		field = "atomics"
-		subfield = "atomic_lat"
-		unoptimized_metric = unoptimized_results[0][field][subfield]
+		unoptimized_time = unoptimized_kernel.duration_ns
+		unoptimized_metric = unoptimized_kernel.atomic_latency_cycles
 
 		# Profile the optimized application
 		self._optimization_results = self._application.profile(top_n=self.top_n)
 
-		optimized_results = filter_json_field(
-			self._optimization_results,
-			field="kernel",
-			comparison_func=lambda x: x == self.current_kernel_signature,
-		)
+		# Get optimized metrics
+		optimized_kernel = self._optimization_results.get_kernel(kernel_name)
+		if not optimized_kernel:
+			return Result(
+				success=False,
+				error_report=f"Could not find kernel {self.current_kernel_signature} in optimized profiling results",
+			)
 
-		optimized_time = optimized_results[0]["durations"]["ns"]
-		optimized_metric = optimized_results[0][field][subfield]
+		optimized_time = optimized_kernel.duration_ns
+		optimized_metric = optimized_kernel.atomic_latency_cycles
 
 		# Add step to optimization tracker (always - for learning)
 		# Tracker will automatically calculate: speedup, latency_improvement, and success

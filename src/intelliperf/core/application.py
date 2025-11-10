@@ -31,11 +31,8 @@ import tempfile
 
 import pandas as pd
 
+from intelliperf.core.profile_result import KernelMetrics, ProfileResult
 from intelliperf.utils import process
-from intelliperf.utils.env import (
-	get_guided_tuning_path,
-	get_rocprofiler_path,
-)
 from intelliperf.utils.process import capture_subprocess_output, exit_on_fail
 
 
@@ -72,103 +69,86 @@ class Application:
 		elif self.build_command is not None:
 			return process.capture_subprocess_output(self.build_command, working_directory=self.get_project_directory())
 
-	def profile(self, top_n: int):
+	def profile(self, top_n: int) -> ProfileResult:
+		"""
+		Profile the application using Metrix and return performance metrics.
+
+		Args:
+		    top_n: Number of top kernels to profile (sorted by duration)
+
+		Returns:
+		    ProfileResult: Clean abstraction over profiling results with type-safe metric access
+		"""
 		logging.debug(f"Profiling app with name {self.get_name()}")
 		logging.debug(f"Profiling app with command {self.get_app_cmd()}")
 
-		# Clear the cache before running the profiler
-		capture_subprocess_output(
-			["rm", "-rf", f"{get_guided_tuning_path()}/workloads/"],
-			working_directory=self.get_project_directory(),
-			additional_path=get_rocprofiler_path(),
-		)
+		try:
+			from metrix import Metrix
+		except ImportError:
+			logging.error("Metrix profiler not found. Please install it from src/metrix")
+			exit_on_fail(success=False, message="Metrix profiler not available")
 
-		capture_subprocess_output(
-			["rm", "-rf", f"{get_guided_tuning_path()}/data/guided.db"],
-			working_directory=self.get_project_directory(),
-			additional_path=get_rocprofiler_path(),
-		)
+		# Build command string from app_cmd list with absolute path
+		from pathlib import Path
+		import os
+		app_cmd = self.get_app_cmd()
+		project_dir = self.get_project_directory()
 
-		# Profile the app using GT
-		success, output = capture_subprocess_output(
-			[
-				f"{get_guided_tuning_path()}/bin/gt",
-				"profile",
-				"-n",
-				self.get_name(),
-				"--top-n",
-				str(top_n),
-				"--",
-			]
-			+ self.get_app_cmd(),
-			working_directory=self.get_project_directory(),
-			additional_path=get_rocprofiler_path(),
-		)
+		if isinstance(app_cmd, list):
+			# Convert first element (executable) to absolute path for rocprofv3
+			if project_dir:
+				exec_path = Path(project_dir) / app_cmd[0]
+				command_parts = [str(exec_path.resolve())] + app_cmd[1:]
+			else:
+				# No project directory - resolve relative paths to absolute
+				exec_path = Path(app_cmd[0])
+				if not exec_path.is_absolute():
+					exec_path = exec_path.resolve()
+				command_parts = [str(exec_path)] + app_cmd[1:]
+			command = " ".join(command_parts)
+		else:
+			command = str(app_cmd)
 
-		exit_on_fail(success=success, message="Failed to profile the binary", log=output)
+		logging.info(f"Profiling command: {command}")
+		logging.info(f"Working directory: {project_dir or os.getcwd()}")
 
-		# Load workload summary with GT. Save list of top-n kernels for regex
-		success, output = capture_subprocess_output(
-			[
-				f"{get_guided_tuning_path()}/bin/gt",
-				"db",
-				"-n",
-				self.get_name(),
-				"--save",
-				f"{get_guided_tuning_path()}/intelliperf_workloads.csv",
-			],
-			working_directory=self.get_project_directory(),
-			additional_path=get_rocprofiler_path(),
-		)
-		exit_on_fail(
-			success=success,
-			message="Failed to generate the performance report card.",
-			log=output,
-		)
+		# No need to change directory - we use absolute paths
+		try:
 
-		df_intelliperf_workloads = pd.read_csv(f"{get_guided_tuning_path()}/intelliperf_workloads.csv")
-		logging.debug(f"Matching DB Workloads: {df_intelliperf_workloads}")
-		last_matching_id = df_intelliperf_workloads.iloc[-1]["id"]
+			# Configure metrix logger to use IntelliPerf's logging level
+			intelliperf_level = logging.getLogger().getEffectiveLevel()
+			metrix_logger = logging.getLogger("metrix")
+			metrix_logger.setLevel(intelliperf_level)
+			logging.debug(f"Set metrix logger level to {logging.getLevelName(intelliperf_level)}")
 
-		success, output = capture_subprocess_output(
-			[
-				f"{get_guided_tuning_path()}/bin/gt",
-				"db",
-				"-w",
-				str(last_matching_id),
-				"--save",
-				f"{get_guided_tuning_path()}/intelliperf_summary.csv",
-			],
-			working_directory=self.get_project_directory(),
-			additional_path=get_rocprofiler_path(),
-		)
-		# Handle critical error
-		exit_on_fail(
-			success=success,
-			message="Failed to generate the performance report card.",
-			log=output,
-		)
-		df_results = pd.read_csv(f"{get_guided_tuning_path()}/intelliperf_summary.csv")
-		# Create a targeted report card
-		top_n_kernels = list(df_results.head(top_n)["Kernel"])
-		logging.debug(f"top_n_kernels: {top_n_kernels}")
-		success, output = capture_subprocess_output(
-			[
-				f"{get_guided_tuning_path()}/bin/gt",
-				"db",
-				"-w",
-				str(last_matching_id),
-				"-k",
-				f"{'|'.join(top_n_kernels)}",
-				"--separate",
-				"--save",
-				f"{get_guided_tuning_path()}/intelliperf_report_card.json",
-			],
-			working_directory=self.get_project_directory(),
-			additional_path=get_rocprofiler_path(),
-		)
-		df_results = json.loads(open(f"{get_guided_tuning_path()}/intelliperf_report_card.json").read())
-		return df_results
+			# Initialize metrix profiler (auto-detects GPU architecture)
+			profiler = Metrix()
+
+			# Profile the application with all available metrics
+			results = profiler.profile(
+				command=command,
+				num_replays=3,  # Run multiple times for statistical accuracy
+				aggregate_by_kernel=True,
+				cwd=project_dir  # Run from project directory (or None for current dir)
+			)
+		finally:
+			pass  # No cleanup needed
+
+		if not results.kernels:
+			logging.warning("No kernels found during profiling")
+			return ProfileResult(kernels=[])
+
+		# Sort kernels by duration (descending) and take top N
+		sorted_kernels = sorted(results.kernels, key=lambda k: k.duration_us.avg, reverse=True)
+		top_kernels = sorted_kernels[:top_n]
+
+		logging.info(f"Found {len(results.kernels)} kernel(s), reporting top {len(top_kernels)}")
+
+		# Convert metrix results to IntelliPerf ProfileResult format
+		kernel_metrics_list = [KernelMetrics.from_metrix_kernel(kernel) for kernel in top_kernels]
+		profile_result = ProfileResult(kernels=kernel_metrics_list)
+		logging.debug(f"Profiling result: {profile_result}")
+		return profile_result
 
 	def run(self):
 		"""Runs the application."""
@@ -270,7 +250,12 @@ class Application:
 			# Convert trace to the expected format
 			df_results = {"kernels": {}}
 			for kernel in trace:
-				df_results["kernels"][kernel.name] = {
+				# Normalize kernel name - strip .kd suffix if present
+				kernel_name = kernel.name
+				if kernel_name.endswith(".kd"):
+					kernel_name = kernel_name[:-3]
+
+				df_results["kernels"][kernel_name] = {
 					"assembly": kernel.assembly,
 					"hip": kernel.hip,
 					"files": kernel.files,

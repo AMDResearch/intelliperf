@@ -288,10 +288,6 @@ def main():
 	optimizer.source_code_pass()
 	flush_logs_if_enabled()  # Flush after source code collection
 
-	# Instrument the application based on the results.
-	optimizer.instrument_pass()
-	flush_logs_if_enabled()  # Flush after instrumentation
-
 	# Initialize performance_result for diagnoseOnly case
 	performance_result = None
 
@@ -327,7 +323,6 @@ def main():
 		performance_result = optimizer.performance_validation_pass()
 		if not performance_result:
 			performance_result.report_out()
-			logging.warning(f"Performance validation pass {attempt + 1} failed. Retrying...")
 			flush_logs_if_enabled()  # Flush after failed performance validation
 			continue
 

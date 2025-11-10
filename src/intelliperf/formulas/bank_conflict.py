@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 
 import dspy
 
@@ -34,7 +35,7 @@ from intelliperf.formulas.formula_base import (
 	Formula_Base,
 	OptimizationTracker,
 	Result,
-	filter_json_field,
+	get_kernel_name,
 )
 from intelliperf.utils.process import capture_subprocess_output
 from intelliperf.utils.regex import generate_ecma_regex_from_list
@@ -257,15 +258,17 @@ class bank_conflict(Formula_Base):
 			**kwargs,
 		)
 
-		# This temp option allows us to toggle if we want a full or partial instrumentation report
-		self._instrumentation_results = None
 		self.current_kernel = None
 		self.current_args = None
-		self.kernel_to_optimize = None
 		self.optimization_report = None
 		self.bottleneck_report = None
 		self.current_summary = None
 		self.previous_source_code = None
+
+		# Cached optimization candidate (set on first optimize_pass call)
+		self._optimization_candidate = None
+		self._kernel_file = None
+		self._unoptimized_file_content = None
 
 		# Initialize optimization tracker
 		# Bank conflict optimization: minimize conflicts (lower is better)
@@ -357,102 +360,7 @@ class bank_conflict(Formula_Base):
 				},
 			)
 
-	def get_top_kernel(self) -> str:
-		# Filter out any kernel with no bank conflicts
-		filtered_report_card = [
-			entry for entry in self._initial_profiler_results if entry.get("lds", {}).get("bc", 0) > 0
-		]
-		# Filter out any kernel with no source code
-		filtered_report_card = [entry for entry in filtered_report_card if entry.get("source", {}).get("hip", [])]
 
-		logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
-
-		if len(filtered_report_card) == 0:
-			return None
-		return filtered_report_card[0]["kernel"]
-
-	def instrument_pass(self) -> Result:
-		"""
-		Instrument the application, targeting the kernels with the highest bank conflict data
-
-		Returns:
-		    Result: Instrumentation data containing the kernel name, arguments, lines, and file path as dict
-		"""
-		super().instrument_pass()
-
-		# Log instrumentation completion
-		self.get_logger().record(
-			"instrument_pass_complete",
-			{
-				"success": True,
-				"note": "Instrumentation pass completed via parent class",
-			},
-		)
-
-		return Result(
-			success=False,
-			asset=self._instrumentation_results,
-			error_report="Instrumentation pass not implemented for bank conflict.",
-		)
-
-		# Always instrument the first kernel
-		kernel_to_instrument = self.get_top_kernel()
-		if kernel_to_instrument is None:
-			return Result(
-				success=False,
-				error_report="No source code found. Please compile your code with -g.",
-			)
-
-		omniprobe_output_dir = os.path.join(self._application.get_project_directory(), "memory_analysis_output")
-
-		# Remove directory if it exists and create a new one
-		if os.path.exists(omniprobe_output_dir):
-			shutil.rmtree(omniprobe_output_dir)
-
-		ecma_regex = generate_ecma_regex_from_list([kernel_to_instrument])
-		logging.debug(f"ECMA Regex for kernel names: {ecma_regex}")
-		cmd = " ".join(self._application.get_app_cmd())
-		logging.debug(f"Omniprobe profiling command is: {cmd}")
-		success, output = capture_subprocess_output(
-			[
-				"omniprobe",
-				"--instrumented",
-				"--analyzers",
-				"MemoryAnalysis",
-				"--kernels",
-				ecma_regex,
-				"--",
-				" ".join(self._application.get_app_cmd()),
-			],
-			working_directory=self._application.get_project_directory(),
-		)
-		if not success:
-			logging.warning(f"Failed to instrument the application: {output}")
-			return Result(
-				success=False,
-				error_report=f"Failed to instrument the application: {output}",
-			)
-
-		# Try loading the memory analysis output
-		# Find all files in the memory_analysis_output directory
-		output_files = glob.glob(os.path.join(omniprobe_output_dir, "memory_analysis_*.json"))
-		if len(output_files) == 0:
-			return Result(success=False, error_report="No memory analysis output files found.")
-		output_file = output_files[0]
-		try:
-			with open(output_file, "r") as f:
-				self._instrumentation_results = json.load(f)
-				# for all files, remove the [clone .kd] suffix
-				# for analysis in self._instrumentation_results["kernel_analyses"]:
-				#    analysis["kernel_info"]["name"] = analysis["kernel_info"]["name"].split(" [clone .kd]")[0]
-				logging.debug(f"Instrumentation results: {json.dumps(self._instrumentation_results, indent=4)}")
-		except FileNotFoundError:
-			logging.warning(f"Memory analysis output file not found: {output_file}")
-			return Result(
-				success=False,
-				error_report=f"Memory analysis output file not found: {output_file}",
-			)
-		return Result(success=True, asset=self._instrumentation_results)
 
 	def optimize_pass(
 		self,
@@ -480,70 +388,78 @@ class bank_conflict(Formula_Base):
 		# Get LLM instance (initialized once per formula)
 		llm = self.get_llm(system_prompt)
 
-		kernel_to_optimize = self.get_top_kernel()
-		if kernel_to_optimize is None:
-			return Result(
-				success=False,
-				error_report="No source code or bank conflicts found. Please compile your code with -g.",
+		# Find and cache candidate on first call
+		if self._optimization_candidate is None:
+			self._optimization_candidate = self._initial_profiler_results.find_optimization_candidate(
+				metric_filter=lambda k: (
+					k.lds_bank_conflicts is not None
+					and k.lds_bank_conflicts > 0
+					and (target_kernel is None or target_kernel in k.kernel_name)
+				),
+				require_source_code=True,
 			)
 
-		kernel = None
-		kernel_file = None
+			if self._optimization_candidate is None:
+				error_msg = (
+					"No optimization candidates found: No kernels with bank conflicts (>0) and available source code. "
+					"This could mean:\n"
+					"  1. All kernels have no shared memory bank conflicts\n"
+					"  2. Source code is not available for kernels with bank conflicts\n"
+					"  3. No kernels were profiled (check if application runs correctly)"
+				)
+				logging.error(error_msg)
+				sys.exit(1)
 
-		# Get the file from the results
-		if self._instrumentation_results is None:
-			# Get the file from the results
-			filtered_report_card = filter_json_field(
-				self._initial_profiler_results,
-				field="lds",
-				subfield="bc",
-				comparison_func=lambda x: x > 0,
-				target_kernel=target_kernel,
+			logging.info(
+				f"Found optimization candidate: {self._optimization_candidate.kernel_name} "
+				f"(bank conflicts: {self._optimization_candidate.lds_bank_conflicts:.2f}, "
+				f"duration: {self._optimization_candidate.duration_ns / 1e6:.2f} ms)"
 			)
 
-			if len(filtered_report_card) == 0:
-				return Result(success=False, error_report="No bank conflicts found.")
+			# Store baseline metrics
+			self.baseline_bank_conflicts = self._optimization_candidate.lds_bank_conflicts
+			self.baseline_time_ms = self._optimization_candidate.duration_ns / 1e6
 
-			logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
-
-			kernel = filtered_report_card[0]["kernel"]
+			# Parse kernel signature
+			kernel = self._optimization_candidate.kernel_name
 			self._parse_kernel_signature(kernel)
 
-			# Store baseline metrics on first run
-			if self.baseline_bank_conflicts is None:
-				self.baseline_bank_conflicts = filtered_report_card[0]["lds"]["bc"]
-				self.baseline_time_ms = filtered_report_card[0]["durations"]["ns"] / 1e6
+			# Get source files and cache them
+			files = self._optimization_candidate.source_files
+			self._kernel_file, self._unoptimized_file_content = self.find_kernel_file(files, kernel)
 
-			files = filtered_report_card[0]["source"]["files"]
-			kernel_file, unoptimized_file_content = self.find_kernel_file(files, kernel)
+			# Save reference code once
+			kernel_name = get_kernel_name(kernel)
+			self.get_logger().save_reference_code(kernel_name, self._unoptimized_file_content)
 
-			# Build problem description
-			problem_description = (
-				f"Shared memory bank conflicts detected in kernel {kernel}. "
-				f"Please optimize to reduce bank conflicts but do not change the semantics."
-			)
+		# Use cached values
+		kernel = self._optimization_candidate.kernel_name
+		kernel_file = self._kernel_file
+		unoptimized_file_content = self._unoptimized_file_content
 
+		# Build problem description
+		problem_description = (
+			f"Shared memory bank conflicts detected in kernel {kernel}. "
+			f"Please optimize to reduce bank conflicts but do not change the semantics."
+		)
+
+		# Set up previous source code for diff tracking
+		if self.previous_source_code is None:
 			self.previous_source_code = unoptimized_file_content
 
-			if self.current_args:
-				self.bottleneck_report = (
-					f"Bank Conflict Detection: IntelliPerf identified shared memory bank conflicts in kernel "
-					f"`{self.current_kernel}` with arguments `{self.current_args}`. Bank conflicts occur when multiple threads "
-					f"access the same memory bank simultaneously, causing serialization and performance degradation."
-				)
-			else:
-				self.bottleneck_report = (
-					f"Bank Conflict Detection: IntelliPerf identified shared memory bank conflicts in kernel "
-					f"`{self.current_kernel}`. Bank conflicts occur when multiple threads "
-					f"access the same memory bank simultaneously, causing serialization and performance degradation."
-				)
+		# Build bottleneck report
+		if self.current_args:
+			self.bottleneck_report = (
+				f"Bank Conflict Detection: IntelliPerf identified shared memory bank conflicts in kernel "
+				f"`{self.current_kernel}` with arguments `{self.current_args}`. Bank conflicts occur when multiple threads "
+				f"access the same memory bank simultaneously, causing serialization and performance degradation."
+			)
 		else:
-			pass
-
-		if kernel is None:
-			return Result(success=False, error_report="Failed to extract the kernel name.")
-		if kernel_file is None:
-			return Result(success=False, error_report="Failed to extract the kernel file path.")
+			self.bottleneck_report = (
+				f"Bank Conflict Detection: IntelliPerf identified shared memory bank conflicts in kernel "
+				f"`{self.current_kernel}`. Bank conflicts occur when multiple threads "
+				f"access the same memory bank simultaneously, causing serialization and performance degradation."
+			)
 
 		self.current_kernel_files = [kernel_file]
 
@@ -694,26 +610,27 @@ class bank_conflict(Formula_Base):
 		return result
 
 	def performance_validation_pass(self) -> Result:
-		unoptimized_results = filter_json_field(
-			self._initial_profiler_results,
-			field="kernel",
-			comparison_func=lambda x: x == self.current_kernel_signature,
-		)
+		# Get unoptimized metrics using new ProfileResult API
+		# Use the cached candidate kernel name
+		kernel_name = self._optimization_candidate.kernel_name
+		unoptimized_kernel = self._optimization_candidate
 
-		unoptimized_time = unoptimized_results[0]["durations"]["ns"]
-		unoptimized_conflicts = unoptimized_results[0]["lds"]["bc"]
+		unoptimized_time = unoptimized_kernel.duration_ns
+		unoptimized_conflicts = unoptimized_kernel.lds_bank_conflicts
 
 		# Profile the optimized application
 		self._optimization_results = self._application.profile(top_n=self.top_n)
 
-		optimized_results = filter_json_field(
-			self._optimization_results,
-			field="kernel",
-			comparison_func=lambda x: x == self.current_kernel_signature,
-		)
+		# Get optimized metrics
+		optimized_kernel = self._optimization_results.get_kernel(kernel_name)
+		if not optimized_kernel:
+			return Result(
+				success=False,
+				error_report=f"Could not find kernel {self.current_kernel_signature} in optimized profiling results",
+			)
 
-		optimized_time = optimized_results[0]["durations"]["ns"]
-		optimized_conflicts = optimized_results[0]["lds"]["bc"]
+		optimized_time = optimized_kernel.duration_ns
+		optimized_conflicts = optimized_kernel.lds_bank_conflicts
 
 		# Add step to optimization tracker (always - for learning)
 		# Tracker will automatically calculate: speedup, conflict_improvement, and success
