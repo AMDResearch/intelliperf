@@ -4,8 +4,7 @@
 """Snapshot: Represents captured kernel argument data from a binary execution."""
 
 from dataclasses import dataclass
-from typing import List
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 

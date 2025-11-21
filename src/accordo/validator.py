@@ -3,6 +3,7 @@
 
 """AccordoValidator: Main validation class for Accordo."""
 
+import json
 import logging
 import os
 import signal
@@ -10,7 +11,6 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Optional
-import json
 
 import numpy as np
 
@@ -203,7 +203,11 @@ class Accordo:
 			# Prepare a metadata file path for exporter to write dispatch dims
 			metadata_file = f"/tmp/accordo_metadata_{int(start_time * 1000)}.json"
 			result_arrays = self._run_instrumented_app(
-				binary, working_directory, label="snapshot", baseline_time_ms=None, extra_env={"ACCORDO_METADATA_FILE": metadata_file}
+				binary,
+				working_directory,
+				label="snapshot",
+				baseline_time_ms=None,
+				extra_env={"ACCORDO_METADATA_FILE": metadata_file},
 			)
 			signal.alarm(0)  # Cancel alarm on success
 			execution_time_ms = (time.time() - start_time) * 1000
@@ -317,7 +321,12 @@ class Accordo:
 		return self.compare_snapshots(reference_snapshot, optimized_snapshot)
 
 	def _run_instrumented_app(
-		self, binary_cmd: list[str], working_directory: str, label: str, baseline_time_ms: Optional[float] = None, extra_env: Optional[dict] = None
+		self,
+		binary_cmd: list[str],
+		working_directory: str,
+		label: str,
+		baseline_time_ms: Optional[float] = None,
+		extra_env: Optional[dict] = None,
 	) -> list[np.ndarray]:
 		"""Run an instrumented application and collect kernel argument data.
 
