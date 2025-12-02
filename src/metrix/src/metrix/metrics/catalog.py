@@ -3,6 +3,7 @@ Main metric catalog and profiles
 """
 
 from .memory_metrics import MEMORY_METRICS
+from .compute_metrics import COMPUTE_METRICS
 
 # ═══════════════════════════════════════════════════════════════════
 # COMPLETE METRIC CATALOG
@@ -10,7 +11,8 @@ from .memory_metrics import MEMORY_METRICS
 
 METRIC_CATALOG = {
     **MEMORY_METRICS,
-    # Will add compute, occupancy, bottleneck metrics later
+    **COMPUTE_METRICS,
+    # Will add occupancy, bottleneck metrics later
 }
 
 # ═══════════════════════════════════════════════════════════════════
@@ -80,6 +82,23 @@ METRIC_PROFILES = {
             "memory.coalescing_efficiency",
         ],
         "estimated_passes": 1
+    },
+
+    "compute": {
+        "description": "Compute and arithmetic intensity analysis",
+        "metrics": [
+            "compute.total_flops",
+            "compute.hbm_gflops",
+            "compute.hbm_arithmetic_intensity",
+            "compute.l2_arithmetic_intensity",
+            "compute.l1_arithmetic_intensity",
+        ],
+        "estimated_passes": 3,
+        "focus": "compute_performance",
+        "typical_bottlenecks": [
+            "low_arithmetic_intensity",
+            "memory_bound_kernel"
+        ]
     }
 }
 

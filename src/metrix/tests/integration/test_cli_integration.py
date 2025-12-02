@@ -36,7 +36,7 @@ def test_cli_time_only_aggregated():
             "metrix",
             "profile",
             "--time-only",
-            "--runs",
+            "--num-replays",
             "3",
             "--aggregate",
             str(VECTOR_ADD),
@@ -103,3 +103,73 @@ def test_cli_list_metrics():
 
     assert result.returncode == 0
     assert "memory.l2_hit_rate" in result.stdout
+
+
+def test_cli_list_metrics_includes_compute():
+    """Test that metrix list metrics includes compute metrics"""
+    result = subprocess.run(
+        ["metrix", "list", "metrics"], capture_output=True, text=True, timeout=5
+    )
+
+    assert result.returncode == 0
+    assert "compute.total_flops" in result.stdout
+    assert "compute.hbm_arithmetic_intensity" in result.stdout
+
+
+def test_cli_list_profiles_includes_compute():
+    """Test that metrix list profiles includes compute profile"""
+    result = subprocess.run(
+        ["metrix", "list", "profiles"], capture_output=True, text=True, timeout=5
+    )
+
+    assert result.returncode == 0
+    assert "COMPUTE" in result.stdout
+
+
+@pytest.mark.timeout(120)
+@pytest.mark.skipif(not VECTOR_ADD.exists(), reason="vector_add not compiled")
+def test_cli_compute_profile():
+    """Test metrix profile --profile compute"""
+    result = subprocess.run(
+        [
+            "metrix",
+            "profile",
+            "--profile",
+            "compute",
+            "-n",
+            "1",
+            "--aggregate",
+            str(VECTOR_ADD),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert "vector_add" in result.stdout
+    # Compute profile should show compute metrics
+    assert "COMPUTE" in result.stdout or "Total FLOPS" in result.stdout or "Arithmetic Intensity" in result.stdout
+
+
+@pytest.mark.timeout(120)
+@pytest.mark.skipif(not VECTOR_ADD.exists(), reason="vector_add not compiled")
+def test_cli_compute_metric_directly():
+    """Test metrix --metrics compute.total_flops"""
+    result = subprocess.run(
+        [
+            "metrix",
+            "--metrics",
+            "compute.total_flops",
+            "-n",
+            "1",
+            str(VECTOR_ADD),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, f"Command failed: {result.stderr}"
+    assert "vector_add" in result.stdout
+    assert "Total FLOPS" in result.stdout or "FLOPS" in result.stdout

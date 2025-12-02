@@ -3,13 +3,16 @@ Info command implementation
 """
 
 from ..metrics import METRIC_CATALOG, METRIC_PROFILES
+from ..backends import get_backend, detect_or_default
 
 
 def info_command(args):
     """Execute info command"""
 
     if args.info_type == "metric":
-        show_metric_info(args.name)
+        # Get architecture from args if available, otherwise auto-detect
+        arch = getattr(args, 'arch', None) or detect_or_default()
+        show_metric_info(args.name, arch)
     elif args.info_type == "profile":
         show_profile_info(args.name)
     elif args.info_type == "counter":
@@ -18,7 +21,7 @@ def info_command(args):
     return 0
 
 
-def show_metric_info(metric_name):
+def show_metric_info(metric_name, arch="gfx942"):
     """Show detailed metric information"""
 
     if metric_name not in METRIC_CATALOG:
@@ -37,9 +40,21 @@ def show_metric_info(metric_name):
     print(f"Unit:        {metric_def['unit']}")
     print(f"Category:    {metric_def['category'].value}")
 
-    print(f"\nRequired Hardware Counters:")
-    for counter in metric_def['derived_from']:
-        print(f"  • {counter}")
+    # Show actual hardware counters from the backend (architecture-specific)
+    print(f"\nRequired Hardware Counters ({arch}):")
+    try:
+        backend = get_backend(arch)
+        actual_counters = backend.get_metric_counters(metric_name)
+        for counter in actual_counters:
+            print(f"  • {counter}")
+    except ValueError as e:
+        # Metric not implemented in this backend
+        print(f"  ⚠️  Metric not implemented for {arch}")
+        # Fall back to catalog's derived_from as documentation
+        if 'derived_from' in metric_def:
+            print(f"\n  Conceptual counters (from catalog):")
+            for counter in metric_def['derived_from']:
+                print(f"    • {counter}")
 
     if 'interpretation' in metric_def:
         print(f"\nInterpretation Guide:")

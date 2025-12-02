@@ -83,6 +83,24 @@ class GFX1201Backend(CounterBackend):
         """
         return 0.0
 
+    @metric("memory.bytes_transferred_l2")
+    def _bytes_transferred_l2(self):
+        """
+        Total bytes transferred through L2 cache
+
+        Formula: TCC_REQ_sum * 128 (L2 cache line size is 128 bytes)
+        """
+        return 0.0
+
+    @metric("memory.bytes_transferred_l1")
+    def _bytes_transferred_l1(self):
+        """
+        Total bytes transferred through L1 cache
+
+        Formula: TCP_TOTAL_CACHE_ACCESSES_sum * cache_line_size (architecture-dependent)
+        """
+        return 0.0
+
     # Cache metrics
 
     @metric("memory.l2_hit_rate")
@@ -173,3 +191,49 @@ class GFX1201Backend(CounterBackend):
 
         return 0.0
 
+    # Compute metrics
+
+    @metric("compute.total_flops")
+    def _total_flops(self):
+        """
+        Total floating-point operations performed by the kernel
+
+        Formula: 64 * (FP16 + FP32 + FP64) + 512 * MFMA
+        """
+        return 0.0
+
+    @metric("compute.hbm_gflops")
+    def _hbm_gflops(self):
+        """
+        Compute throughput (GFLOPS) normalized by kernel execution time
+
+        Formula: (total_flops / 1e9) / time_seconds
+        """
+        return 0.0
+
+    @metric("compute.hbm_arithmetic_intensity")
+    def _hbm_arithmetic_intensity(self):
+        """
+        HBM Arithmetic Intensity: ratio of floating-point operations to HBM bytes transferred (FLOP/byte)
+
+        Formula: total_flops / hbm_bytes
+        """
+        return 0.0
+
+    @metric("compute.l2_arithmetic_intensity")
+    def _l2_arithmetic_intensity(self):
+        """
+        L2 Arithmetic Intensity: ratio of floating-point operations to L2 cache bytes accessed (FLOP/byte)
+
+        Formula: total_flops / l2_bytes
+        """
+        return 0.0
+
+    @metric("compute.l1_arithmetic_intensity")
+    def _l1_arithmetic_intensity(self):
+        """
+        L1 Arithmetic Intensity: ratio of floating-point operations to L1 cache bytes accessed (FLOP/byte)
+
+        Formula: total_flops / l1_bytes
+        """
+        return 0.0

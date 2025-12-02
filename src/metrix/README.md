@@ -17,6 +17,7 @@ Existing GPU profilers are **trash**:
 - **Human-readable metrics** instead of raw counters
 - **Unit tested** and reliable
 - **12 Memory Metrics**: Bandwidth, cache, coalescing, LDS, atomic latency
+- **7 Compute Metrics**: FLOPS, arithmetic intensity (HBM/L2/L1), compute throughput
 - **Multi-Run Profiling**: Automatic aggregation with min/max/avg statistics
 - **Kernel Filtering**: Efficient regex filtering at rocprofv3 level
 - **Multiple Output Formats**: Text, JSON, CSV
@@ -68,6 +69,8 @@ for kernel in results.kernels:
 - `memory.hbm_write_bandwidth` - HBM write bandwidth (GB/s)
 - `memory.hbm_bandwidth_utilization` - % of peak HBM bandwidth
 - `memory.bytes_transferred_hbm` - Total bytes through HBM
+- `memory.bytes_transferred_l2` - Total bytes through L2 cache
+- `memory.bytes_transferred_l1` - Total bytes through L1 cache
 
 ### Cache Performance
 - `memory.l1_hit_rate` - L1 cache hit rate (%)
@@ -85,13 +88,20 @@ for kernel in results.kernels:
 ### Atomic Operations
 - `memory.atomic_latency` - Atomic operation latency (cycles)
 
+### Compute Metrics
+- `compute.total_flops` - Total floating-point operations performed
+- `compute.hbm_gflops` - Compute throughput (GFLOPS)
+- `compute.hbm_arithmetic_intensity` - Ratio of FLOPs to HBM bytes (FLOP/byte)
+- `compute.l2_arithmetic_intensity` - Ratio of FLOPs to L2 bytes (FLOP/byte)
+- `compute.l1_arithmetic_intensity` - Ratio of FLOPs to L1 bytes (FLOP/byte)
+
 ## CLI Options
 
 ```
 metrix [options] <command>
 
 Options:
-  --profile, -p      Use pre-defined profile (quick, memory)
+  --profile, -p      Use pre-defined profile (quick, memory, compute)
   --metrics, -m      Comma-separated list of metrics
   --time-only        Only collect timing
   --kernel, -k       Filter by kernel name substring
