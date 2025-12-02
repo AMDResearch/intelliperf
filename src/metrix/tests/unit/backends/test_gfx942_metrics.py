@@ -146,40 +146,73 @@ class TestLDSBankConflicts:
 
 
 class TestBandwidthMetrics:
-    """Test HBM bandwidth computations"""
+    """Test HBM bandwidth computations with 32B/64B/128B request granularity"""
 
-    def test_hbm_read_bandwidth(self):
-        """Test read bandwidth calculation"""
+    def test_hbm_read_bandwidth_64b_only(self):
+        """Test read bandwidth with only 64B requests"""
         backend = GFX942Backend()
         backend._raw_data = {
-            'TCC_EA0_RDREQ_sum': 1000,
-            'TCC_EA1_RDREQ_sum': 1000,
-            'GRBM_GUI_ACTIVE': 2100000  # 1 ms at 2.1 GHz
+            'TCC_EA0_RDREQ_sum': 1000,      # Total read requests
+            'TCC_EA0_RDREQ_32B_sum': 0,     # No 32B requests
+            'TCC_BUBBLE_sum': 0,            # No 128B requests
+            'GRBM_GUI_ACTIVE': 2100000      # 1 ms at 2.1 GHz
         }
 
         result = backend._hbm_read_bandwidth()
-        # (2000 requests * 64 bytes) / 0.001 seconds = 128 MB/s = 0.128 GB/s
-        assert 0.1 < result < 0.2
+        # (1000 * 64 bytes) / 0.001 seconds = 64 MB/s = 0.064 GB/s
+        assert 0.06 < result < 0.07
 
-    def test_hbm_write_bandwidth(self):
-        """Test write bandwidth calculation"""
+    def test_hbm_read_bandwidth_mixed_sizes(self):
+        """Test read bandwidth with mixed request sizes"""
         backend = GFX942Backend()
         backend._raw_data = {
-            'TCC_EA0_WRREQ_sum': 500,
-            'TCC_EA1_WRREQ_sum': 500,
-            'GRBM_GUI_ACTIVE': 2100000  # 1 ms at 2.1 GHz
+            'TCC_EA0_RDREQ_sum': 1000,      # Total requests
+            'TCC_EA0_RDREQ_32B_sum': 200,   # 200 × 32B = 6400 bytes
+            'TCC_BUBBLE_sum': 300,          # 300 × 128B = 38400 bytes
+            # Remaining: 1000 - 200 - 300 = 500 × 64B = 32000 bytes
+            # Total: 6400 + 38400 + 32000 = 76800 bytes
+            'GRBM_GUI_ACTIVE': 2100000      # 1 ms at 2.1 GHz
+        }
+
+        result = backend._hbm_read_bandwidth()
+        # 76800 / 1e9 / 0.001 = 0.0768 GB/s
+        assert 0.07 < result < 0.08
+
+    def test_hbm_write_bandwidth_64b_only(self):
+        """Test write bandwidth with only 64B requests"""
+        backend = GFX942Backend()
+        backend._raw_data = {
+            'TCC_EA0_WRREQ_sum': 1000,      # Total write requests
+            'TCC_EA0_WRREQ_64B_sum': 1000,  # All are 64B
+            'GRBM_GUI_ACTIVE': 2100000      # 1 ms at 2.1 GHz
         }
 
         result = backend._hbm_write_bandwidth()
-        # (1000 requests * 64 bytes) / 0.001 seconds = 64 MB/s = 0.064 GB/s
-        assert 0.05 < result < 0.1
+        # (1000 * 64 bytes) / 0.001 seconds = 64 MB/s = 0.064 GB/s
+        assert 0.06 < result < 0.07
+
+    def test_hbm_write_bandwidth_mixed_sizes(self):
+        """Test write bandwidth with mixed 32B and 64B requests"""
+        backend = GFX942Backend()
+        backend._raw_data = {
+            'TCC_EA0_WRREQ_sum': 1000,      # Total write requests
+            'TCC_EA0_WRREQ_64B_sum': 600,   # 600 × 64B = 38400 bytes
+            # Remaining: 1000 - 600 = 400 × 32B = 12800 bytes
+            # Total: 38400 + 12800 = 51200 bytes
+            'GRBM_GUI_ACTIVE': 2100000      # 1 ms at 2.1 GHz
+        }
+
+        result = backend._hbm_write_bandwidth()
+        # 51200 / 1e9 / 0.001 = 0.0512 GB/s
+        assert 0.05 < result < 0.06
 
     def test_zero_active_cycles(self):
         """Handle zero active cycles"""
         backend = GFX942Backend()
         backend._raw_data = {
             'TCC_EA0_RDREQ_sum': 1000,
-            'TCC_EA1_RDREQ_sum': 1000,
+            'TCC_EA0_RDREQ_32B_sum': 0,
+            'TCC_BUBBLE_sum': 0,
             'GRBM_GUI_ACTIVE': 0
         }
 
@@ -188,36 +221,38 @@ class TestBandwidthMetrics:
 
 
 class TestAtomicLatency:
-    """Test atomic operation latency computation"""
+    """Test L2 cache atomic operation latency computation"""
 
     def test_low_latency(self):
         """10 cycles per atomic operation"""
         backend = GFX942Backend()
         backend._raw_data = {
-            'SQ_INSTS_GDS': 1000,
-            'GDS_BUSY': 10000
+            'TCC_EA0_ATOMIC_sum': 1000,        # 1000 atomic operations
+            'TCC_EA0_ATOMIC_LEVEL_sum': 10000  # 10000 total cycles
         }
 
         result = backend._atomic_latency()
+        # 10000 / 1000 = 10 cycles per atomic
         assert result == 10.0
 
     def test_high_latency(self):
         """1000 cycles per atomic (contention)"""
         backend = GFX942Backend()
         backend._raw_data = {
-            'SQ_INSTS_GDS': 100,
-            'GDS_BUSY': 100000
+            'TCC_EA0_ATOMIC_sum': 100,           # 100 atomic operations
+            'TCC_EA0_ATOMIC_LEVEL_sum': 100000   # 100000 total cycles
         }
 
         result = backend._atomic_latency()
+        # 100000 / 100 = 1000 cycles per atomic
         assert result == 1000.0
 
     def test_no_atomics(self):
         """Handle zero atomic instructions"""
         backend = GFX942Backend()
         backend._raw_data = {
-            'SQ_INSTS_GDS': 0,
-            'GDS_BUSY': 5000
+            'TCC_EA0_ATOMIC_sum': 0,
+            'TCC_EA0_ATOMIC_LEVEL_sum': 5000
         }
 
         result = backend._atomic_latency()
