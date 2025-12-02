@@ -1,8 +1,8 @@
 """
-Integration test to verify all 11 metrics are displayed
+Integration test to verify all metrics are displayed
 
-This test specifically validates the bug fix where only 7 out of 11 metrics
-were being displayed due to MetricComputer receiving wrong parameter type.
+This test validates that all memory and compute metrics are properly
+computed and displayed by the metrix profiler.
 """
 
 import pytest
@@ -35,10 +35,10 @@ def vector_add_binary(tmp_path):
 
 @pytest.mark.integration
 @pytest.mark.timeout(60)
-def test_all_11_metrics_are_displayed(vector_add_binary):
-    """Verify that all 11 metrics are computed and displayed"""
+def test_all_memory_metrics_are_displayed(vector_add_binary):
+    """Verify that all 12 memory metrics are computed and displayed"""
     result = subprocess.run(
-        ["metrix", "-n", "1", "--aggregate", str(vector_add_binary)],
+        ["metrix", "-n", "1", "--aggregate", "--profile", "memory", str(vector_add_binary)],
         capture_output=True,
         text=True,
         timeout=60,
@@ -47,8 +47,8 @@ def test_all_11_metrics_are_displayed(vector_add_binary):
     assert result.returncode == 0, f"stderr: {result.stderr}"
     output = result.stdout
 
-    # List of all 11 expected metrics (friendly names as displayed)
-    expected_metrics = [
+    # List of all expected memory metrics (friendly names as displayed)
+    expected_memory_metrics = [
         # Memory Bandwidth (5 metrics)
         "HBM Read Bandwidth",
         "HBM Write Bandwidth",
@@ -67,15 +67,15 @@ def test_all_11_metrics_are_displayed(vector_add_binary):
     ]
 
     missing_metrics = []
-    for metric in expected_metrics:
+    for metric in expected_memory_metrics:
         if metric not in output:
             missing_metrics.append(metric)
 
     assert (
         len(missing_metrics) == 0
-    ), f"Missing metrics: {missing_metrics}\n\nOutput:\n{output}"
+    ), f"Missing memory metrics: {missing_metrics}\n\nOutput:\n{output}"
 
-    print(f"✓ All {len(expected_metrics)} metrics displayed successfully")
+    print(f"✓ All {len(expected_memory_metrics)} memory metrics displayed successfully")
 
 
 @pytest.mark.integration
@@ -110,9 +110,44 @@ def test_bandwidth_metrics_have_values(vector_add_binary):
 
 
 @pytest.mark.integration
+@pytest.mark.timeout(120)
+def test_all_compute_metrics_are_displayed(vector_add_binary):
+    """Verify that all compute metrics are computed and displayed"""
+    result = subprocess.run(
+        ["metrix", "-n", "1", "--aggregate", "--profile", "compute", str(vector_add_binary)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    output = result.stdout
+
+    # List of all expected compute metrics (friendly names as displayed)
+    expected_compute_metrics = [
+        "Total FLOPS",
+        "HBM Compute Throughput",
+        "HBM Arithmetic Intensity",
+        "L2 Arithmetic Intensity",
+        "L1 Arithmetic Intensity",
+    ]
+
+    missing_metrics = []
+    for metric in expected_compute_metrics:
+        if metric not in output:
+            missing_metrics.append(metric)
+
+    assert (
+        len(missing_metrics) == 0
+    ), f"Missing compute metrics: {missing_metrics}\n\nOutput:\n{output}"
+
+    print(f"✓ All {len(expected_compute_metrics)} compute metrics displayed successfully")
+
+
+@pytest.mark.integration
 @pytest.mark.timeout(60)
-def test_json_output_has_all_metrics(vector_add_binary, tmp_path):
-    """Verify JSON output contains all 11 metrics"""
+def test_json_output_has_memory_metrics(vector_add_binary, tmp_path):
+    """Verify JSON output contains all memory metrics"""
     output_file = tmp_path / "results.json"
 
     result = subprocess.run(
@@ -121,6 +156,8 @@ def test_json_output_has_all_metrics(vector_add_binary, tmp_path):
             "-n",
             "1",
             "--aggregate",
+            "--profile",
+            "memory",
             "-o",
             str(output_file),
             str(vector_add_binary),
@@ -148,14 +185,57 @@ def test_json_output_has_all_metrics(vector_add_binary, tmp_path):
     assert "duration_us" in kernel_data
     assert "metrics" in kernel_data
 
-    # Count metrics
-    num_metrics = len(kernel_data["metrics"])
-    assert (
-        num_metrics == 12
-    ), f"Expected 12 metrics, got {num_metrics}: {list(kernel_data['metrics'].keys())}"
-
-    # Verify the 4 bandwidth metrics that were previously failing
+    # Verify key memory bandwidth metrics
     assert "memory.hbm_bandwidth_utilization" in kernel_data["metrics"]
     assert "memory.hbm_read_bandwidth" in kernel_data["metrics"]
     assert "memory.hbm_write_bandwidth" in kernel_data["metrics"]
     assert "memory.l2_bandwidth" in kernel_data["metrics"]
+
+
+@pytest.mark.integration
+@pytest.mark.timeout(120)
+def test_json_output_has_compute_metrics(vector_add_binary, tmp_path):
+    """Verify JSON output contains all compute metrics"""
+    output_file = tmp_path / "results.json"
+
+    result = subprocess.run(
+        [
+            "metrix",
+            "-n",
+            "1",
+            "--aggregate",
+            "--profile",
+            "compute",
+            "-o",
+            str(output_file),
+            str(vector_add_binary),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert output_file.exists()
+
+    import json
+
+    with open(output_file) as f:
+        data = json.load(f)
+
+    # Check structure
+    assert len(data) > 0, "No kernels in JSON output"
+
+    # Get first kernel/dispatch
+    first_key = list(data.keys())[0]
+    kernel_data = data[first_key]
+
+    assert "duration_us" in kernel_data
+    assert "metrics" in kernel_data
+
+    # Verify compute metrics are present
+    assert "compute.total_flops" in kernel_data["metrics"]
+    assert "compute.hbm_gflops" in kernel_data["metrics"]
+    assert "compute.hbm_arithmetic_intensity" in kernel_data["metrics"]
+    assert "compute.l2_arithmetic_intensity" in kernel_data["metrics"]
+    assert "compute.l1_arithmetic_intensity" in kernel_data["metrics"]

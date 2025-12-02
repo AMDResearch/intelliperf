@@ -251,3 +251,205 @@ class TestMetricDiscovery:
         assert "TCC_MISS_sum" in counters
         assert len(counters) == 2
 
+    def test_discovers_compute_metrics(self):
+        """Backend should discover all compute metrics"""
+        backend = GFX942Backend()
+
+        metrics = backend.get_available_metrics()
+
+        assert "compute.total_flops" in metrics
+        assert "compute.hbm_gflops" in metrics
+        assert "compute.hbm_arithmetic_intensity" in metrics
+        assert "compute.l2_arithmetic_intensity" in metrics
+        assert "compute.l1_arithmetic_intensity" in metrics
+
+
+class TestComputeMetrics:
+    """Test compute metric computations (FLOPS, arithmetic intensity)"""
+
+    def _get_zero_flops_counters(self):
+        """Helper: return counter dict with all FLOPS counters set to 0"""
+        return {
+            'SQ_INSTS_VALU_ADD_F16': 0, 'SQ_INSTS_VALU_MUL_F16': 0,
+            'SQ_INSTS_VALU_TRANS_F16': 0, 'SQ_INSTS_VALU_FMA_F16': 0,
+            'SQ_INSTS_VALU_ADD_F32': 0, 'SQ_INSTS_VALU_MUL_F32': 0,
+            'SQ_INSTS_VALU_TRANS_F32': 0, 'SQ_INSTS_VALU_FMA_F32': 0,
+            'SQ_INSTS_VALU_ADD_F64': 0, 'SQ_INSTS_VALU_MUL_F64': 0,
+            'SQ_INSTS_VALU_TRANS_F64': 0, 'SQ_INSTS_VALU_FMA_F64': 0,
+            'SQ_INSTS_VALU_MFMA_MOPS_F16': 0, 'SQ_INSTS_VALU_MFMA_MOPS_BF16': 0,
+            'SQ_INSTS_VALU_MFMA_MOPS_F32': 0, 'SQ_INSTS_VALU_MFMA_MOPS_F64': 0,
+        }
+
+    def test_total_flops_fp32_add(self):
+        """Test FLOPS calculation with FP32 add instructions"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        backend._raw_data['SQ_INSTS_VALU_ADD_F32'] = 100
+
+        result = backend._total_flops()
+        # 64 threads per wave * 100 instructions = 6400 FLOPS
+        assert result == 6400
+
+    def test_total_flops_fma_counts_double(self):
+        """Test that FMA instructions count as 2 operations"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        backend._raw_data['SQ_INSTS_VALU_FMA_F32'] = 100
+
+        result = backend._total_flops()
+        # 64 threads * 100 FMA * 2 ops = 12800 FLOPS
+        assert result == 12800
+
+    def test_total_flops_mfma_high_throughput(self):
+        """Test MFMA instructions produce 512 operations each"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        backend._raw_data['SQ_INSTS_VALU_MFMA_MOPS_F32'] = 10
+
+        result = backend._total_flops()
+        # 512 ops * 10 instructions = 5120 FLOPS
+        assert result == 5120
+
+    def test_total_flops_mixed_precision(self):
+        """Test FLOPS with mixed precision operations"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        backend._raw_data['SQ_INSTS_VALU_ADD_F16'] = 100  # 6400 FLOPS
+        backend._raw_data['SQ_INSTS_VALU_ADD_F32'] = 50   # 3200 FLOPS
+        backend._raw_data['SQ_INSTS_VALU_ADD_F64'] = 25   # 1600 FLOPS
+
+        result = backend._total_flops()
+        assert result == 6400 + 3200 + 1600
+
+    def test_total_flops_zero(self):
+        """Handle zero FLOPS gracefully"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+
+        result = backend._total_flops()
+        assert result == 0
+
+    def test_hbm_gflops_calculation(self):
+        """Test GFLOPS calculation with timing"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        backend._raw_data['SQ_INSTS_VALU_ADD_F32'] = 1000000  # 64M FLOPS
+        backend._raw_data['GRBM_GUI_ACTIVE'] = 2100000  # 1 ms at 2.1 GHz
+
+        result = backend._hbm_gflops()
+        # 64M FLOPS / 0.001 seconds = 64 GFLOPS
+        assert 60 < result < 70
+
+    def test_hbm_gflops_zero_time(self):
+        """Handle zero active cycles"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        backend._raw_data['SQ_INSTS_VALU_ADD_F32'] = 1000
+        backend._raw_data['GRBM_GUI_ACTIVE'] = 0
+
+        result = backend._hbm_gflops()
+        assert result == 0.0
+
+    def test_hbm_arithmetic_intensity(self):
+        """Test HBM arithmetic intensity calculation"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        backend._raw_data['SQ_INSTS_VALU_ADD_F32'] = 1000  # 64000 FLOPS
+        # HBM counters: simple case with only 64B reads
+        backend._raw_data['TCC_EA0_RDREQ_sum'] = 1000
+        backend._raw_data['TCC_EA0_RDREQ_32B_sum'] = 0
+        backend._raw_data['TCC_BUBBLE_sum'] = 0
+        backend._raw_data['TCC_EA0_WRREQ_sum'] = 0
+        backend._raw_data['TCC_EA0_WRREQ_64B_sum'] = 0
+
+        result = backend._hbm_arithmetic_intensity()
+        # 64000 FLOPS / (1000 * 64 bytes) = 64000 / 64000 = 1.0 FLOP/byte
+        assert result == 1.0
+
+    def test_hbm_arithmetic_intensity_zero_bytes(self):
+        """Handle zero HBM bytes transferred"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        backend._raw_data['SQ_INSTS_VALU_ADD_F32'] = 1000
+        backend._raw_data['TCC_EA0_RDREQ_sum'] = 0
+        backend._raw_data['TCC_EA0_RDREQ_32B_sum'] = 0
+        backend._raw_data['TCC_BUBBLE_sum'] = 0
+        backend._raw_data['TCC_EA0_WRREQ_sum'] = 0
+        backend._raw_data['TCC_EA0_WRREQ_64B_sum'] = 0
+
+        result = backend._hbm_arithmetic_intensity()
+        assert result == 0.0
+
+    def test_l2_arithmetic_intensity(self):
+        """Test L2 arithmetic intensity calculation"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        backend._raw_data['SQ_INSTS_VALU_ADD_F32'] = 1000  # 64000 FLOPS
+        backend._raw_data['TCC_REQ_sum'] = 500  # 500 * 128 = 64000 bytes
+
+        result = backend._l2_arithmetic_intensity()
+        # 64000 FLOPS / 64000 bytes = 1.0 FLOP/byte
+        assert result == 1.0
+
+    def test_l2_arithmetic_intensity_zero_bytes(self):
+        """Handle zero L2 bytes"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        backend._raw_data['SQ_INSTS_VALU_ADD_F32'] = 1000
+        backend._raw_data['TCC_REQ_sum'] = 0
+
+        result = backend._l2_arithmetic_intensity()
+        assert result == 0.0
+
+    def test_l1_arithmetic_intensity(self):
+        """Test L1 arithmetic intensity calculation"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        backend._raw_data['SQ_INSTS_VALU_ADD_F32'] = 1000  # 64000 FLOPS
+        backend._raw_data['TCP_TOTAL_CACHE_ACCESSES_sum'] = 500  # 500 * 128 = 64000 bytes
+
+        result = backend._l1_arithmetic_intensity()
+        # 64000 FLOPS / 64000 bytes = 1.0 FLOP/byte
+        assert result == 1.0
+
+    def test_l1_arithmetic_intensity_zero_bytes(self):
+        """Handle zero L1 bytes"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        backend._raw_data['SQ_INSTS_VALU_ADD_F32'] = 1000
+        backend._raw_data['TCP_TOTAL_CACHE_ACCESSES_sum'] = 0
+
+        result = backend._l1_arithmetic_intensity()
+        assert result == 0.0
+
+    def test_high_arithmetic_intensity_compute_bound(self):
+        """Test high AI indicates compute-bound kernel"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        # Lots of compute, little memory
+        backend._raw_data['SQ_INSTS_VALU_MFMA_MOPS_F32'] = 1000  # 512000 FLOPS
+        backend._raw_data['TCC_EA0_RDREQ_sum'] = 100  # 6400 bytes
+        backend._raw_data['TCC_EA0_RDREQ_32B_sum'] = 0
+        backend._raw_data['TCC_BUBBLE_sum'] = 0
+        backend._raw_data['TCC_EA0_WRREQ_sum'] = 0
+        backend._raw_data['TCC_EA0_WRREQ_64B_sum'] = 0
+
+        result = backend._hbm_arithmetic_intensity()
+        # 512000 / 6400 = 80 FLOP/byte (very compute-bound)
+        assert result == 80.0
+
+    def test_low_arithmetic_intensity_memory_bound(self):
+        """Test low AI indicates memory-bound kernel"""
+        backend = GFX942Backend()
+        backend._raw_data = self._get_zero_flops_counters()
+        # Little compute, lots of memory
+        backend._raw_data['SQ_INSTS_VALU_ADD_F32'] = 100  # 6400 FLOPS
+        backend._raw_data['TCC_EA0_RDREQ_sum'] = 10000  # 640000 bytes
+        backend._raw_data['TCC_EA0_RDREQ_32B_sum'] = 0
+        backend._raw_data['TCC_BUBBLE_sum'] = 0
+        backend._raw_data['TCC_EA0_WRREQ_sum'] = 0
+        backend._raw_data['TCC_EA0_WRREQ_64B_sum'] = 0
+
+        result = backend._hbm_arithmetic_intensity()
+        # 6400 / 640000 = 0.01 FLOP/byte (very memory-bound)
+        assert result == 0.01
