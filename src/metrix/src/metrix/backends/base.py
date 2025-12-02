@@ -162,6 +162,10 @@ class CounterBackend(ABC):
         Returns:
             List of counter lists, one per profiling pass
         """
+        # Handle empty counters (timing-only mode) - return single pass with no counters
+        if not counters:
+            return [[]]
+            
         counter_groups = self._get_counter_groups()
         max_per_pass = 14  # Conservative limit for most AMD GPUs
 

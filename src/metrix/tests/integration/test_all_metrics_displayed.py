@@ -83,7 +83,7 @@ def test_all_memory_metrics_are_displayed(vector_add_binary):
 def test_bandwidth_metrics_have_values(vector_add_binary):
     """Verify bandwidth metrics compute to non-zero values"""
     result = subprocess.run(
-        ["metrix", "-n", "1", "--aggregate", "--verbose", str(vector_add_binary)],
+        ["metrix", "-n", "1", "--aggregate", str(vector_add_binary)],
         capture_output=True,
         text=True,
         timeout=60,

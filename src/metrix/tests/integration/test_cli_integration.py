@@ -36,7 +36,7 @@ def test_cli_time_only_aggregated():
             "metrix",
             "profile",
             "--time-only",
-            "--runs",
+            "--num-replays",
             "3",
             "--aggregate",
             str(VECTOR_ADD),
