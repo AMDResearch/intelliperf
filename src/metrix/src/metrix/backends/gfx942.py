@@ -68,6 +68,7 @@ class GFX942Backend(CounterBackend):
                 "TCP_TOTAL_ACCESSES_sum",
                 "TCC_HIT_sum",
                 "TCC_MISS_sum",
+                "TCC_REQ_sum",  
             ],
             # Group 3: Memory instructions and read requests (from SQ_INSTS_VMEM)
             # Note: RDREQ can only be collected here, not with atomics!
@@ -173,7 +174,23 @@ class GFX942Backend(CounterBackend):
 
         Note: TCC_EA0_* counters aggregate across all memory controllers on MI300
         """
-        return (TCC_EA0_RDREQ_sum + TCC_EA0_WRREQ_sum) * 64
+    @metric("memory.bytes_transferred_l2")
+    def _bytes_transferred_l2(self, TCC_REQ_sum):
+        """
+        Total bytes transferred through L2 cache
+
+        Formula: TCC_REQ_sum * 128 (L2 cache line size is 128 bytes)
+        """
+        return TCC_REQ_sum * 128
+
+    @metric("memory.bytes_transferred_l1")
+    def _bytes_transferred_l1(self, TCP_TOTAL_CACHE_ACCESSES_sum):
+        """
+        Total bytes transferred through L1 cache
+
+        Formula: TCP_TOTAL_CACHE_ACCESSES_sum * 128 (L1 cache line size is 128 bytes)
+        """
+        return TCP_TOTAL_CACHE_ACCESSES_sum * 128
 
     # Cache metrics
 
@@ -534,8 +551,8 @@ class GFX942Backend(CounterBackend):
             SQ_INSTS_VALU_MFMA_MOPS_F64
         )
 
-        # Calculate L1 bytes (L1 cache line is 64 bytes)
-        l1_bytes = TCP_TOTAL_CACHE_ACCESSES_sum * 64
+        # Calculate L1 bytes (L1 cache line is 128 bytes on gfx942)
+        l1_bytes = TCP_TOTAL_CACHE_ACCESSES_sum * 128
 
         # Arithmetic intensity = FLOP / byte
         ai_l1 = fops / l1_bytes if l1_bytes > 0 else 0.0

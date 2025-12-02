@@ -69,6 +69,8 @@ for kernel in results.kernels:
 - `memory.hbm_write_bandwidth` - HBM write bandwidth (GB/s)
 - `memory.hbm_bandwidth_utilization` - % of peak HBM bandwidth
 - `memory.bytes_transferred_hbm` - Total bytes through HBM
+- `memory.bytes_transferred_l2` - Total bytes through L2 cache
+- `memory.bytes_transferred_l1` - Total bytes through L1 cache
 
 ### Cache Performance
 - `memory.l1_hit_rate` - L1 cache hit rate (%)

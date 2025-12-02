@@ -83,6 +83,24 @@ class GFX1201Backend(CounterBackend):
         """
         return 0.0
 
+    @metric("memory.bytes_transferred_l2")
+    def _bytes_transferred_l2(self):
+        """
+        Total bytes transferred through L2 cache
+
+        Formula: TCC_REQ_sum * 128 (L2 cache line size is 128 bytes)
+        """
+        return 0.0
+
+    @metric("memory.bytes_transferred_l1")
+    def _bytes_transferred_l1(self):
+        """
+        Total bytes transferred through L1 cache
+
+        Formula: TCP_TOTAL_CACHE_ACCESSES_sum * cache_line_size (architecture-dependent)
+        """
+        return 0.0
+
     # Cache metrics
 
     @metric("memory.l2_hit_rate")

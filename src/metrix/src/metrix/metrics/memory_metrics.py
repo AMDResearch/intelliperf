@@ -84,6 +84,30 @@ MEMORY_BANDWIDTH_METRICS = {
         "formula": """
             return (TCC_EA_RDREQ_sum + TCC_EA_WRREQ_sum) * 64
         """
+    },
+
+    "memory.bytes_transferred_l2": {
+        "name": "Total L2 Bytes Transferred",
+        "description": "Total bytes accessed through L2 cache",
+        "unit": "bytes",
+        "category": MetricCategory.MEMORY_BANDWIDTH,
+        "derived_from": ["TCC_REQ_sum"],
+        "formula": """
+            # L2 cache line is 128 bytes
+            return TCC_REQ_sum * 128
+        """
+    },
+
+    "memory.bytes_transferred_l1": {
+        "name": "Total L1 Bytes Transferred",
+        "description": "Total bytes accessed through L1 cache",
+        "unit": "bytes",
+        "category": MetricCategory.MEMORY_BANDWIDTH,
+        "derived_from": ["TCP_TOTAL_CACHE_ACCESSES_sum"],
+        "formula": """
+            # L1 cache line is 128 bytes on gfx942
+            return TCP_TOTAL_CACHE_ACCESSES_sum * 128
+        """
     }
 }
 
