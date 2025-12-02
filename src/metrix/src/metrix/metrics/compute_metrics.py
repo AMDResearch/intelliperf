@@ -1,6 +1,11 @@
 """
 Compute-focused metric definitions (FLOPS, Arithmetic Intensity)
 Based on Omnipilot's calculate_hbm_arithmetic_intensity() implementation
+
+NOTE: The `derived_from` field contains CONCEPTUAL counter names for documentation.
+Actual hardware counter names vary by architecture (e.g., TCC_EA_* vs TCC_EA0_*).
+For architecture-specific counter names, see the backend implementations in
+metrix/backends/gfx942.py, gfx1201.py, etc.
 """
 
 from .categories import MetricCategory
@@ -15,6 +20,9 @@ COMPUTE_THROUGHPUT_METRICS = {
         "description": "Total floating-point operations performed by the kernel",
         "unit": "FLOPS",
         "category": MetricCategory.COMPUTE,
+        # NOTE: HBM counters are architecture-specific:
+        # - MI300 (gfx942): TCC_EA0_RDREQ_sum, TCC_EA0_WRREQ_sum, etc.
+        # - MI200 (gfx90a): TCC_EA_RDREQ_sum, TCC_EA_WRREQ_sum, etc.
         "derived_from": [
             # FP16 instructions
             "SQ_INSTS_VALU_ADD_F16",
@@ -135,13 +143,13 @@ ARITHMETIC_INTENSITY_METRICS = {
         "unit": "FLOP/byte",
         "category": MetricCategory.COMPUTE,
         "derived_from": [
-            # FLOPS counters
+            # FLOPS counters (same across architectures)
             "SQ_INSTS_VALU_ADD_F16", "SQ_INSTS_VALU_MUL_F16", "SQ_INSTS_VALU_TRANS_F16", "SQ_INSTS_VALU_FMA_F16",
             "SQ_INSTS_VALU_ADD_F32", "SQ_INSTS_VALU_MUL_F32", "SQ_INSTS_VALU_TRANS_F32", "SQ_INSTS_VALU_FMA_F32",
             "SQ_INSTS_VALU_ADD_F64", "SQ_INSTS_VALU_MUL_F64", "SQ_INSTS_VALU_TRANS_F64", "SQ_INSTS_VALU_FMA_F64",
             "SQ_INSTS_VALU_MFMA_MOPS_F16", "SQ_INSTS_VALU_MFMA_MOPS_BF16", 
             "SQ_INSTS_VALU_MFMA_MOPS_F32", "SQ_INSTS_VALU_MFMA_MOPS_F64",
-            # HBM bandwidth counters (with 32B/64B/128B granularity)
+            # HBM bandwidth counters - conceptual names (actual names vary by arch)
             "TCC_EA_RDREQ_32B_sum", "TCC_EA_RDREQ_sum", "TCC_BUBBLE_sum",
             "TCC_EA_WRREQ_64B_sum", "TCC_EA_WRREQ_sum",
         ],

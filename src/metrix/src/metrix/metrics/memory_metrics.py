@@ -1,6 +1,11 @@
 """
 Memory-focused metric definitions
 Top-down approach: Define what we want to know, not how to measure it
+
+NOTE: The `derived_from` field contains CONCEPTUAL counter names for documentation.
+Actual hardware counter names vary by architecture (e.g., TCC_EA_* vs TCC_EA0_*).
+For architecture-specific counter names, see the backend implementations in
+metrix/backends/gfx942.py, gfx1201.py, etc.
 """
 
 from .categories import MetricCategory
@@ -15,6 +20,9 @@ MEMORY_BANDWIDTH_METRICS = {
         "description": "Percentage of peak HBM (High Bandwidth Memory) bandwidth utilized",
         "unit": "percent",
         "category": MetricCategory.MEMORY_BANDWIDTH,
+        # NOTE: These are conceptual counter names. Actual names vary by architecture:
+        # - MI300 (gfx942): TCC_EA0_RDREQ_sum, TCC_EA0_WRREQ_sum
+        # - MI200 (gfx90a): TCC_EA_RDREQ_sum, TCC_EA_WRREQ_sum
         "derived_from": [
             "TCC_EA_RDREQ_sum",      # Read requests to memory controller
             "TCC_EA_WRREQ_sum",      # Write requests to memory controller
