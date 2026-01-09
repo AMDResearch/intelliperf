@@ -22,13 +22,13 @@ From: rocm/pytorch:rocm7.0_ubuntu22.04_py3.10_pytorch_release_2.8.0
 
     # Install additional system dependencies
     apt-get -y update
-    apt-get install -y software-properties-common git wget clang lld libzstd-dev libomp-dev vim libdwarf-dev gdb tmux cmake
+    apt-get install -y software-properties-common git wget clang lld libzstd-dev libomp-dev vim libdwarf-dev gdb tmux cmake unzip
 
     # Upgrade pip
     pip install --upgrade pip
 
     # Install additional Python packages for intelliperf
-    pip install --no-cache-dir \
+    pip install --upgrade --ignore-installed --no-cache-dir \
         astunparse==1.6.2 \
         colorlover \
         dash-bootstrap-components \
@@ -69,5 +69,4 @@ From: rocm/pytorch:rocm7.0_ubuntu22.04_py3.10_pytorch_release_2.8.0
 
 %runscript
     echo "Welcome to IntelliPerf with ROCm 7.0!"
-    source /opt/conda/bin/activate py_3.10
     exec "$@"
