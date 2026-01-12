@@ -157,6 +157,8 @@ class Accordo:
 		lib_path = self.accordo_path / "build" / "lib" / "libaccordo.so"
 		if force_rebuild or not lib_path.exists():
 			logging.info("Building Accordo C++ library...")
+			arg_types = self.config.get_arg_types()
+			generate_kernel_header(arg_types, self.config.additional_includes)			
 			self._lib_path = _build_accordo(self.accordo_path, parallel_jobs)
 			self._built = True
 		else:
