@@ -26,7 +26,7 @@ dependencies = [
 	"pytest",
 	"litellm[proxy]",
 	"rpds-py",
-	"nexus @ git+https://github.com/AMDResearch/nexus.git@main",
+	"nexus @ git+https://github.com/AMDResearch/nexus.git@2ad5699c8374966365d1a564f7032a3e061a8bbc",
 ]
 
 [tool.setuptools]
