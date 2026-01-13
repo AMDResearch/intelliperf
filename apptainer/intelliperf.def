@@ -11,6 +11,10 @@ From: rocm/pytorch:rocm7.0_ubuntu22.04_py3.10_pytorch_release_2.8.0
     export ROCM_PATH=/opt/rocm
     export OMPI_MCA_mtl="^ofi"
     export OMPI_MCA_pml="ob1"
+    
+    # Activate virtual environment
+    export VIRTUAL_ENV=/opt/intelliperf_venv
+    export PATH=/opt/intelliperf_venv/bin:$PATH
 
 %post
     /bin/bash -c "
@@ -22,12 +26,18 @@ From: rocm/pytorch:rocm7.0_ubuntu22.04_py3.10_pytorch_release_2.8.0
 
     # Install additional system dependencies
     apt-get -y update
-    apt-get install -y software-properties-common git wget clang lld libzstd-dev libomp-dev vim libdwarf-dev gdb tmux cmake unzip
+    apt-get install -y software-properties-common git wget clang lld libzstd-dev libomp-dev vim libdwarf-dev gdb tmux cmake unzip python3-venv
 
-    # Upgrade pip
+    # Create virtual environment
+    python3 -m venv /opt/intelliperf_venv
+    
+    # Activate virtual environment
+    . /opt/intelliperf_venv/bin/activate
+
+    # Upgrade pip in virtual environment
     pip install --upgrade pip
 
-    # Install additional Python packages for intelliperf
+    # Install additional Python packages for intelliperf in virtual environment
     pip install --upgrade --ignore-installed --no-cache-dir \
         astunparse==1.6.2 \
         colorlover \
@@ -68,5 +78,10 @@ From: rocm/pytorch:rocm7.0_ubuntu22.04_py3.10_pytorch_release_2.8.0
     cmake --build . --target install
 
 %runscript
+    # Activate virtual environment
+    if [ -f /opt/intelliperf_venv/bin/activate ]; then
+        . /opt/intelliperf_venv/bin/activate
+    fi
+    
     echo "Welcome to IntelliPerf with ROCm 7.0!"
     exec "$@"
