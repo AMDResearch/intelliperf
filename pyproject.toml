@@ -1,0 +1,40 @@
+[project]
+name = "intelliperf"
+version = "0.1.0"
+description = "AI-powered GPU kernel optimizer for AMD GPUs"
+authors = [
+    { name = "AMD Research" }
+]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.9"
+
+dependencies = [
+    "langchain>=0.1.0",
+    "langchain-openai>=0.0.5",
+    "intellikit @ git+https://github.com/AMDResearch/intellikit.git@fd1ebe6ac6ab450b8b38d3ae79b85b4c2d57d02a",
+    "anthropic>=0.50.0",
+    "httpx>=0.24.0",
+    "pydantic>=2.0.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+intelliperf = "intelliperf.cli:main"
+
+[build-system]
+requires = ["setuptools>=61", "wheel", "pip"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["intelliperf*"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+]

@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+
+# Build artifacts
+build/
+*.o
+*.bc
+*.hipi
+*.hipfb
+*.s
+*.out
+
+# Executables
+*_bench
+scan
+
+# Profiling
+.intelliperf/
+.rocprofv3/
+*.log
+*.db
+
+# Backup files
+*.original
+*.optimized
+
+# Misc
+output/
+*.zip
+*.resolution.txt
