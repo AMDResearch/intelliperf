@@ -24,7 +24,6 @@
 
 import json
 import logging
-import sys
 
 import dspy
 
@@ -408,8 +407,7 @@ class memory_access(Formula_Base):
 			)
 
 			if len(filtered_report_card) == 0:
-				logging.error("No uncoalesced memory access found.")
-				sys.exit(1)
+				return Result(success=False, error_report="No uncoalesced memory access found.", retryable=False)
 
 			logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
 

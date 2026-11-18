@@ -301,6 +301,10 @@ def main():
 		# Optimize the application based on insights from instrumentation.
 		optimize_result = optimizer.optimize_pass(target_kernel=args.kernel)
 		if not optimize_result:
+			if not optimize_result.retryable:
+				logging.warning(optimize_result.error_report)
+				flush_logs_if_enabled()
+				break
 			optimize_result.report_out()
 			logging.warning(f"{args.formula} optimization pass {attempt + 1} failed. Retrying...")
 			flush_logs_if_enabled()  # Flush after failed optimization

@@ -485,6 +485,7 @@ class bank_conflict(Formula_Base):
 			return Result(
 				success=False,
 				error_report="No source code or bank conflicts found. Please compile your code with -g.",
+				retryable=False,
 			)
 
 		kernel = None
@@ -502,7 +503,7 @@ class bank_conflict(Formula_Base):
 			)
 
 			if len(filtered_report_card) == 0:
-				return Result(success=False, error_report="No bank conflicts found.")
+				return Result(success=False, error_report="No bank conflicts found.", retryable=False)
 
 			logging.debug(f"Filtered Report Card:\n{json.dumps(filtered_report_card, indent=4)}")
 
