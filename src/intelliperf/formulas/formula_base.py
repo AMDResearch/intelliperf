@@ -237,8 +237,9 @@ class OptimizationTracker:
 
 
 class Result:
-	def __init__(self, success: bool, error_report: str = "", asset=None):
+	def __init__(self, success: bool, error_report: str = "", asset=None, *, retryable: bool = True):
 		self.success: bool = success
+		self.retryable = retryable
 		# Only set error report if failure occurs
 		if not self.success and error_report == "":
 			logging.error("Invalid implementation of Report(). Must provide an error report if failure occurs.")
